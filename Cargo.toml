@@ -1,0 +1,31 @@
+[package]
+name = "spacelaser"
+version = "0.1.0"
+edition = "2021"
+description = "Cloud-optimized partial HDF5 reader for GEDI and ICESat-2 satellite data"
+license = "MIT"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+
+# HTTP client with range request support
+reqwest = { version = "0.12", features = ["rustls-tls"], default-features = false }
+
+# Decompression
+flate2 = "1"
+
+# Byte manipulation
+bytes = "1"
+
+# Error handling
+thiserror = "2"
+
+# Caching
+lru = "0.12"
+
+# Logging
+log = "0.4"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }

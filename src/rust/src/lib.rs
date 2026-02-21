@@ -6,7 +6,12 @@
 pub mod filters;
 pub mod hdf5;
 pub mod io;
+pub mod products;
+
+#[cfg(feature = "r-ffi")]
+mod ffi;
 
 pub use hdf5::file::Hdf5File;
 pub use hdf5::types::Datatype;
 pub use io::source::DataSource;
+pub use products::gedi::BBox;

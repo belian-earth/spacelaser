@@ -1,1 +1,18 @@
-/target
+# Rust build artifacts
+target/
+src/rust/target/
+
+# R package build artifacts
+src/*.o
+src/*.so
+src/*.dll
+src/spacelaser-win.def
+
+# R session
+.Rhistory
+.Rdata
+.RData
+.Rproj.user/
+
+# OS
+.DS_Store

@@ -1,0 +1,28 @@
+TARGET_DIR = ./rust/target
+LIBDIR = $(TARGET_DIR)/release
+STATLIB = $(LIBDIR)/libspacelaser.a
+PKG_LIBS = -L$(LIBDIR) -lspacelaser
+
+all: C_clean
+
+$(SHLIB): $(STATLIB)
+
+CARGOTMP = $(CURDIR)/.cargo
+
+$(STATLIB):
+	# In some environments, ~/.cargo/bin might not be in PATH
+	if [ "$(NOT_CRAN)" != "true" ]; then \
+		export CARGO_HOME=$(CARGOTMP); \
+	fi && \
+		export PATH="$(PATH):$(HOME)/.cargo/bin" && \
+		cargo build --lib --release --manifest-path=./rust/Cargo.toml --features r-ffi
+	if [ "$(NOT_CRAN)" != "true" ]; then \
+		rm -Rf $(CARGOTMP) && \
+		rm -Rf $(TARGET_DIR)/release/build; \
+	fi
+
+C_clean:
+	rm -Rf $(SHLIB) $(STATLIB) $(OBJECTS)
+
+clean:
+	rm -Rf $(SHLIB) $(STATLIB) $(OBJECTS) $(TARGET_DIR)

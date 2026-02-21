@@ -1,0 +1,4 @@
+^remote-hdf5-partial-read-analysis\.md$
+^\.gitignore$
+^src/rust/target$
+^src/rust/\.cargo$

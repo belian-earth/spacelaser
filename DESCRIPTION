@@ -16,6 +16,7 @@ Config/rextendr/version: 0.3.1
 Imports:
     arrow,
     cli,
+    jsonlite,
     purrr,
     rlang (>= 1.1.0),
     vctrs,

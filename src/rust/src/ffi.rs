@@ -1,17 +1,34 @@
 //! FFI bindings for R via extendr.
 //!
 //! These functions are called from R through the rextendr framework.
-//! Data is transferred as serialized JSON column metadata + raw byte vectors,
-//! which the R side converts to arrow arrays via nanoarrow.
+//! Data is transferred as raw byte vectors + JSON metadata strings,
+//! which the R side converts to properly typed R vectors.
+//!
+//! ## Design choice: raw bytes + JSON metadata (not Arrow)
+//!
+//! We initially planned to use Arrow RecordBatches for zero-copy transfer,
+//! but the extendr ↔ arrow interop is immature.  Instead, each column is
+//! returned as a raw byte vector with a tiny JSON sidecar describing its
+//! HDF5 datatype and element count.  The R side (`parse_column()`) uses
+//! `readBin()` to reinterpret the bytes — this is fast and avoids any
+//! additional compiled dependency beyond what extendr already provides.
 
 use extendr_api::prelude::*;
 
 use crate::hdf5::file::Hdf5File;
 use crate::io::source::DataSource;
-use crate::products::gedi::{self, BBox, GediProduct};
+use crate::products::common::GroupData;
+use crate::products::gedi::{self, GediProduct};
 use crate::products::icesat2::{self, IceSat2Product};
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 /// Create a tokio runtime for blocking on async operations.
+///
+/// We use a single-threaded runtime because R is single-threaded.
+/// All async concurrency happens within this runtime via `block_on`.
 fn runtime() -> tokio::runtime::Runtime {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -19,13 +36,77 @@ fn runtime() -> tokio::runtime::Runtime {
         .expect("Failed to create tokio runtime")
 }
 
-/// Read GEDI data from a remote HDF5 file with spatial subsetting.
+/// Build a `DataSource` from URL and optional bearer token.
 ///
-/// Returns a list of lists (one per beam), each containing:
-/// - beam_name: character
-/// - n_footprints: integer
-/// - columns: named list of raw vectors (column bytes)
-/// - col_info: named list with element_size, num_elements, dtype for each column
+/// Extracts the repeated pattern that was previously inlined in every
+/// exported function.
+fn make_source(url: &str, bearer_token: Nullable<&str>) -> DataSource {
+    match bearer_token {
+        Nullable::NotNull(token) => DataSource::http_with_token(url, token),
+        Nullable::Null => DataSource::http(url),
+    }
+}
+
+/// Convert a `GroupData` (beam or track) into an R list.
+///
+/// Output structure (consumed by `build_tibble()` on the R side):
+/// ```text
+/// list(
+///   group_name   = "BEAM0101",
+///   n_elements   = 1234L,
+///   columns      = list(col1 = <raw>, col2 = <raw>, ...),
+///   col_info     = list(col1 = "<json>", col2 = "<json>", ...)
+/// )
+/// ```
+fn group_data_to_list(gd: GroupData) -> List {
+    let n_elements = gd.selected_indices.len() as i32;
+    let group_name = gd.group_name;
+
+    let mut col_names: Vec<String> = Vec::new();
+    let mut col_bytes: Vec<Raw> = Vec::new();
+    let mut col_info_strs: Vec<String> = Vec::new();
+
+    for (name, cdata) in gd.columns {
+        col_names.push(name);
+        col_bytes.push(Raw::from_bytes(&cdata.bytes));
+        col_info_strs.push(
+            serde_json::json!({
+                "element_size": cdata.element_size,
+                "num_elements": cdata.num_elements,
+                "dtype": cdata.dtype_desc,
+            })
+            .to_string(),
+        );
+    }
+
+    let columns = List::from_names_and_values(
+        col_names.iter().map(|s| s.as_str()),
+        col_bytes,
+    )
+    .unwrap_or_else(|_| List::new(0));
+
+    let col_info = List::from_names_and_values(
+        col_names.iter().map(|s| s.as_str()),
+        col_info_strs,
+    )
+    .unwrap_or_else(|_| List::new(0));
+
+    // Use generic field names so the R side doesn't need to branch
+    // on GEDI vs ICESat-2.  The R wrapper renames `group_name` to
+    // `beam` or `track` as appropriate.
+    list!(
+        group_name = group_name,
+        n_elements = n_elements,
+        columns = columns,
+        col_info = col_info
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Exported functions (called from R)
+// ---------------------------------------------------------------------------
+
+/// Read GEDI data from a remote HDF5 file with spatial subsetting.
 /// @export
 #[extendr]
 fn rust_read_gedi(
@@ -40,31 +121,19 @@ fn rust_read_gedi(
     bearer_token: Nullable<&str>,
 ) -> extendr_api::Result<List> {
     let rt = runtime();
-
-    let source = match bearer_token {
-        Nullable::NotNull(token) => DataSource::http_with_token(url, token),
-        Nullable::Null => DataSource::http(url),
-    };
+    let source = make_source(url, bearer_token);
 
     let product_type = match product {
         "L1B" | "l1b" => GediProduct::L1B,
         "L2A" | "l2a" => GediProduct::L2A,
         "L2B" | "l2b" => GediProduct::L2B,
         "L4A" | "l4a" => GediProduct::L4A,
-        _ => return Err(extendr_api::Error::Other(format!("Unknown GEDI product: {}", product))),
+        _ => return Err(extendr_api::Error::Other(format!("Unknown GEDI product: {product}"))),
     };
 
-    let bbox = BBox::new(xmin, ymin, xmax, ymax);
-
-    let cols = match columns {
-        Nullable::NotNull(c) => Some(c),
-        Nullable::Null => None,
-    };
-
-    let bms = match beams {
-        Nullable::NotNull(b) => Some(b),
-        Nullable::Null => None,
-    };
+    let bbox = crate::BBox::new(xmin, ymin, xmax, ymax);
+    let cols = match columns { Nullable::NotNull(c) => Some(c), Nullable::Null => None };
+    let bms = match beams { Nullable::NotNull(b) => Some(b), Nullable::Null => None };
 
     let result = rt.block_on(async {
         let mut file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
@@ -74,13 +143,9 @@ fn rust_read_gedi(
     });
 
     match result {
-        Ok(beam_data_vec) => {
-            let beam_lists: Vec<List> = beam_data_vec
-                .into_iter()
-                .map(|bd| beam_data_to_list(bd))
-                .collect();
-
-            Ok(List::from_values(beam_lists))
+        Ok(groups) => {
+            let lists: Vec<List> = groups.into_iter().map(group_data_to_list).collect();
+            Ok(List::from_values(lists))
         }
         Err(e) => Err(extendr_api::Error::Other(e)),
     }
@@ -101,35 +166,18 @@ fn rust_read_icesat2(
     bearer_token: Nullable<&str>,
 ) -> extendr_api::Result<List> {
     let rt = runtime();
-
-    let source = match bearer_token {
-        Nullable::NotNull(token) => DataSource::http_with_token(url, token),
-        Nullable::Null => DataSource::http(url),
-    };
+    let source = make_source(url, bearer_token);
 
     let product_type = match product {
         "ATL03" | "atl03" => IceSat2Product::ATL03,
         "ATL06" | "atl06" => IceSat2Product::ATL06,
         "ATL08" | "atl08" => IceSat2Product::ATL08,
-        _ => {
-            return Err(extendr_api::Error::Other(format!(
-                "Unknown ICESat-2 product: {}",
-                product
-            )))
-        }
+        _ => return Err(extendr_api::Error::Other(format!("Unknown ICESat-2 product: {product}"))),
     };
 
-    let bbox = BBox::new(xmin, ymin, xmax, ymax);
-
-    let cols = match columns {
-        Nullable::NotNull(c) => Some(c),
-        Nullable::Null => None,
-    };
-
-    let trks = match tracks {
-        Nullable::NotNull(t) => Some(t),
-        Nullable::Null => None,
-    };
+    let bbox = crate::BBox::new(xmin, ymin, xmax, ymax);
+    let cols = match columns { Nullable::NotNull(c) => Some(c), Nullable::Null => None };
+    let trks = match tracks { Nullable::NotNull(t) => Some(t), Nullable::Null => None };
 
     let result = rt.block_on(async {
         let mut file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
@@ -139,13 +187,9 @@ fn rust_read_icesat2(
     });
 
     match result {
-        Ok(track_data_vec) => {
-            let track_lists: Vec<List> = track_data_vec
-                .into_iter()
-                .map(|td| track_data_to_list(td))
-                .collect();
-
-            Ok(List::from_values(track_lists))
+        Ok(groups) => {
+            let lists: Vec<List> = groups.into_iter().map(group_data_to_list).collect();
+            Ok(List::from_values(lists))
         }
         Err(e) => Err(extendr_api::Error::Other(e)),
     }
@@ -156,11 +200,7 @@ fn rust_read_icesat2(
 #[extendr]
 fn rust_hdf5_groups(url: &str, path: &str, bearer_token: Nullable<&str>) -> extendr_api::Result<Vec<String>> {
     let rt = runtime();
-
-    let source = match bearer_token {
-        Nullable::NotNull(token) => DataSource::http_with_token(url, token),
-        Nullable::Null => DataSource::http(url),
-    };
+    let source = make_source(url, bearer_token);
 
     let result = rt.block_on(async {
         let mut file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
@@ -182,11 +222,7 @@ fn rust_hdf5_dataset(
     bearer_token: Nullable<&str>,
 ) -> extendr_api::Result<List> {
     let rt = runtime();
-
-    let source = match bearer_token {
-        Nullable::NotNull(token) => DataSource::http_with_token(url, token),
-        Nullable::Null => DataSource::http(url),
-    };
+    let source = make_source(url, bearer_token);
 
     let result = rt.block_on(async {
         let mut file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
@@ -209,90 +245,6 @@ fn rust_hdf5_dataset(
         }
         Err(e) => Err(extendr_api::Error::Other(e)),
     }
-}
-
-/// Convert GEDI BeamData to an R list.
-fn beam_data_to_list(bd: gedi::BeamData) -> List {
-    let n_footprints = bd.selected_indices.len() as i32;
-    let beam_name = bd.beam_name.clone();
-
-    let mut col_names: Vec<String> = Vec::new();
-    let mut col_bytes: Vec<Raw> = Vec::new();
-    let mut col_info_strs: Vec<String> = Vec::new();
-
-    for (name, cdata) in bd.columns {
-        col_names.push(name);
-        col_bytes.push(Raw::from_bytes(&cdata.bytes));
-        col_info_strs.push(
-            serde_json::json!({
-                "element_size": cdata.element_size,
-                "num_elements": cdata.num_elements,
-                "dtype": cdata.dtype_desc,
-            })
-            .to_string(),
-        );
-    }
-
-    let columns = List::from_names_and_values(
-        col_names.iter().map(|s| s.as_str()),
-        col_bytes,
-    )
-    .unwrap_or_else(|_| List::new(0));
-
-    let col_info = List::from_names_and_values(
-        col_names.iter().map(|s| s.as_str()),
-        col_info_strs,
-    )
-    .unwrap_or_else(|_| List::new(0));
-
-    list!(
-        beam_name = beam_name,
-        n_footprints = n_footprints,
-        columns = columns,
-        col_info = col_info
-    )
-}
-
-/// Convert ICESat-2 TrackData to an R list.
-fn track_data_to_list(td: icesat2::TrackData) -> List {
-    let n_elements = td.selected_indices.len() as i32;
-    let track_name = td.track_name.clone();
-
-    let mut col_names: Vec<String> = Vec::new();
-    let mut col_bytes: Vec<Raw> = Vec::new();
-    let mut col_info_strs: Vec<String> = Vec::new();
-
-    for (name, cdata) in td.columns {
-        col_names.push(name);
-        col_bytes.push(Raw::from_bytes(&cdata.bytes));
-        col_info_strs.push(
-            serde_json::json!({
-                "element_size": cdata.element_size,
-                "num_elements": cdata.num_elements,
-                "dtype": cdata.dtype_desc,
-            })
-            .to_string(),
-        );
-    }
-
-    let columns = List::from_names_and_values(
-        col_names.iter().map(|s| s.as_str()),
-        col_bytes,
-    )
-    .unwrap_or_else(|_| List::new(0));
-
-    let col_info = List::from_names_and_values(
-        col_names.iter().map(|s| s.as_str()),
-        col_info_strs,
-    )
-    .unwrap_or_else(|_| List::new(0));
-
-    list!(
-        track_name = track_name,
-        n_elements = n_elements,
-        columns = columns,
-        col_info = col_info
-    )
 }
 
 /// Exchange Earthdata username/password for a bearer token.

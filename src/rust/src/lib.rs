@@ -15,4 +15,4 @@ mod ffi;
 pub use hdf5::file::Hdf5File;
 pub use hdf5::types::Datatype;
 pub use io::source::DataSource;
-pub use products::gedi::BBox;
+pub use products::common::{BBox, ColumnData, GroupData};

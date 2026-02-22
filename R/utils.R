@@ -25,16 +25,16 @@ sl_bbox <- function(xmin, ymin, xmax, ymax) {
     cli::cli_abort("Longitude values must be between -180 and 180.")
   }
 
-  bbox <- vctrs::new_vctr(
+  vctrs::new_vctr(
     c(xmin = xmin, ymin = ymin, xmax = xmax, ymax = ymax),
     class = "sl_bbox"
   )
-  bbox
 }
 
 #' @export
 format.sl_bbox <- function(x, ...) {
-  sprintf("(%.4f, %.4f) - (%.4f, %.4f)", x[["xmin"]], x[["ymin"]], x[["xmax"]], x[["ymax"]])
+  sprintf("(%.4f, %.4f) - (%.4f, %.4f)",
+    x[["xmin"]], x[["ymin"]], x[["xmax"]], x[["ymax"]])
 }
 
 #' @export
@@ -43,94 +43,167 @@ print.sl_bbox <- function(x, ...) {
   invisible(x)
 }
 
+# ---------------------------------------------------------------------------
+# Internal: shared product reader
+# ---------------------------------------------------------------------------
+
+#' Common implementation behind grab_gedi() and grab_icesat2().
+#'
+#' Both functions follow the same workflow:
+#'   1. Validate bbox, obtain auth token
+#'   2. Call the appropriate Rust reader
+#'   3. Convert each group's raw byte columns into an R data frame
+#'   4. Attach geometry and group label, combine rows
+#'
+#' Extracting this logic here eliminates ~50 lines of duplication and
+#' ensures both APIs evolve consistently.
+#'
+#' @param url,product,bbox,columns,token  Forwarded from the public wrapper.
+#' @param groups  Beam names (GEDI) or track names (ICESat-2), or `NULL`.
+#' @param rust_fn  The Rust FFI function to call (`rust_read_gedi` or
+#'   `rust_read_icesat2`).
+#' @param lat_col,lon_col  Column names for latitude / longitude (used to
+#'   build the `geometry` column via `wk::xy()`).
+#' @param group_label  Name for the group identifier column (`"beam"` or
+#'   `"track"`).
+#' @param element_label  Human-readable name for a row, used in the log
+#'   message (`"footprint"` or `"element"`).
+#' @noRd
+grab_product <- function(url, product, bbox, columns, groups, token,
+                         rust_fn, lat_col, lon_col,
+                         group_label, element_label) {
+  bbox <- validate_bbox(bbox)
+  token <- sl_earthdata_token(token)
+
+  cli::cli_progress_step(
+    "Reading {product} from {.url {basename(url)}}"
+  )
+
+  # Both rust_read_gedi and rust_read_icesat2 accept the group filter
+  # (beams / tracks) as the 8th positional argument.  We pass all args
+  # positionally because the parameter names differ between the two.
+  raw_result <- rust_fn(
+    url, product,
+    bbox[["xmin"]], bbox[["ymin"]], bbox[["xmax"]], bbox[["ymax"]],
+    columns, groups, token
+  )
+
+  if (length(raw_result) == 0L) {
+    cli::cli_inform("No {element_label}s found within the bounding box.")
+    return(vctrs::new_data_frame(list(), n = 0L))
+  }
+
+  group_tbls <- purrr::map(raw_result, function(gd) {
+    tbl <- build_tibble(gd, lat_col = lat_col, lon_col = lon_col)
+    tbl[[group_label]] <- gd$group_name
+    # Strip subgroup prefixes (e.g. "geolocation/lat_lowestmode" ->
+    # "lat_lowestmode") for cleaner column names, matching chewie output.
+    names(tbl) <- sub(".*/", "", names(tbl))
+    tbl
+  })
+
+  result <- vctrs::vec_rbind(!!!group_tbls)
+
+  n <- nrow(result)
+  cli::cli_progress_done()
+  cli::cli_inform(c(
+    "v" = "Read {n} {element_label}{?s} from {length(group_tbls)} {group_label}{?s}."
+  ))
+
+  result
+}
+
+# ---------------------------------------------------------------------------
+# Internal: column parsing and tibble construction
+# ---------------------------------------------------------------------------
+
 #' Convert raw bytes from Rust to an R vector based on HDF5 dtype.
+#'
+#' The Rust side sends each column as a raw byte vector plus a JSON string
+#' describing the HDF5 datatype (e.g. `FixedPoint { size: 4, signed: true }`)
+#' and element count. We use `readBin()` to reinterpret the bytes.
 #'
 #' @param raw_bytes Raw vector of bytes from the Rust reader.
 #' @param info_json JSON string with element_size, num_elements, dtype fields.
-#' @returns An appropriate R vector (double, integer, raw, etc.).
+#' @returns An appropriate R vector (double, integer, or raw).
 #' @noRd
 parse_column <- function(raw_bytes, info_json) {
-  info <- jsonlite_parse(info_json)
-  elem_size <- info$element_size
+  info <- parse_column_info(info_json)
   n <- info$num_elements
   dtype <- info$dtype
+  elem_size <- info$element_size
 
   if (grepl("FloatingPoint", dtype, fixed = TRUE)) {
-    if (elem_size == 8) {
-      readBin(raw_bytes, what = "double", n = n, size = 8, endian = "little")
-    } else if (elem_size == 4) {
-      readBin(raw_bytes, what = "double", n = n, size = 4, endian = "little")
-    } else {
-      raw_bytes
-    }
+    readBin(raw_bytes, what = "double", n = n,
+            size = elem_size, endian = "little")
   } else if (grepl("FixedPoint", dtype, fixed = TRUE)) {
-    if (grepl("signed: true", dtype, fixed = TRUE)) {
+    signed <- grepl("signed: true", dtype, fixed = TRUE)
+    if (signed) {
       if (elem_size <= 4) {
-        readBin(raw_bytes, what = "integer", n = n, size = elem_size, endian = "little")
+        readBin(raw_bytes, what = "integer", n = n,
+                size = elem_size, endian = "little")
       } else {
-        # 64-bit integers: read as double to avoid overflow
-        readBin(raw_bytes, what = "double", n = n, size = 8, endian = "little")
+        readBin(raw_bytes, what = "double", n = n,
+                size = 8, endian = "little")
       }
     } else {
       if (elem_size == 1) {
         as.integer(raw_bytes)
       } else if (elem_size <= 4) {
-        readBin(raw_bytes, what = "integer", n = n, size = elem_size,
-                endian = "little", signed = FALSE)
+        readBin(raw_bytes, what = "integer", n = n,
+                size = elem_size, endian = "little", signed = FALSE)
       } else {
-        readBin(raw_bytes, what = "double", n = n, size = 8, endian = "little")
+        readBin(raw_bytes, what = "double", n = n,
+                size = 8, endian = "little")
       }
     }
   } else {
-    # String or unknown: return raw
     raw_bytes
   }
 }
 
-#' Minimal JSON parser (avoid jsonlite dependency for internal use).
+#' Extract element_size, num_elements, dtype from column info JSON.
+#'
+#' Uses simple regex extraction instead of a full JSON parser to avoid
+#' pulling in jsonlite as a dependency for this single internal use.
+#'
 #' @noRd
-jsonlite_parse <- function(json_str) {
-  # Simple JSON parsing for our known structure: {key: value, ...}
-  # We only need element_size, num_elements, dtype
-  env <- new.env(parent = emptyenv())
-  env$element_size <- as.integer(
-    regmatches(json_str, regexpr('"element_size":\\s*(\\d+)', json_str))
-  )
-  env$element_size <- as.integer(gsub('"element_size":\\s*', "", env$element_size))
-
-  env$num_elements <- as.integer(
-    regmatches(json_str, regexpr('"num_elements":\\s*(\\d+)', json_str))
-  )
-  env$num_elements <- as.integer(gsub('"num_elements":\\s*', "", env$num_elements))
-
+parse_column_info <- function(json_str) {
+  extract_int <- function(key) {
+    m <- regmatches(json_str,
+      regexpr(paste0('"', key, '":\\s*(\\d+)'), json_str))
+    as.integer(sub(paste0('"', key, '":\\s*'), "", m))
+  }
   m <- regmatches(json_str, regexpr('"dtype":"([^"]*)"', json_str))
-  env$dtype <- gsub('"dtype":"([^"]*)"', "\\1", m)
+  dtype <- sub('"dtype":"([^"]*)"', "\\1", m)
 
-  as.list(env)
+  list(
+    element_size = extract_int("element_size"),
+    num_elements = extract_int("num_elements"),
+    dtype = dtype
+  )
 }
 
-#' Build a tibble from Rust beam/track data.
+#' Build a data frame from a Rust group data list.
 #'
-#' Converts raw bytes to proper R types and attaches geometry via wk.
+#' Converts raw byte columns to proper R types and attaches geometry via wk.
 #' @noRd
-build_tibble <- function(beam_data, lat_col, lon_col) {
-  col_names <- names(beam_data$columns)
-  col_info <- beam_data$col_info
+build_tibble <- function(group_data, lat_col, lon_col) {
+  col_names <- names(group_data$columns)
+  col_info <- group_data$col_info
 
   cols <- purrr::map(col_names, function(nm) {
-    parse_column(beam_data$columns[[nm]], col_info[[nm]])
+    parse_column(group_data$columns[[nm]], col_info[[nm]])
   })
   names(cols) <- col_names
 
-  # Determine number of rows from the first non-empty column
-  n <- beam_data$n_footprints %||% beam_data$n_elements %||% 0L
+  n <- group_data$n_elements %||% 0L
   if (n == 0L && length(cols) > 0L) {
     n <- length(cols[[1]])
   }
 
   tbl <- vctrs::new_data_frame(cols, n = n)
 
-  # Add geometry column from lat/lon via wk
   if (lat_col %in% col_names && lon_col %in% col_names) {
     tbl[["geometry"]] <- wk::xy(
       x = tbl[[lon_col]],

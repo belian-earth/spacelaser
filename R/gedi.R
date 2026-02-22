@@ -44,30 +44,7 @@ grab_gedi <- function(url,
   rlang::check_required(bbox)
   product <- rlang::arg_match(product)
 
-  bbox <- validate_bbox(bbox)
-  token <- sl_earthdata_token(token)
-
-  cli::cli_progress_step("Reading GEDI {product} from {.url {basename(url)}}")
-
-  raw_result <- rust_read_gedi(
-    url = url,
-    product = product,
-    xmin = bbox[["xmin"]],
-    ymin = bbox[["ymin"]],
-    xmax = bbox[["xmax"]],
-    ymax = bbox[["ymax"]],
-    columns = columns,
-    beams = beams,
-    bearer_token = token
-  )
-
-  if (length(raw_result) == 0L) {
-    cli::cli_inform("No footprints found within the bounding box.")
-    return(vctrs::new_data_frame(list(), n = 0L))
-  }
-
-  # Lat/lon column names differ by product (L2B and L1B store them in
-  # the geolocation/ subgroup; L1B also uses different variable names).
+  # Lat/lon column names differ by product — used for geometry construction.
   lat_lon <- switch(product,
     "L2A" = list(lat = "lat_lowestmode", lon = "lon_lowestmode"),
     "L2B" = list(lat = "geolocation/lat_lowestmode",
@@ -77,23 +54,19 @@ grab_gedi <- function(url,
                  lon = "geolocation/longitude_bin0")
   )
 
-  # Convert each beam's raw data to a tibble and combine
-  beam_tbls <- purrr::map(raw_result, function(bd) {
-    tbl <- build_tibble(bd, lat_col = lat_lon$lat, lon_col = lat_lon$lon)
-    tbl[["beam"]] <- bd$beam_name
-    # Strip subgroup prefixes (e.g. "geolocation/lat_lowestmode" → "lat_lowestmode")
-    # for cleaner column names, matching chewie output conventions.
-    names(tbl) <- sub(".*/", "", names(tbl))
-    tbl
-  })
-
-  result <- vctrs::vec_rbind(!!!beam_tbls)
-
-  n <- nrow(result)
-  cli::cli_progress_done()
-  cli::cli_inform(c("v" = "Read {n} footprint{?s} from {length(beam_tbls)} beam{?s}."))
-
-  result
+  grab_product(
+    url = url,
+    product = product,
+    bbox = bbox,
+    columns = columns,
+    groups = beams,
+    token = token,
+    rust_fn = rust_read_gedi,
+    lat_col = lat_lon$lat,
+    lon_col = lat_lon$lon,
+    group_label = "beam",
+    element_label = "footprint"
+  )
 }
 
 #' Validate and coerce bbox input.

@@ -40,46 +40,25 @@ grab_icesat2 <- function(url,
   rlang::check_required(bbox)
   product <- rlang::arg_match(product)
 
-  bbox <- validate_bbox(bbox)
-  token <- sl_earthdata_token(token)
-
-  cli::cli_progress_step("Reading ICESat-2 {product} from {.url {basename(url)}}")
-
-  # Map product to lat/lon column names for geometry creation
   geo_cols <- switch(product,
     ATL03 = list(lat = "heights/lat_ph", lon = "heights/lon_ph"),
-    ATL06 = list(lat = "land_ice_segments/latitude", lon = "land_ice_segments/longitude"),
-    ATL08 = list(lat = "land_segments/latitude", lon = "land_segments/longitude")
+    ATL06 = list(lat = "land_ice_segments/latitude",
+                 lon = "land_ice_segments/longitude"),
+    ATL08 = list(lat = "land_segments/latitude",
+                 lon = "land_segments/longitude")
   )
 
-  raw_result <- rust_read_icesat2(
+  grab_product(
     url = url,
     product = product,
-    xmin = bbox[["xmin"]],
-    ymin = bbox[["ymin"]],
-    xmax = bbox[["xmax"]],
-    ymax = bbox[["ymax"]],
+    bbox = bbox,
     columns = columns,
-    tracks = tracks,
-    bearer_token = token
+    groups = tracks,
+    token = token,
+    rust_fn = rust_read_icesat2,
+    lat_col = geo_cols$lat,
+    lon_col = geo_cols$lon,
+    group_label = "track",
+    element_label = "element"
   )
-
-  if (length(raw_result) == 0L) {
-    cli::cli_inform("No data found within the bounding box.")
-    return(vctrs::new_data_frame(list(), n = 0L))
-  }
-
-  track_tbls <- purrr::map(raw_result, function(td) {
-    tbl <- build_tibble(td, lat_col = geo_cols$lat, lon_col = geo_cols$lon)
-    tbl[["track"]] <- td$track_name
-    tbl
-  })
-
-  result <- vctrs::vec_rbind(!!!track_tbls)
-
-  n <- nrow(result)
-  cli::cli_progress_done()
-  cli::cli_inform(c("v" = "Read {n} element{?s} from {length(track_tbls)} track{?s}."))
-
-  result
 }

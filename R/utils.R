@@ -1,3 +1,156 @@
+# ---------------------------------------------------------------------------
+# S3 generic: grab()
+# ---------------------------------------------------------------------------
+
+#' Grab satellite lidar data
+#'
+#' `grab()` is an S3 generic that reads GEDI or ICESat-2 data from remote
+#' HDF5 files. It dispatches on the type of its first argument:
+#'
+#' * An `sl_gedi_search` or `sl_icesat2_search` object (from [find_gedi()] /
+#'   [find_icesat2()]) — reads all granules in the search result, combining
+#'   rows into a single data frame.
+#' * A character vector of URLs — auto-detects the sensor and product from the
+#'   file name, or uses the explicit `product` argument.
+#'
+#' @param x An `sl_gedi_search`, `sl_icesat2_search`, or character vector of
+#'   HDF5 URLs.
+#' @param bbox An `sl_bbox` or numeric `c(xmin, ymin, xmax, ymax)`. Required.
+#' @param ... Additional arguments passed to the underlying reader
+#'   ([grab_gedi()] or [grab_icesat2()]).
+#'
+#' @returns A data frame with one row per footprint/segment.
+#'
+#' @seealso [find_gedi()], [find_icesat2()], [grab_gedi()], [grab_icesat2()]
+#' @export
+grab <- function(x, bbox, ...) {
+  UseMethod("grab")
+}
+
+#' @rdname grab
+#' @export
+grab.sl_gedi_search <- function(x, bbox, ...) {
+  rlang::check_required(bbox)
+  product <- attr(x, "product")
+  grab_urls(x$url, bbox = bbox, grab_fn = grab_gedi, product = product, ...)
+}
+
+#' @rdname grab
+#' @export
+grab.sl_icesat2_search <- function(x, bbox, ...) {
+  rlang::check_required(bbox)
+  product <- attr(x, "product")
+  grab_urls(x$url, bbox = bbox, grab_fn = grab_icesat2, product = product, ...)
+}
+
+#' @rdname grab
+#' @param product Character. Product level (e.g., `"L2A"`, `"ATL08"`).
+#'   Required when `x` is a character vector and the product cannot be
+#'   inferred from the file name.
+#' @export
+grab.character <- function(x, bbox, ..., product = NULL) {
+  rlang::check_required(bbox)
+  info <- detect_sensor(x[[1L]], product)
+  grab_urls(
+    x,
+    bbox = bbox,
+    grab_fn = info$grab_fn,
+    product = info$product,
+    ...
+  )
+}
+
+#' @export
+grab.default <- function(x, bbox, ...) {
+  cls <- paste(class(x), collapse = "/")
+  cli::cli_abort(c(
+    "{.fun grab} does not know how to handle an object of class {.cls {cls}}.",
+    "i" = "Expected an {.cls sl_gedi_search}, {.cls sl_icesat2_search}, or {.cls character} URL vector."
+  ))
+}
+
+#' Read multiple URLs and row-bind results.
+#' @noRd
+grab_urls <- function(urls, bbox, grab_fn, product, ...) {
+  urls <- urls[!is.na(urls)]
+  if (length(urls) == 0L) {
+    cli::cli_inform("No URLs to read.")
+    return(vctrs::new_data_frame(list(), n = 0L))
+  }
+
+  results <- purrr::map(urls, function(u) {
+    tryCatch(
+      grab_fn(url = u, product = product, bbox = bbox, ...),
+      error = function(e) {
+        cli::cli_warn(c(
+          "!" = "Failed to read {.file {basename(u)}}.",
+          "i" = conditionMessage(e)
+        ))
+        NULL
+      }
+    )
+  })
+
+  results <- purrr::compact(results)
+  if (length(results) == 0L) {
+    return(vctrs::new_data_frame(list(), n = 0L))
+  }
+
+  vctrs::vec_rbind(!!!results)
+}
+
+#' Detect sensor and product from a URL filename.
+#' @noRd
+detect_sensor <- function(url, product = NULL) {
+  bn <- basename(url)
+
+  if (grepl("^GEDI", bn, ignore.case = TRUE)) {
+    grab_fn <- grab_gedi
+    if (is.null(product)) {
+      product <- if (grepl("GEDI01_B", bn)) "L1B"
+        else if (grepl("GEDI02_A", bn)) "L2A"
+        else if (grepl("GEDI02_B", bn)) "L2B"
+        else if (grepl("GEDI_L4A|GEDI04_A", bn)) "L4A"
+        else rlang::abort(c(
+          "Cannot detect GEDI product from filename.",
+          "i" = "Pass {.arg product} explicitly."
+        ))
+    }
+  } else if (grepl("^ATL", bn, ignore.case = TRUE)) {
+    grab_fn <- grab_icesat2
+    if (is.null(product)) {
+      product <- if (grepl("ATL03", bn)) "ATL03"
+        else if (grepl("ATL06", bn)) "ATL06"
+        else if (grepl("ATL08", bn)) "ATL08"
+        else rlang::abort(c(
+          "Cannot detect ICESat-2 product from filename.",
+          "i" = "Pass {.arg product} explicitly."
+        ))
+    }
+  } else {
+    if (is.null(product)) {
+      rlang::abort(c(
+        "Cannot detect sensor from URL filename {.val {bn}}.",
+        "i" = "Pass {.arg product} explicitly."
+      ))
+    }
+    # Infer sensor from the product string
+    if (product %in% c("L1B", "L2A", "L2B", "L4A")) {
+      grab_fn <- grab_gedi
+    } else if (product %in% c("ATL03", "ATL06", "ATL08")) {
+      grab_fn <- grab_icesat2
+    } else {
+      rlang::abort("Unknown product {.val {product}}.")
+    }
+  }
+
+  list(grab_fn = grab_fn, product = product)
+}
+
+# ---------------------------------------------------------------------------
+# sl_bbox
+# ---------------------------------------------------------------------------
+
 #' Create a bounding box for spatial queries
 #'
 #' @param xmin Minimum longitude (western boundary).

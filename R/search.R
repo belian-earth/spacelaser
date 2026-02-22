@@ -46,13 +46,15 @@ find_gedi <- function(bbox,
     "L4A" = "C2237824918-ORNL_CLOUD"
   )
 
-  search_cmr(
+  result <- search_cmr(
     bbox = bbox,
     concept_id = concept_id,
     date_start = date_start %||% "2019-03-25",
     date_end = date_end,
     product_label = paste0("GEDI ", product)
   )
+
+  new_sl_search(result, product = product, sensor = "gedi")
 }
 
 #' Find ICESat-2 granules for a spatial area
@@ -83,13 +85,15 @@ find_icesat2 <- function(bbox,
     "ATL08" = "C2613553260-NSIDC_CPRD"
   )
 
-  search_cmr(
+  result <- search_cmr(
     bbox = bbox,
     concept_id = concept_id,
     date_start = date_start %||% "2018-10-14",
     date_end = date_end,
     product_label = paste0("ICESat-2 ", product)
   )
+
+  new_sl_search(result, product = product, sensor = "icesat2")
 }
 
 # ---------------------------------------------------------------------------
@@ -141,6 +145,8 @@ search_cmr <- function(bbox, concept_id, date_start, date_end, product_label) {
   cli::cli_inform(c(
     "v" = "Found {nrow(result)} {product_label} granule{?s}."
   ))
+
+  # Attach class and product metadata for S3 dispatch in grab()
   result
 }
 
@@ -263,4 +269,62 @@ empty_find_result <- function() {
     url        = character(),
     geometry   = wk::wkt(character(), crs = wk::wk_crs_lonlat())
   ))
+}
+
+# ---------------------------------------------------------------------------
+# S3 class: sl_gedi_search / sl_icesat2_search
+# ---------------------------------------------------------------------------
+
+#' Construct an S3 search result.
+#'
+#' Wraps the data frame from `build_find_result()` in either
+#' `sl_gedi_search` or `sl_icesat2_search`, carrying `product` as an
+#' attribute so `grab()` can dispatch without the user re-specifying it.
+#'
+#' @noRd
+new_sl_search <- function(df, product, sensor = c("gedi", "icesat2")) {
+  sensor <- match.arg(sensor)
+  cls <- paste0("sl_", sensor, "_search")
+  attr(df, "product") <- product
+  class(df) <- c(cls, class(df))
+  df
+}
+
+#' @export
+print.sl_gedi_search <- function(x, ...) {
+  product <- attr(x, "product")
+  cli::cli_text("{.cls sl_gedi_search} | GEDI {product} | {nrow(x)} granule{?s}")
+  print_search_result(x, ...)
+}
+
+#' @export
+print.sl_icesat2_search <- function(x, ...) {
+  product <- attr(x, "product")
+  cli::cli_text(
+    "{.cls sl_icesat2_search} | ICESat-2 {product} | {nrow(x)} granule{?s}"
+  )
+  print_search_result(x, ...)
+}
+
+#' Print the body of a search result (shared helper).
+#' @noRd
+print_search_result <- function(x, n = 10L, ...) {
+  if (nrow(x) == 0L) {
+    cli::cli_text("(no granules)")
+    return(invisible(x))
+  }
+  plain <- strip_search_class(x)
+  print(utils::head(plain, n), ...)
+  if (nrow(x) > n) {
+    cli::cli_text("# ... with {nrow(x) - n} more granule{?s}")
+  }
+  invisible(x)
+}
+
+#' Drop the sl_*_search class, returning a plain data frame.
+#' @noRd
+strip_search_class <- function(x) {
+  cls <- class(x)
+  class(x) <- cls[!grepl("^sl_.*_search$", cls)]
+  x
 }

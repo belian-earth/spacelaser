@@ -20,20 +20,52 @@ pak::pak("belian-earth/spacelaser")
 ```r
 library(spacelaser)
 
-# GEDI L2A canopy height
-gedi <- grab_gedi(
-  url = "https://e4ftl01.cr.usgs.gov/.../GEDI02_A_2024100.h5",
-  product = "L2A",
-  bbox = c(-55.5, -12.5, -55.0, -12.0)
+bbox <- sl_bbox(-55.5, -12.5, -55.0, -12.0)
+
+# Search for granules, then grab the data
+granules <- find_gedi(bbox, product = "L2A")
+gedi <- sl_grab(granules, bbox = bbox)
+
+# Or pass URLs directly — product is auto-detected from the filename
+gedi <- sl_grab(
+  "https://e4ftl01.cr.usgs.gov/.../GEDI02_A_2024100.h5",
+  bbox = bbox
 )
 
-# ICESat-2 ATL08 canopy height
-icesat <- grab_icesat2(
-  url = "https://nsidc.org/data/.../ATL08_20240101.h5",
-  product = "ATL08",
-  bbox = c(-55.5, -12.5, -55.0, -12.0)
-)
+# ICESat-2 works the same way
+granules <- find_icesat2(bbox, product = "ATL08")
+icesat <- sl_grab(granules, bbox = bbox)
 ```
+
+### Search and grab workflow
+
+`find_gedi()` and `find_icesat2()` return S3 classed data frames
+(`sl_gedi_search` / `sl_icesat2_search`) that carry the product type.
+`sl_grab()` is an S3 generic that dispatches on these classes, so you
+never need to re-specify the product:
+
+```r
+# find_*() returns a typed search result
+granules <- find_gedi(bbox, product = "L2A", date_start = "2024-01-01")
+granules
+#> <sl_gedi_search> | GEDI L2A | 12 granules
+#>   id         time_start          url                          geometry
+#>   G1234...   2024-01-03 12:00:00 https://e4ftl01.cr.usgs.gov/...
+#>   ...
+
+# sl_grab() reads all granules, combining into one data frame
+data <- sl_grab(granules, bbox = bbox)
+```
+
+`sl_grab()` also accepts a plain character vector of URLs:
+
+```r
+sl_grab("https://.../GEDI02_A_2024100.h5", bbox = bbox)
+sl_grab(c(url1, url2, url3), bbox = bbox, product = "ATL08")
+```
+
+The underlying single-file readers (`grab_gedi()` / `grab_icesat2()`)
+remain exported for direct use when you already have a URL and product.
 
 ## Architecture
 
@@ -163,7 +195,14 @@ over libhdf5 for remote reads.
 +-------------------------------------------------------+
 |                    R Package Layer                     |
 |                                                       |
-|  grab_gedi() / grab_icesat2()    User-facing API      |
+|  find_gedi() / find_icesat2()    Search (CMR API)      |
+|       |  returns sl_*_search S3 class                  |
+|       v                                               |
+|  sl_grab()               S3 generic dispatch           |
+|       |  methods: sl_gedi_search, sl_icesat2_search,   |
+|       |           character (URL auto-detect)           |
+|       v                                               |
+|  grab_gedi() / grab_icesat2()    Single-file readers   |
 |       |                                               |
 |  grab_product()          Shared internal workflow      |
 |       |                  (validate, call Rust,         |
@@ -252,10 +291,16 @@ Register at <https://urs.earthdata.nasa.gov/> if you don't have an account.
 
 ## API reference
 
-### Main functions
+### Search
 
-- `grab_gedi(url, product, bbox)` — Read GEDI L1B/L2A/L2B/L4A data
-- `grab_icesat2(url, product, bbox)` — Read ICESat-2 ATL03/ATL06/ATL08 data
+- `find_gedi(bbox, product, ...)` — Search CMR for GEDI granules → `sl_gedi_search`
+- `find_icesat2(bbox, product, ...)` — Search CMR for ICESat-2 granules → `sl_icesat2_search`
+
+### Read
+
+- `sl_grab(x, bbox, ...)` — S3 generic: read data from search results or URL(s)
+- `grab_gedi(url, product, bbox)` — Read a single GEDI file (L1B/L2A/L2B/L4A)
+- `grab_icesat2(url, product, bbox)` — Read a single ICESat-2 file (ATL03/ATL06/ATL08)
 
 ### Utilities
 

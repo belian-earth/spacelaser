@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use lru::LruCache;
 use std::num::NonZeroUsize;
 use std::ops::Range;
@@ -10,8 +11,8 @@ use std::ops::Range;
 pub struct BlockCache {
     /// Block size in bytes. All reads are aligned to this boundary.
     block_size: usize,
-    /// LRU cache mapping block index → block data.
-    blocks: LruCache<u64, Vec<u8>>,
+    /// LRU cache mapping block index → block data (zero-copy reference-counted).
+    blocks: LruCache<u64, Bytes>,
 }
 
 impl BlockCache {
@@ -31,12 +32,15 @@ impl BlockCache {
         self.block_size
     }
 
+    /// Number of blocks currently in the cache.
+    pub fn len(&self) -> usize {
+        self.blocks.len()
+    }
+
     /// Determine which blocks are needed to cover a byte range, and which
     /// are already cached.
     ///
-    /// Returns `(cached_data, missing_block_indices)` where:
-    /// - `cached_data` maps block_index → data for blocks already in cache
-    /// - `missing_block_indices` are block indices that need to be fetched
+    /// Returns `(cached_block_indices, missing_block_indices)`.
     pub fn query(&mut self, offset: u64, length: usize) -> (Vec<u64>, Vec<u64>) {
         let start_block = offset / self.block_size as u64;
         let end_block = (offset + length as u64).saturating_sub(1) / self.block_size as u64;
@@ -55,13 +59,13 @@ impl BlockCache {
         (cached, missing)
     }
 
-    /// Get a cached block's data by index.
-    pub fn get(&mut self, block_index: &u64) -> Option<&Vec<u8>> {
-        self.blocks.get(block_index)
+    /// Get a cached block's data by index (cheap Arc clone).
+    pub fn get(&mut self, block_index: &u64) -> Option<Bytes> {
+        self.blocks.get(block_index).cloned()
     }
 
     /// Insert a fetched block into the cache.
-    pub fn insert(&mut self, block_index: u64, data: Vec<u8>) {
+    pub fn insert(&mut self, block_index: u64, data: Bytes) {
         self.blocks.put(block_index, data);
     }
 
@@ -80,12 +84,12 @@ impl BlockCache {
         &self,
         offset: u64,
         length: usize,
-        blocks: &[(u64, &[u8])],
+        blocks: &[(u64, Bytes)],
     ) -> Vec<u8> {
         let mut result = Vec::with_capacity(length);
         let end = offset + length as u64;
 
-        for &(block_idx, data) in blocks {
+        for (block_idx, data) in blocks {
             let block_start = block_idx * self.block_size as u64;
             let block_end = block_start + data.len() as u64;
 
@@ -105,20 +109,30 @@ impl BlockCache {
 
     /// Coalesce a list of block indices into minimal byte ranges for fetching.
     ///
-    /// Adjacent block indices are merged into a single range request to reduce
-    /// HTTP round trips.
-    pub fn coalesce_ranges(&self, mut block_indices: Vec<u64>) -> Vec<Range<u64>> {
+    /// Blocks are merged into a single range request when the gap between them
+    /// is at most `max_gap_blocks`. This reduces HTTP round trips at the cost
+    /// of fetching small amounts of unneeded data in the gaps.
+    ///
+    /// A `max_gap_blocks` of 0 merges only strictly adjacent blocks (original
+    /// behavior). A value of 4 with a 256 KiB block size means gaps up to 1 MiB
+    /// are bridged.
+    pub fn coalesce_ranges(
+        &self,
+        mut block_indices: Vec<u64>,
+        max_gap_blocks: u64,
+    ) -> Vec<Range<u64>> {
         if block_indices.is_empty() {
             return Vec::new();
         }
         block_indices.sort_unstable();
+        block_indices.dedup();
 
         let mut ranges = Vec::new();
         let mut current_start = block_indices[0];
         let mut current_end = block_indices[0];
 
         for &idx in &block_indices[1..] {
-            if idx == current_end + 1 {
+            if idx <= current_end + 1 + max_gap_blocks {
                 current_end = idx;
             } else {
                 ranges.push(self.block_range(current_start).start..self.block_range(current_end).end);
@@ -146,15 +160,32 @@ mod tests {
     #[test]
     fn test_coalesce_adjacent_blocks() {
         let cache = BlockCache::new(1024, 10);
-        let ranges = cache.coalesce_ranges(vec![0, 1, 2, 5, 6, 10]);
+        let ranges = cache.coalesce_ranges(vec![0, 1, 2, 5, 6, 10], 0);
         assert_eq!(ranges, vec![0..3072, 5120..7168, 10240..11264]);
+    }
+
+    #[test]
+    fn test_coalesce_with_gap() {
+        let cache = BlockCache::new(1024, 10);
+        // Gap of 2 blocks between block 2 and 5 -- bridged with max_gap_blocks=2
+        // Gap of 3 blocks between block 6 and 10 -- NOT bridged (3 > 2)
+        let ranges = cache.coalesce_ranges(vec![0, 1, 2, 5, 6, 10], 2);
+        assert_eq!(ranges, vec![0..7168, 10240..11264]);
+    }
+
+    #[test]
+    fn test_coalesce_all_within_gap() {
+        let cache = BlockCache::new(1024, 10);
+        // All blocks within gap tolerance
+        let ranges = cache.coalesce_ranges(vec![0, 1, 2, 5, 6, 10], 10);
+        assert_eq!(ranges, vec![0..11264]);
     }
 
     #[test]
     fn test_insert_and_query() {
         let mut cache = BlockCache::new(1024, 10);
-        cache.insert(0, vec![0u8; 1024]);
-        cache.insert(1, vec![1u8; 1024]);
+        cache.insert(0, Bytes::from(vec![0u8; 1024]));
+        cache.insert(1, Bytes::from(vec![1u8; 1024]));
 
         let (cached, missing) = cache.query(0, 2048);
         assert_eq!(cached.len(), 2);
@@ -169,12 +200,20 @@ mod tests {
     fn test_extract_range() {
         let cache = BlockCache::new(4, 10);
         // Block 0: [0,1,2,3], Block 1: [4,5,6,7]
-        let blocks: Vec<(u64, &[u8])> = vec![
-            (0, &[0, 1, 2, 3]),
-            (1, &[4, 5, 6, 7]),
+        let blocks: Vec<(u64, Bytes)> = vec![
+            (0, Bytes::from(vec![0u8, 1, 2, 3])),
+            (1, Bytes::from(vec![4u8, 5, 6, 7])),
         ];
         // Read bytes 2..6
         let result = cache.extract_range(2, 4, &blocks);
         assert_eq!(result, vec![2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn test_len() {
+        let mut cache = BlockCache::new(1024, 10);
+        assert_eq!(cache.len(), 0);
+        cache.insert(0, Bytes::from(vec![0u8; 1024]));
+        assert_eq!(cache.len(), 1);
     }
 }

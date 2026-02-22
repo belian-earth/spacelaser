@@ -1,5 +1,7 @@
+use bytes::Bytes;
 use crate::io::cache::BlockCache;
 use crate::io::source::DataSource;
+use futures::stream::{self, StreamExt};
 use std::ops::Range;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -38,13 +40,27 @@ pub struct ReaderConfig {
     pub block_size: usize,
     /// Maximum number of blocks to keep in the LRU cache (default: 512 = 128 MiB).
     pub max_cache_blocks: usize,
+    /// Maximum gap (in blocks) between missing blocks that will be merged into
+    /// a single HTTP request. Higher values trade bandwidth for fewer round trips.
+    /// Default: 4 (= 1 MiB gap with 256 KiB blocks).
+    pub coalesce_gap_blocks: u64,
+    /// Number of blocks to prefetch on the first read (when cache is cold).
+    /// This captures superblock + root group + initial B-tree in one request.
+    /// Default: 4 (= 1 MiB with 256 KiB blocks).
+    pub initial_prefetch_blocks: u64,
+    /// Maximum number of coalesced ranges to fetch in parallel.
+    /// Default: 8.
+    pub max_concurrent_fetches: usize,
 }
 
 impl Default for ReaderConfig {
     fn default() -> Self {
         Self {
-            block_size: 256 * 1024,    // 256 KiB
-            max_cache_blocks: 512,      // 128 MiB total cache
+            block_size: 256 * 1024,         // 256 KiB
+            max_cache_blocks: 512,           // 128 MiB total cache
+            coalesce_gap_blocks: 4,          // bridge gaps up to 1 MiB
+            initial_prefetch_blocks: 4,      // fetch 1 MiB on cold start
+            max_concurrent_fetches: 8,       // parallel HTTP requests
         }
     }
 }
@@ -52,7 +68,8 @@ impl Default for ReaderConfig {
 /// The main I/O reader that handles byte-range fetches with caching.
 ///
 /// All reads are aligned to block boundaries and cached in an LRU cache.
-/// Adjacent block fetches are coalesced into single HTTP requests.
+/// Adjacent block fetches are coalesced into single HTTP requests, and
+/// multiple coalesced ranges are fetched in parallel.
 pub struct Reader {
     source: DataSource,
     client: reqwest::Client,
@@ -64,9 +81,18 @@ impl Reader {
     /// Create a new reader for the given data source.
     pub fn new(source: DataSource, config: ReaderConfig) -> Self {
         let cache = BlockCache::new(config.block_size, config.max_cache_blocks);
+        let client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(30))
+            .http1_only()
+            .no_gzip()
+            .no_brotli()
+            .no_deflate()
+            .build()
+            .expect("failed to build HTTP client");
         Self {
             source,
-            client: reqwest::Client::new(),
+            client,
             cache: Mutex::new(cache),
             config,
         }
@@ -96,34 +122,56 @@ impl Reader {
 
     /// Read with block-level caching for HTTP sources.
     async fn read_cached(&self, offset: u64, length: usize) -> Result<Vec<u8>, IoError> {
-        let block_size = self.config.block_size;
+        let block_size = self.config.block_size as u64;
 
         // Determine which blocks we need and which are already cached
-        let missing_blocks = {
+        let (cache_is_cold, mut missing_blocks) = {
             let mut cache = self.cache.lock().unwrap();
+            let is_cold = cache.len() == 0;
             let (_cached, missing) = cache.query(offset, length);
-            missing
+            (is_cold, missing)
         };
 
-        // Fetch missing blocks (coalesced into minimal range requests)
+        // On cold start, prefetch extra blocks to capture metadata in one request
+        if cache_is_cold && !missing_blocks.is_empty() {
+            let first_block = missing_blocks[0];
+            for i in 0..self.config.initial_prefetch_blocks {
+                let block = first_block + i;
+                if !missing_blocks.contains(&block) {
+                    missing_blocks.push(block);
+                }
+            }
+            missing_blocks.sort_unstable();
+        }
+
+        // Fetch missing blocks (coalesced into minimal range requests, in parallel)
         if !missing_blocks.is_empty() {
             let ranges = {
                 let cache = self.cache.lock().unwrap();
-                cache.coalesce_ranges(missing_blocks.clone())
+                cache.coalesce_ranges(missing_blocks, self.config.coalesce_gap_blocks)
             };
 
-            for range in ranges {
-                let data = self.fetch_range(range.clone()).await?;
+            // Fetch all coalesced ranges in parallel with bounded concurrency
+            let results: Vec<Result<(Range<u64>, Bytes), IoError>> = stream::iter(ranges)
+                .map(|range| async move {
+                    let data = self.fetch_range(range.clone()).await?;
+                    Ok::<_, IoError>((range, data))
+                })
+                .buffered(self.config.max_concurrent_fetches)
+                .collect()
+                .await;
 
-                // Split the fetched data back into individual blocks for caching
-                let range_start_block = range.start / block_size as u64;
-                let mut cache = self.cache.lock().unwrap();
-
-                let mut pos = 0;
+            // Insert fetched data into cache
+            let mut cache = self.cache.lock().unwrap();
+            for result in results {
+                let (range, data) = result?;
+                let range_start_block = range.start / block_size;
+                let mut pos = 0usize;
                 let mut block_idx = range_start_block;
                 while pos < data.len() {
-                    let chunk_len = block_size.min(data.len() - pos);
-                    cache.insert(block_idx, data[pos..pos + chunk_len].to_vec());
+                    let chunk_len = (block_size as usize).min(data.len() - pos);
+                    // Zero-copy slice from the fetched Bytes
+                    cache.insert(block_idx, data.slice(pos..pos + chunk_len));
                     pos += chunk_len;
                     block_idx += 1;
                 }
@@ -132,29 +180,24 @@ impl Reader {
 
         // Now all blocks should be in cache -- extract the requested range
         let mut cache = self.cache.lock().unwrap();
-        let start_block = offset / block_size as u64;
-        let end_block = (offset + length as u64).saturating_sub(1) / block_size as u64;
+        let start_block = offset / block_size;
+        let end_block = (offset + length as u64).saturating_sub(1) / block_size;
 
-        let mut all_blocks: Vec<(u64, Vec<u8>)> = Vec::new();
+        let mut all_blocks: Vec<(u64, Bytes)> = Vec::new();
         for idx in start_block..=end_block {
             if let Some(data) = cache.get(&idx) {
-                all_blocks.push((idx, data.clone()));
+                all_blocks.push((idx, data));
             }
         }
 
-        let block_refs: Vec<(u64, &[u8])> = all_blocks
-            .iter()
-            .map(|(idx, data)| (*idx, data.as_slice()))
-            .collect();
-
-        Ok(cache.extract_range(offset, length, &block_refs))
+        Ok(cache.extract_range(offset, length, &all_blocks))
     }
 
     /// Fetch a raw byte range from the HTTP source with retry logic.
     ///
     /// Retries up to [`MAX_RETRIES`] times with exponential backoff for
     /// transient server errors (429, 500, 502, 503, 504).
-    async fn fetch_range(&self, range: Range<u64>) -> Result<Vec<u8>, IoError> {
+    async fn fetch_range(&self, range: Range<u64>) -> Result<Bytes, IoError> {
         let (url, bearer_token) = match &self.source {
             DataSource::Http { url, bearer_token } => (url.as_str(), bearer_token.as_deref()),
             DataSource::Local { .. } => unreachable!("fetch_range called on local source"),
@@ -215,7 +258,7 @@ impl Reader {
                 });
             }
 
-            return Ok(response.bytes().await?.to_vec());
+            return Ok(response.bytes().await?);
         }
 
         Err(last_error.unwrap_or(IoError::HttpStatus {

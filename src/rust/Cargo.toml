@@ -25,6 +25,9 @@ flate2 = "1"
 # Byte manipulation
 bytes = "1"
 
+# Async stream combinators (buffered parallel fetches)
+futures = "0.3"
+
 # Error handling
 thiserror = "2"
 

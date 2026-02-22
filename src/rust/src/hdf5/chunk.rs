@@ -36,6 +36,10 @@ pub fn chunks_for_row_ranges<'a>(
 }
 
 /// Read and decompress a single chunk's data from the file.
+///
+/// Decompression (deflate, unshuffle) is offloaded to a blocking thread pool
+/// via `spawn_blocking` so that CPU-bound work doesn't starve the async I/O
+/// runtime.
 pub async fn read_chunk(
     reader: &Reader,
     chunk: &ChunkInfo,
@@ -48,7 +52,13 @@ pub async fn read_chunk(
         // No filters applied
         Ok(raw)
     } else {
-        crate::filters::apply_filters(&raw, filters, chunk.filter_mask, element_size)
+        let filters = filters.to_vec();
+        let filter_mask = chunk.filter_mask;
+        tokio::task::spawn_blocking(move || {
+            crate::filters::apply_filters(&raw, &filters, filter_mask, element_size)
+        })
+        .await
+        .map_err(|e| Hdf5Error::Decompression(format!("spawn_blocking join: {}", e)))?
     }
 }
 

@@ -23,3 +23,7 @@ rust_hdf5_groups <- function(url, path, bearer_token) {
 rust_hdf5_dataset <- function(url, dataset_path, bearer_token) {
   .Call("wrap__rust_hdf5_dataset", url, dataset_path, bearer_token)
 }
+
+rust_earthdata_token <- function(username, password) {
+  .Call("wrap__rust_earthdata_token", username, password)
+}

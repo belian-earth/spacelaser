@@ -295,10 +295,25 @@ fn track_data_to_list(td: icesat2::TrackData) -> List {
     )
 }
 
+/// Exchange Earthdata username/password for a bearer token.
+///
+/// Calls the NASA Earthdata Login token API. Returns the access token string.
+/// @export
+#[extendr]
+fn rust_earthdata_token(username: &str, password: &str) -> extendr_api::Result<String> {
+    let rt = runtime();
+    rt.block_on(async {
+        crate::auth::fetch_earthdata_token(username, password)
+            .await
+            .map_err(extendr_api::Error::Other)
+    })
+}
+
 extendr_module! {
     mod spacelaser;
     fn rust_read_gedi;
     fn rust_read_icesat2;
     fn rust_hdf5_groups;
     fn rust_hdf5_dataset;
+    fn rust_earthdata_token;
 }

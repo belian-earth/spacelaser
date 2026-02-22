@@ -3,6 +3,7 @@
 //! This library implements an h5coro-style pure-Rust HDF5 reader that fetches
 //! only the bytes needed via HTTP Range requests. No libhdf5 dependency.
 
+pub mod auth;
 pub mod filters;
 pub mod hdf5;
 pub mod io;

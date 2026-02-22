@@ -2,6 +2,7 @@ use crate::io::cache::BlockCache;
 use crate::io::source::DataSource;
 use std::ops::Range;
 use std::sync::Mutex;
+use std::time::Duration;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -17,6 +18,17 @@ pub enum IoError {
 
     #[error("Server does not support range requests")]
     RangeNotSupported,
+}
+
+/// Maximum number of retry attempts for transient HTTP errors.
+const MAX_RETRIES: usize = 3;
+
+/// Base delay between retries (doubled each attempt).
+const RETRY_BASE_DELAY: Duration = Duration::from_millis(500);
+
+/// HTTP status codes that warrant a retry.
+fn is_retriable(status: u16) -> bool {
+    matches!(status, 429 | 500 | 502 | 503 | 504)
 }
 
 /// Configuration for the I/O reader.
@@ -138,7 +150,10 @@ impl Reader {
         Ok(cache.extract_range(offset, length, &block_refs))
     }
 
-    /// Fetch a raw byte range from the HTTP source.
+    /// Fetch a raw byte range from the HTTP source with retry logic.
+    ///
+    /// Retries up to [`MAX_RETRIES`] times with exponential backoff for
+    /// transient server errors (429, 500, 502, 503, 504).
     async fn fetch_range(&self, range: Range<u64>) -> Result<Vec<u8>, IoError> {
         let (url, bearer_token) = match &self.source {
             DataSource::Http { url, bearer_token } => (url.as_str(), bearer_token.as_deref()),
@@ -146,32 +161,67 @@ impl Reader {
         };
 
         let range_header = format!("bytes={}-{}", range.start, range.end.saturating_sub(1));
-        log::debug!("HTTP GET {} Range: {}", url, range_header);
+        let mut last_error: Option<IoError> = None;
 
-        let mut request = self
-            .client
-            .get(url)
-            .header("Range", &range_header);
+        for attempt in 0..=MAX_RETRIES {
+            if attempt > 0 {
+                let delay = RETRY_BASE_DELAY * 2u32.pow(attempt as u32 - 1);
+                log::debug!(
+                    "Retry {}/{} after {:?} for {} Range: {}",
+                    attempt,
+                    MAX_RETRIES,
+                    delay,
+                    url,
+                    range_header
+                );
+                tokio::time::sleep(delay).await;
+            } else {
+                log::debug!("HTTP GET {} Range: {}", url, range_header);
+            }
 
-        if let Some(token) = bearer_token {
-            request = request.bearer_auth(token);
+            let mut request = self.client.get(url).header("Range", &range_header);
+
+            if let Some(token) = bearer_token {
+                request = request.bearer_auth(token);
+            }
+
+            let response = match request.send().await {
+                Ok(r) => r,
+                Err(e) if attempt < MAX_RETRIES => {
+                    last_error = Some(IoError::Http(e));
+                    continue;
+                }
+                Err(e) => return Err(IoError::Http(e)),
+            };
+
+            let status = response.status();
+
+            if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+                return Err(IoError::RangeNotSupported);
+            }
+
+            if is_retriable(status.as_u16()) && attempt < MAX_RETRIES {
+                last_error = Some(IoError::HttpStatus {
+                    status: status.as_u16(),
+                    url: url.to_string(),
+                });
+                continue;
+            }
+
+            if !status.is_success() && status != reqwest::StatusCode::PARTIAL_CONTENT {
+                return Err(IoError::HttpStatus {
+                    status: status.as_u16(),
+                    url: url.to_string(),
+                });
+            }
+
+            return Ok(response.bytes().await?.to_vec());
         }
 
-        let response = request.send().await?;
-        let status = response.status();
-
-        if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
-            return Err(IoError::RangeNotSupported);
-        }
-
-        if !status.is_success() && status != reqwest::StatusCode::PARTIAL_CONTENT {
-            return Err(IoError::HttpStatus {
-                status: status.as_u16(),
-                url: url.to_string(),
-            });
-        }
-
-        Ok(response.bytes().await?.to_vec())
+        Err(last_error.unwrap_or(IoError::HttpStatus {
+            status: 500,
+            url: url.to_string(),
+        }))
     }
 
     /// Read bytes and return as a fixed-size array (convenience for parsing headers).

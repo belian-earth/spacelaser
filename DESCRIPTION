@@ -22,7 +22,6 @@ Imports:
     wk
 Suggests:
     gdalraster,
-    geos,
     mirai,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3

@@ -4,26 +4,36 @@
 //! and provides spatial subsetting: given a bounding box, reads only the
 //! footprints that fall within it.
 //!
-//! File structure:
+//! File structure (L2A / L4A — lat/lon at root):
 //! ```text
-//! /
-//! ├── BEAM0000/
-//! │   ├── lat_lowestmode        (f64, per footprint)
-//! │   ├── lon_lowestmode        (f64, per footprint)
-//! │   ├── elev_lowestmode       (f32)
-//! │   ├── rh                    (f32, footprint x 101 percentiles)
-//! │   ├── quality_flag          (u8)
-//! │   ├── sensitivity           (f32)
-//! │   ├── shot_number           (u64)
-//! │   ├── beam                  (u8)
-//! │   ├── degrade_flag          (u8)
+//! /BEAM0000/
+//! │   ├── lat_lowestmode          (f64)
+//! │   ├── lon_lowestmode          (f64)
+//! │   ├── rh                      (f32, n×101)   [L2A only]
+//! │   ├── quality_flag / ...
+//! │   ├── land_cover_data/
 //! │   └── geolocation/
-//! │       ├── lat_highestreturn
-//! │       ├── lon_highestreturn
-//! │       └── ...
-//! ├── BEAM0001/ ... BEAM1011/
-//! ├── METADATA/
-//! └── ANCILLARY/
+//! ```
+//!
+//! File structure (L2B — lat/lon inside geolocation/):
+//! ```text
+//! /BEAM0000/
+//! │   ├── cover, pai, fhd_normal, ...
+//! │   ├── land_cover_data/
+//! │   └── geolocation/
+//! │       ├── lat_lowestmode      (f64)
+//! │       ├── lon_lowestmode      (f64)
+//! │       └── shot_number, ...
+//! ```
+//!
+//! File structure (L1B — uses latitude_bin0 / longitude_bin0):
+//! ```text
+//! /BEAM0000/
+//! │   ├── shot_number, channel, ...
+//! │   └── geolocation/
+//! │       ├── latitude_bin0       (f64)
+//! │       ├── longitude_bin0      (f64)
+//! │       └── elevation_bin0, ...
 //! ```
 
 use crate::hdf5::file::Hdf5File;
@@ -92,65 +102,162 @@ pub enum GediProduct {
 
 impl GediProduct {
     /// Default columns to read for each product level.
+    ///
+    /// These lists are aligned with the variables returned by the `chewie` R
+    /// package.  Multi-dimensional arrays (e.g. `rh`, `cover_z`, `pai_z`,
+    /// `pavd_z`, `pgap_theta_z`) are included where the reader already supports
+    /// them.  The `beam` column is *not* listed here because the R wrapper adds
+    /// it from the beam group name.
     pub fn default_columns(&self) -> Vec<&'static str> {
         match self {
             GediProduct::L2A => vec![
+                // -- spatial / id --
                 "lat_lowestmode",
                 "lon_lowestmode",
+                "shot_number",
+                "channel",
+                "delta_time",
+                // -- quality / flags --
+                "degrade_flag",
+                "quality_flag",
+                "sensitivity",
+                "solar_elevation",
+                "stale_return_flag",
+                "surface_flag",
+                "elevation_bias_flag",
+                // -- science --
                 "elev_lowestmode",
                 "elev_highestreturn",
+                "energy_total",
+                "num_detectedmodes",
                 "rh",
-                "quality_flag",
-                "sensitivity",
-                "shot_number",
-                "beam",
-                "degrade_flag",
+                "selected_algorithm",
+                "selected_mode",
+                "selected_mode_flag",
+                // -- ancillary elevation --
+                "digital_elevation_model",
+                "digital_elevation_model_srtm",
+                // -- land cover --
+                "land_cover_data/landsat_treecover",
+                "land_cover_data/modis_nonvegetated",
+                "land_cover_data/modis_nonvegetated_sd",
+                "land_cover_data/modis_treecover",
+                "land_cover_data/modis_treecover_sd",
             ],
             GediProduct::L2B => vec![
-                "lat_lowestmode",
-                "lon_lowestmode",
-                "cover",
-                "pai",
-                "fhd_normal",
-                "rh100",
-                "quality_flag",
-                "sensitivity",
-                "shot_number",
-                "beam",
+                // -- spatial / id  (in geolocation/ subgroup) --
+                "geolocation/lat_lowestmode",
+                "geolocation/lon_lowestmode",
+                "geolocation/shot_number",
+                "geolocation/degrade_flag",
+                "geolocation/delta_time",
+                "geolocation/digital_elevation_model",
+                "geolocation/elev_lowestmode",
+                "geolocation/solar_elevation",
+                "channel",
+                // -- quality / flags --
                 "algorithmrun_flag",
+                "l2a_quality_flag",
+                "l2b_quality_flag",
+                "sensitivity",
+                "stale_return_flag",
+                "surface_flag",
+                // -- science --
+                "cover",
+                "cover_z",
+                "fhd_normal",
+                "omega",
+                "pai",
+                "pai_z",
+                "pavd_z",
+                "pgap_theta",
+                "pgap_theta_z",
+                "rh100",
+                "rhog",
+                "rhov",
+                // -- land cover --
+                "land_cover_data/landsat_treecover",
+                "land_cover_data/modis_nonvegetated",
+                "land_cover_data/modis_nonvegetated_sd",
+                "land_cover_data/modis_treecover",
+                "land_cover_data/modis_treecover_sd",
             ],
             GediProduct::L4A => vec![
+                // -- spatial / id --
                 "lat_lowestmode",
                 "lon_lowestmode",
+                "shot_number",
+                "delta_time",
+                // -- quality / flags --
+                "degrade_flag",
+                "l2_quality_flag",
+                "l4_quality_flag",
+                "sensitivity",
+                "solar_elevation",
+                "surface_flag",
+                "algorithm_run_flag",
+                // -- science --
                 "agbd",
                 "agbd_se",
                 "agbd_t",
                 "agbd_t_se",
-                "sensitivity",
-                "quality_flag",
-                "shot_number",
-                "beam",
-                "degrade_flag",
-                "l2_quality_flag",
-                "l4_quality_flag",
+                "elev_lowestmode",
+                "predict_stratum",
+                "predictor_limit_flag",
+                "response_limit_flag",
+                "selected_algorithm",
+                "selected_mode",
+                "selected_mode_flag",
+                // -- land cover --
+                "land_cover_data/landsat_treecover",
+                "land_cover_data/modis_nonvegetated",
+                "land_cover_data/modis_nonvegetated_sd",
+                "land_cover_data/modis_treecover",
+                "land_cover_data/modis_treecover_sd",
             ],
             GediProduct::L1B => vec![
-                "lat_lowestmode",
-                "lon_lowestmode",
+                // -- spatial / id (in geolocation/ subgroup) --
+                "geolocation/latitude_bin0",
+                "geolocation/longitude_bin0",
                 "shot_number",
-                "beam",
+                "channel",
+                // -- quality / flags --
                 "stale_return_flag",
+                "rx_sample_count",
+                "tx_sample_count",
+                "noise_mean_corrected",
+                // -- geolocation metadata --
+                "geolocation/degrade",
+                "geolocation/delta_time",
+                "geolocation/digital_elevation_model",
+                "geolocation/digital_elevation_model_srtm",
+                "geolocation/elevation_bin0",
+                "geolocation/elevation_lastbin",
+                "geolocation/local_beam_elevation",
+                "geolocation/solar_elevation",
             ],
         }
     }
 
-    /// The lat/lon dataset names for spatial indexing.
+    /// The lat/lon dataset names used for spatial indexing.
+    ///
+    /// These are relative to the beam group (e.g. `BEAM0101/<lat_dataset>`).
+    /// L2B stores coordinates under `geolocation/`, while L1B uses
+    /// `latitude_bin0` / `longitude_bin0` in the `geolocation/` subgroup.
     pub fn lat_dataset(&self) -> &'static str {
-        "lat_lowestmode"
+        match self {
+            GediProduct::L1B => "geolocation/latitude_bin0",
+            GediProduct::L2B => "geolocation/lat_lowestmode",
+            _ => "lat_lowestmode",
+        }
     }
 
     pub fn lon_dataset(&self) -> &'static str {
-        "lon_lowestmode"
+        match self {
+            GediProduct::L1B => "geolocation/longitude_bin0",
+            GediProduct::L2B => "geolocation/lon_lowestmode",
+            _ => "lon_lowestmode",
+        }
     }
 }
 

@@ -66,10 +66,24 @@ grab_gedi <- function(url,
     return(vctrs::new_data_frame(list(), n = 0L))
   }
 
+  # Lat/lon column names differ by product (L2B and L1B store them in
+  # the geolocation/ subgroup; L1B also uses different variable names).
+  lat_lon <- switch(product,
+    "L2A" = list(lat = "lat_lowestmode", lon = "lon_lowestmode"),
+    "L2B" = list(lat = "geolocation/lat_lowestmode",
+                 lon = "geolocation/lon_lowestmode"),
+    "L4A" = list(lat = "lat_lowestmode", lon = "lon_lowestmode"),
+    "L1B" = list(lat = "geolocation/latitude_bin0",
+                 lon = "geolocation/longitude_bin0")
+  )
+
   # Convert each beam's raw data to a tibble and combine
   beam_tbls <- purrr::map(raw_result, function(bd) {
-    tbl <- build_tibble(bd, lat_col = "lat_lowestmode", lon_col = "lon_lowestmode")
+    tbl <- build_tibble(bd, lat_col = lat_lon$lat, lon_col = lat_lon$lon)
     tbl[["beam"]] <- bd$beam_name
+    # Strip subgroup prefixes (e.g. "geolocation/lat_lowestmode" → "lat_lowestmode")
+    # for cleaner column names, matching chewie output conventions.
+    names(tbl) <- sub(".*/", "", names(tbl))
     tbl
   })
 

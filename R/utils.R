@@ -1,10 +1,10 @@
 # ---------------------------------------------------------------------------
-# S3 generic: grab()
+# S3 generic: sl_grab()
 # ---------------------------------------------------------------------------
 
 #' Grab satellite lidar data
 #'
-#' `grab()` is an S3 generic that reads GEDI or ICESat-2 data from remote
+#' `sl_grab()` is an S3 generic that reads GEDI or ICESat-2 data from remote
 #' HDF5 files. It dispatches on the type of its first argument:
 #'
 #' * An `sl_gedi_search` or `sl_icesat2_search` object (from [find_gedi()] /
@@ -23,32 +23,32 @@
 #'
 #' @seealso [find_gedi()], [find_icesat2()], [grab_gedi()], [grab_icesat2()]
 #' @export
-grab <- function(x, bbox, ...) {
-  UseMethod("grab")
+sl_grab <- function(x, bbox, ...) {
+  UseMethod("sl_grab")
 }
 
-#' @rdname grab
+#' @rdname sl_grab
 #' @export
-grab.sl_gedi_search <- function(x, bbox, ...) {
+sl_grab.sl_gedi_search <- function(x, bbox, ...) {
   rlang::check_required(bbox)
   product <- attr(x, "product")
   grab_urls(x$url, bbox = bbox, grab_fn = grab_gedi, product = product, ...)
 }
 
-#' @rdname grab
+#' @rdname sl_grab
 #' @export
-grab.sl_icesat2_search <- function(x, bbox, ...) {
+sl_grab.sl_icesat2_search <- function(x, bbox, ...) {
   rlang::check_required(bbox)
   product <- attr(x, "product")
   grab_urls(x$url, bbox = bbox, grab_fn = grab_icesat2, product = product, ...)
 }
 
-#' @rdname grab
+#' @rdname sl_grab
 #' @param product Character. Product level (e.g., `"L2A"`, `"ATL08"`).
 #'   Required when `x` is a character vector and the product cannot be
 #'   inferred from the file name.
 #' @export
-grab.character <- function(x, bbox, ..., product = NULL) {
+sl_grab.character <- function(x, bbox, ..., product = NULL) {
   rlang::check_required(bbox)
   info <- detect_sensor(x[[1L]], product)
   grab_urls(
@@ -61,10 +61,10 @@ grab.character <- function(x, bbox, ..., product = NULL) {
 }
 
 #' @export
-grab.default <- function(x, bbox, ...) {
+sl_grab.default <- function(x, bbox, ...) {
   cls <- paste(class(x), collapse = "/")
   cli::cli_abort(c(
-    "{.fun grab} does not know how to handle an object of class {.cls {cls}}.",
+    "{.fun sl_grab} does not know how to handle an object of class {.cls {cls}}.",
     "i" = "Expected an {.cls sl_gedi_search}, {.cls sl_icesat2_search}, or {.cls character} URL vector."
   ))
 }

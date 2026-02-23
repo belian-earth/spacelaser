@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Rscript:*)",
+      "Bash(cargo check:*)",
+      "Bash(python3:*)",
+      "Bash(SPACELASER_DEBUG=1 Rscript:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(gh api:*)",
+      "Bash(cargo test:*)"
+    ]
+  }
+}

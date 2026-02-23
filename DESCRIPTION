@@ -10,9 +10,9 @@ Description: Read GEDI and ICESat-2 satellite lidar data directly from NASA
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 SystemRequirements: Cargo (Rust's package manager), rustc
-Config/rextendr/version: 0.3.1
+Config/rextendr/version: 0.4.2
 Imports:
     arrow,
     cli,

@@ -40,13 +40,7 @@ grab_icesat2 <- function(url,
   rlang::check_required(bbox)
   product <- rlang::arg_match(product)
 
-  geo_cols <- switch(product,
-    ATL03 = list(lat = "heights/lat_ph", lon = "heights/lon_ph"),
-    ATL06 = list(lat = "land_ice_segments/latitude",
-                 lon = "land_ice_segments/longitude"),
-    ATL08 = list(lat = "land_segments/latitude",
-                 lon = "land_segments/longitude")
-  )
+  geo_cols <- icesat2_lat_lon(product)
 
   grab_product(
     url = url,

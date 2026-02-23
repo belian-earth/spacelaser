@@ -32,14 +32,17 @@
 #' @seealso [grab_gedi()] to read data from the returned URLs.
 #' @importFrom rlang check_required arg_match
 #' @export
-find_gedi <- function(bbox,
-                      product = c("L2A", "L2B", "L4A", "L1B"),
-                      date_start = NULL,
-                      date_end = NULL) {
+find_gedi <- function(
+  bbox,
+  product = c("L2A", "L2B", "L4A", "L1B"),
+  date_start = NULL,
+  date_end = NULL
+) {
   rlang::check_required(bbox)
   product <- rlang::arg_match(product)
 
-  concept_id <- switch(product,
+  concept_id <- switch(
+    product,
     "L1B" = "C2142749196-LPCLOUD",
     "L2A" = "C2142771958-LPCLOUD",
     "L2B" = "C2142776747-LPCLOUD",
@@ -72,14 +75,17 @@ find_gedi <- function(bbox,
 #' @seealso [grab_icesat2()] to read data from the returned URLs.
 #' @importFrom rlang check_required arg_match
 #' @export
-find_icesat2 <- function(bbox,
-                         product = c("ATL08", "ATL03", "ATL06"),
-                         date_start = NULL,
-                         date_end = NULL) {
+find_icesat2 <- function(
+  bbox,
+  product = c("ATL08", "ATL03", "ATL06"),
+  date_start = NULL,
+  date_end = NULL
+) {
   rlang::check_required(bbox)
   product <- rlang::arg_match(product)
 
-  concept_id <- switch(product,
+  concept_id <- switch(
+    product,
     "ATL03" = "C2596864127-NSIDC_CPRD",
     "ATL06" = "C2670138092-NSIDC_CPRD",
     "ATL08" = "C2613553260-NSIDC_CPRD"
@@ -104,16 +110,22 @@ find_icesat2 <- function(bbox,
 #' @noRd
 search_cmr <- function(bbox, concept_id, date_start, date_end, product_label) {
   bbox <- validate_bbox(bbox)
+  b <- unclass(bbox)
   bbox_str <- paste(
-    bbox[["xmin"]], bbox[["ymin"]], bbox[["xmax"]], bbox[["ymax"]],
+    b[["xmin"]],
+    b[["ymin"]],
+    b[["xmax"]],
+    b[["ymax"]],
     sep = ","
   )
 
   base_url <- paste0(
     "https://cmr.earthdata.nasa.gov/search/granules.json?",
     "page_size=2000",
-    "&concept_id=", concept_id,
-    "&bounding_box=", bbox_str
+    "&concept_id=",
+    concept_id,
+    "&bounding_box=",
+    bbox_str
   )
 
   start_iso <- format_iso8601(date_start)
@@ -129,7 +141,9 @@ search_cmr <- function(bbox, concept_id, date_start, date_end, product_label) {
     json <- fetch_cmr_json(page_url)
 
     page_entries <- json$feed$entry
-    if (length(page_entries) == 0L) break
+    if (length(page_entries) == 0L) {
+      break
+    }
     entries <- c(entries, page_entries)
     page <- page + 1L
   }
@@ -182,17 +196,17 @@ fetch_cmr_json <- function(request_url) {
 build_find_result <- function(entries) {
   n <- length(entries)
 
-  ids        <- character(n)
-  starts     <- character(n)
-  ends       <- character(n)
-  urls       <- character(n)
-  geom_wkts  <- character(n)
+  ids <- character(n)
+  starts <- character(n)
+  ends <- character(n)
+  urls <- character(n)
+  geom_wkts <- character(n)
 
   for (i in seq_len(n)) {
     entry <- entries[[i]]
-    ids[i]    <- entry$id %||% NA_character_
+    ids[i] <- entry$id %||% NA_character_
     starts[i] <- entry$time_start %||% NA_character_
-    ends[i]   <- entry$time_end %||% NA_character_
+    ends[i] <- entry$time_end %||% NA_character_
 
     # Pick the .h5 download link; fall back to the first link.
     url <- NA_character_
@@ -216,11 +230,11 @@ build_find_result <- function(entries) {
   }
 
   vctrs::new_data_frame(list(
-    id         = ids,
+    id = ids,
     time_start = as.POSIXct(starts, format = "%Y-%m-%dT%H:%M:%OS", tz = "UTC"),
-    time_end   = as.POSIXct(ends,   format = "%Y-%m-%dT%H:%M:%OS", tz = "UTC"),
-    url        = urls,
-    geometry   = wk::wkt(geom_wkts, crs = wk::wk_crs_lonlat())
+    time_end = as.POSIXct(ends, format = "%Y-%m-%dT%H:%M:%OS", tz = "UTC"),
+    url = urls,
+    geometry = wk::wkt(geom_wkts, crs = wk::wk_crs_longlat())
   ))
 }
 
@@ -256,18 +270,20 @@ format_iso8601 <- function(x) {
     }
     return(format(dt, "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"))
   }
-  cli::cli_abort("Date must be character, Date, or POSIXt, not {.cls {class(x)}}.")
+  cli::cli_abort(
+    "Date must be character, Date, or POSIXt, not {.cls {class(x)}}."
+  )
 }
 
 #' Empty result for zero-match searches.
 #' @noRd
 empty_find_result <- function() {
   vctrs::new_data_frame(list(
-    id         = character(),
+    id = character(),
     time_start = as.POSIXct(character(), tz = "UTC"),
-    time_end   = as.POSIXct(character(), tz = "UTC"),
-    url        = character(),
-    geometry   = wk::wkt(character(), crs = wk::wk_crs_lonlat())
+    time_end = as.POSIXct(character(), tz = "UTC"),
+    url = character(),
+    geometry = wk::wkt(character(), crs = wk::wk_crs_longlat())
   ))
 }
 
@@ -293,7 +309,9 @@ new_sl_search <- function(df, product, sensor = c("gedi", "icesat2")) {
 #' @export
 print.sl_gedi_search <- function(x, ...) {
   product <- attr(x, "product")
-  cli::cli_text("{.cls sl_gedi_search} | GEDI {product} | {nrow(x)} granule{?s}")
+  cli::cli_text(
+    "{.cls sl_gedi_search} | GEDI {product} | {nrow(x)} granule{?s}"
+  )
   print_search_result(x, ...)
 }
 

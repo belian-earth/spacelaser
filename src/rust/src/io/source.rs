@@ -1,13 +1,20 @@
 use std::path::PathBuf;
 
+/// NASA Earthdata credentials for Basic auth in the OAuth redirect flow.
+#[derive(Debug, Clone)]
+pub struct EarthdataAuth {
+    pub username: String,
+    pub password: String,
+}
+
 /// Describes where an HDF5 file is located.
 #[derive(Debug, Clone)]
 pub enum DataSource {
     /// Remote file accessible via HTTPS with Range request support.
     Http {
         url: String,
-        /// Optional bearer token for NASA Earthdata authentication.
-        bearer_token: Option<String>,
+        /// Optional Earthdata credentials for the OAuth redirect flow.
+        auth: Option<EarthdataAuth>,
     },
     /// Local file on disk (for testing and local fallback).
     Local { path: PathBuf },
@@ -18,15 +25,22 @@ impl DataSource {
     pub fn http(url: impl Into<String>) -> Self {
         DataSource::Http {
             url: url.into(),
-            bearer_token: None,
+            auth: None,
         }
     }
 
-    /// Create an HTTP source with a bearer token for authentication.
-    pub fn http_with_token(url: impl Into<String>, token: impl Into<String>) -> Self {
+    /// Create an HTTP source with Earthdata credentials.
+    pub fn http_with_auth(
+        url: impl Into<String>,
+        username: impl Into<String>,
+        password: impl Into<String>,
+    ) -> Self {
         DataSource::Http {
             url: url.into(),
-            bearer_token: Some(token.into()),
+            auth: Some(EarthdataAuth {
+                username: username.into(),
+                password: password.into(),
+            }),
         }
     }
 

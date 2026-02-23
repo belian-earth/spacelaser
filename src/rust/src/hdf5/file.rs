@@ -6,16 +6,21 @@ use crate::hdf5::types::*;
 use crate::io::reader::{Reader, ReaderConfig};
 use crate::io::source::DataSource;
 use std::collections::HashMap;
+use std::sync::Mutex;
 
 /// A high-level handle to a remote or local HDF5 file.
 ///
 /// This is the main entry point for reading HDF5 data. It lazily navigates
 /// the file structure via HTTP range requests, caching metadata as it goes.
+///
+/// All methods take `&self` (not `&mut self`) so that multiple concurrent
+/// reads can proceed in parallel on the same file handle.  The only mutable
+/// state is the path-resolution cache, which is protected by a `Mutex`.
 pub struct Hdf5File {
     reader: Reader,
     superblock: Superblock,
     /// Cache of resolved paths → object header addresses.
-    path_cache: HashMap<String, u64>,
+    path_cache: Mutex<HashMap<String, u64>>,
 }
 
 impl Hdf5File {
@@ -37,14 +42,14 @@ impl Hdf5File {
         Ok(Hdf5File {
             reader,
             superblock,
-            path_cache: HashMap::new(),
+            path_cache: Mutex::new(HashMap::new()),
         })
     }
 
     /// List the members of a group at the given path.
     ///
     /// Returns a list of (name, object_header_address) pairs.
-    pub async fn list_group(&mut self, path: &str) -> Result<Vec<(String, u64)>, Hdf5Error> {
+    pub async fn list_group(&self, path: &str) -> Result<Vec<(String, u64)>, Hdf5Error> {
         let (_oh_address, oh) = self.resolve_group(path).await?;
 
         // Check for v1 symbol table (B-tree + local heap)
@@ -109,13 +114,21 @@ impl Hdf5File {
     }
 
     /// Open a dataset at the given path.
-    pub async fn dataset(&mut self, path: &str) -> Result<Dataset, Hdf5Error> {
-        let oh = self.resolve_object_header(path).await?;
+    pub async fn dataset(&self, path: &str) -> Result<Dataset, Hdf5Error> {
+        let addr = self.resolve_path(path).await?;
+        log::debug!("dataset '{}' resolved to address 0x{:x}", path, addr);
+        let oh = ObjectHeader::read(
+            &self.reader,
+            addr,
+            self.superblock.offset_size,
+            self.superblock.length_size,
+        )
+        .await?;
         Dataset::from_object_header(&oh)
     }
 
     /// Read an entire dataset's data as raw bytes.
-    pub async fn read_dataset(&mut self, path: &str) -> Result<(DatasetMeta, Vec<u8>), Hdf5Error> {
+    pub async fn read_dataset(&self, path: &str) -> Result<(DatasetMeta, Vec<u8>), Hdf5Error> {
         let ds = self.dataset(path).await?;
         let data = ds.read_all(&self.reader, self.superblock.offset_size).await?;
         Ok((ds.meta, data))
@@ -125,7 +138,7 @@ impl Hdf5File {
     ///
     /// `row_ranges` is a list of (start, end) pairs (exclusive end).
     pub async fn read_dataset_rows(
-        &mut self,
+        &self,
         path: &str,
         row_ranges: &[(u64, u64)],
     ) -> Result<(DatasetMeta, Vec<u8>), Hdf5Error> {
@@ -137,9 +150,12 @@ impl Hdf5File {
     }
 
     /// Resolve a path to an object header address, navigating through groups.
-    async fn resolve_path(&mut self, path: &str) -> Result<u64, Hdf5Error> {
-        if let Some(&addr) = self.path_cache.get(path) {
-            return Ok(addr);
+    async fn resolve_path(&self, path: &str) -> Result<u64, Hdf5Error> {
+        {
+            let cache = self.path_cache.lock().unwrap();
+            if let Some(&addr) = cache.get(path) {
+                return Ok(addr);
+            }
         }
 
         let clean_path = path.trim_matches('/');
@@ -157,9 +173,12 @@ impl Hdf5File {
                 format!("/{}", parts[..=i].join("/"))
             };
 
-            if let Some(&cached_addr) = self.path_cache.get(&partial_path) {
-                current_addr = cached_addr;
-                continue;
+            {
+                let cache = self.path_cache.lock().unwrap();
+                if let Some(&cached_addr) = cache.get(&partial_path) {
+                    current_addr = cached_addr;
+                    continue;
+                }
             }
 
             // Read the current group's object header
@@ -174,11 +193,17 @@ impl Hdf5File {
             // Look for the child by name
             let child_addr = self.find_child(&oh, part).await?;
 
-            self.path_cache.insert(partial_path, child_addr);
+            {
+                let mut cache = self.path_cache.lock().unwrap();
+                cache.insert(partial_path, child_addr);
+            }
             current_addr = child_addr;
         }
 
-        self.path_cache.insert(path.to_string(), current_addr);
+        {
+            let mut cache = self.path_cache.lock().unwrap();
+            cache.insert(path.to_string(), current_addr);
+        }
         Ok(current_addr)
     }
 
@@ -227,7 +252,7 @@ impl Hdf5File {
     }
 
     /// Resolve a path to a group's object header.
-    async fn resolve_group(&mut self, path: &str) -> Result<(u64, ObjectHeader), Hdf5Error> {
+    async fn resolve_group(&self, path: &str) -> Result<(u64, ObjectHeader), Hdf5Error> {
         let addr = self.resolve_path(path).await?;
         let oh = ObjectHeader::read(
             &self.reader,
@@ -237,18 +262,6 @@ impl Hdf5File {
         )
         .await?;
         Ok((addr, oh))
-    }
-
-    /// Resolve a path to an object header.
-    async fn resolve_object_header(&mut self, path: &str) -> Result<ObjectHeader, Hdf5Error> {
-        let addr = self.resolve_path(path).await?;
-        ObjectHeader::read(
-            &self.reader,
-            addr,
-            self.superblock.offset_size,
-            self.superblock.length_size,
-        )
-        .await
     }
 
     /// Get a reference to the superblock.

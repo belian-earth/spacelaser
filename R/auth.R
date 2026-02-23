@@ -67,6 +67,41 @@ sl_earthdata_token <- function(token = NULL) {
   NULL
 }
 
+#' Get Earthdata credentials for data access
+#'
+#' Returns username/password for the NASA Earthdata OAuth flow used by
+#' LPDAAC and NSIDC data endpoints. Credentials are resolved from:
+#' `EARTHDATA_USERNAME`/`EARTHDATA_PASSWORD` env vars, `~/.netrc`, or
+#' interactive prompt. Cached for the session.
+#'
+#' @param token Ignored (kept for API compatibility). Credentials always
+#'   come from username/password, not bearer tokens.
+#' @returns A list with `username` and `password` (may be `NULL` if
+#'   no credentials are found).
+#' @noRd
+sl_earthdata_creds <- function(token = NULL) {
+  # Check session cache first
+  cached <- .sl_env$earthdata_creds
+  if (!is.null(cached)) {
+    return(cached)
+  }
+
+  creds <- earthdata_credentials()
+  if (!is.null(creds)) {
+    .sl_env$earthdata_creds <- creds
+    return(creds)
+  }
+
+  cli::cli_warn(c(
+    "!" = "No NASA Earthdata credentials found.",
+    "i" = "Create a {.file ~/.netrc} file with your Earthdata Login credentials,",
+    "i" = "or set {.envvar EARTHDATA_USERNAME} and {.envvar EARTHDATA_PASSWORD}.",
+    "i" = "Register at {.url https://urs.earthdata.nasa.gov/}."
+  ))
+
+  list(username = NULL, password = NULL)
+}
+
 #' Resolve Earthdata username/password from available sources.
 #' @returns A list with `username` and `password`, or `NULL`.
 #' @noRd

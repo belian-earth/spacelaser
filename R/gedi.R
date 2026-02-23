@@ -44,15 +44,7 @@ grab_gedi <- function(url,
   rlang::check_required(bbox)
   product <- rlang::arg_match(product)
 
-  # Lat/lon column names differ by product — used for geometry construction.
-  lat_lon <- switch(product,
-    "L2A" = list(lat = "lat_lowestmode", lon = "lon_lowestmode"),
-    "L2B" = list(lat = "geolocation/lat_lowestmode",
-                 lon = "geolocation/lon_lowestmode"),
-    "L4A" = list(lat = "lat_lowestmode", lon = "lon_lowestmode"),
-    "L1B" = list(lat = "geolocation/latitude_bin0",
-                 lon = "geolocation/longitude_bin0")
-  )
+  lat_lon <- gedi_lat_lon(product)
 
   grab_product(
     url = url,

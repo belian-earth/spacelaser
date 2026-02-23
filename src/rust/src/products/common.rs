@@ -11,6 +11,7 @@
 
 use crate::hdf5::file::Hdf5File;
 use crate::hdf5::types::Hdf5Error;
+use futures::stream::{self, StreamExt};
 use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
@@ -112,13 +113,13 @@ pub trait SatelliteProduct {
 /// and block caching. This keeps the logic simple and correct without
 /// requiring any pre-built spatial index.
 pub async fn read_product_groups(
-    file: &mut Hdf5File,
+    file: &Hdf5File,
     product: &dyn SatelliteProduct,
     bbox: BBox,
     columns: Option<Vec<String>>,
     groups: Option<Vec<String>>,
 ) -> Result<Vec<GroupData>, Hdf5Error> {
-    let columns = columns.unwrap_or_else(|| {
+    let columns: Vec<String> = columns.unwrap_or_else(|| {
         product.default_columns().into_iter().map(String::from).collect()
     });
 
@@ -126,74 +127,160 @@ pub async fn read_product_groups(
         product.group_names().into_iter().map(String::from).collect()
     });
 
+    // Process all beams/tracks concurrently.
+    let beam_futures: Vec<_> = group_list.iter().map(|group_name| {
+        let columns = &columns;
+        let group_name = group_name.clone();
+        async move {
+            read_single_group(file, &group_name, product, bbox, columns).await
+        }
+    }).collect();
+
+    let beam_results = futures::future::join_all(beam_futures).await;
+
     let mut results = Vec::new();
-
-    for group_name in &group_list {
-        let group_path = format!("/{}", group_name);
-
-        // 1. Read lat/lon for spatial filtering
-        let lat_path = format!("{}/{}", group_path, product.lat_dataset());
-        let lon_path = format!("{}/{}", group_path, product.lon_dataset());
-
-        let (lat_meta, lat_bytes) = match file.read_dataset(&lat_path).await {
-            Ok(v) => v,
-            Err(Hdf5Error::PathNotFound(_)) => continue,
+    for result in beam_results {
+        match result {
+            Ok(Some(gd)) => results.push(gd),
+            Ok(None) => {}     // no matching rows in this beam
             Err(e) => return Err(e),
-        };
-        let (_lon_meta, lon_bytes) = match file.read_dataset(&lon_path).await {
-            Ok(v) => v,
-            Err(Hdf5Error::PathNotFound(_)) => continue,
-            Err(e) => return Err(e),
-        };
-
-        // 2. Find rows within the bounding box
-        let num_elements = lat_meta.dataspace.dims[0] as usize;
-        let elem_size = lat_meta.datatype.size();
-        let selected_indices =
-            find_matching_indices(&lat_bytes, &lon_bytes, elem_size, num_elements, &bbox);
-
-        if selected_indices.is_empty() {
-            continue;
         }
-
-        // 3. Convert indices → contiguous ranges for efficient chunk reads
-        let row_ranges = indices_to_ranges(&selected_indices);
-
-        // 4. Read each requested column for the selected rows
-        let mut col_data = HashMap::new();
-
-        for col_name in &columns {
-            let col_path = format!("{}/{}", group_path, col_name);
-
-            match file.read_dataset_rows(&col_path, &row_ranges).await {
-                Ok((meta, bytes)) => {
-                    let elem_size = meta.datatype.size();
-                    let num_elements = bytes.len() / elem_size;
-                    let dtype_desc = format!("{:?}", meta.datatype);
-
-                    col_data.insert(
-                        col_name.clone(),
-                        ColumnData {
-                            bytes,
-                            element_size: elem_size,
-                            num_elements,
-                            dtype_desc,
-                        },
-                    );
-                }
-                Err(Hdf5Error::PathNotFound(_)) => continue,
-                Err(e) => return Err(e),
-            }
-        }
-
-        results.push(GroupData {
-            group_name: group_name.clone(),
-            columns: col_data,
-            selected_indices,
-        });
     }
 
     Ok(results)
+}
+
+/// Read a single beam/track with spatial subsetting and concurrent column reads.
+async fn read_single_group(
+    file: &Hdf5File,
+    group_name: &str,
+    product: &dyn SatelliteProduct,
+    bbox: BBox,
+    columns: &[String],
+) -> Result<Option<GroupData>, Hdf5Error> {
+    let group_path = format!("/{}", group_name);
+
+    // 1. Read lat/lon concurrently for spatial filtering
+    let lat_path = format!("{}/{}", group_path, product.lat_dataset());
+    let lon_path = format!("{}/{}", group_path, product.lon_dataset());
+
+    let (lat_result, lon_result) = tokio::join!(
+        file.read_dataset(&lat_path),
+        file.read_dataset(&lon_path),
+    );
+
+    let (lat_meta, lat_bytes) = match lat_result {
+        Ok(v) => v,
+        Err(Hdf5Error::PathNotFound(_)) => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    let (_lon_meta, lon_bytes) = match lon_result {
+        Ok(v) => v,
+        Err(Hdf5Error::PathNotFound(_)) => return Ok(None),
+        Err(e) => return Err(e),
+    };
+
+    // 2. Find rows within the bounding box
+    let num_elements = lat_meta.dataspace.dims[0] as usize;
+    let elem_size = lat_meta.datatype.size();
+    let selected_indices =
+        find_matching_indices(&lat_bytes, &lon_bytes, elem_size, num_elements, &bbox);
+
+    if selected_indices.is_empty() {
+        return Ok(None);
+    }
+
+    // 3. Convert indices → contiguous ranges for efficient chunk reads
+    let row_ranges = indices_to_ranges(&selected_indices);
+    let n_selected = selected_indices.len();
+
+    // 4. Read all requested columns concurrently (buffered to limit
+    //    the number of in-flight HTTP requests).
+    let row_ranges_ref = &row_ranges;
+    let col_results: Vec<_> = stream::iter(columns.iter())
+        .map(|col_name| {
+            let col_path = format!("{}/{}", group_path, col_name);
+            let col_name = col_name.clone();
+            async move {
+                match file.read_dataset_rows(&col_path, row_ranges_ref).await {
+                    Ok((meta, bytes)) => Ok(Some((col_name, meta, bytes))),
+                    Err(Hdf5Error::PathNotFound(_)) => Ok(None),
+                    Err(e) => Err(e),
+                }
+            }
+        })
+        .buffer_unordered(16)
+        .collect()
+        .await;
+
+    // Process results: expand 2D datasets, build HashMap
+    let mut col_data = HashMap::new();
+    for result in col_results {
+        if let Some((col_name, meta, bytes)) = result? {
+            let elem_size = meta.datatype.size();
+            let dims = &meta.dataspace.dims;
+            let dtype_desc = format!("{:?}", meta.datatype);
+
+            if dims.len() >= 2 {
+                // 2D dataset (e.g. rh [N, 101]): expand into separate
+                // columns named {col}{0}, {col}{1}, … {col}{ncols-1},
+                // matching chewie's naming convention (rh0 … rh100).
+                let ncols = dims[1] as usize;
+                let row_size = ncols * elem_size;
+
+                log::debug!(
+                    "2D column '{}': dims={:?}, dtype={}, bytes={}, expected={}",
+                    col_name, dims, dtype_desc, bytes.len(),
+                    n_selected * row_size,
+                );
+                let nonzero = bytes.iter().filter(|&&b| b != 0).count();
+                log::debug!(
+                    "  non-zero bytes: {}/{} ({:.1}%)",
+                    nonzero, bytes.len(),
+                    100.0 * nonzero as f64 / bytes.len().max(1) as f64,
+                );
+
+                for j in 0..ncols {
+                    let mut col_bytes = Vec::with_capacity(n_selected * elem_size);
+                    for i in 0..n_selected {
+                        let offset = i * row_size + j * elem_size;
+                        let end = offset + elem_size;
+                        if end <= bytes.len() {
+                            col_bytes.extend_from_slice(&bytes[offset..end]);
+                        }
+                    }
+                    let expanded_name = format!("{}{}", col_name, j);
+                    col_data.insert(
+                        expanded_name,
+                        ColumnData {
+                            bytes: col_bytes,
+                            element_size: elem_size,
+                            num_elements: n_selected,
+                            dtype_desc: dtype_desc.clone(),
+                        },
+                    );
+                }
+            } else {
+                // 1D dataset: pass through as-is
+                let num_elements = bytes.len() / elem_size;
+                col_data.insert(
+                    col_name,
+                    ColumnData {
+                        bytes,
+                        element_size: elem_size,
+                        num_elements,
+                        dtype_desc,
+                    },
+                );
+            }
+        }
+    }
+
+    Ok(Some(GroupData {
+        group_name: group_name.to_string(),
+        columns: col_data,
+        selected_indices,
+    }))
 }
 
 // ---------------------------------------------------------------------------

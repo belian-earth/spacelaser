@@ -63,17 +63,21 @@ pub async fn read_chunk(
 }
 
 /// Read contiguous dataset data (no chunking).
+///
+/// `row_size` is the number of bytes per row.  For 1-D datasets this equals
+/// the scalar element size; for 2-D datasets (e.g. `rh` [N×101] of f32)
+/// this is `101 × 4 = 404`.
 pub async fn read_contiguous(
     reader: &Reader,
     address: u64,
     total_size: u64,
     row_range: Option<(u64, u64)>,
-    element_size: usize,
+    row_size: usize,
 ) -> Result<Vec<u8>, Hdf5Error> {
     match row_range {
         Some((start, end)) => {
-            let byte_start = start * element_size as u64;
-            let byte_length = (end - start) * element_size as u64;
+            let byte_start = start * row_size as u64;
+            let byte_length = (end - start) * row_size as u64;
             let data = reader
                 .read(address + byte_start, byte_length as usize)
                 .await?;

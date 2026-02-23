@@ -10,8 +10,9 @@
 #' @export
 sl_hdf5_groups <- function(url, path = "/", token = NULL) {
   rlang::check_required(url)
-  token <- sl_earthdata_token(token)
-  rust_hdf5_groups(url = url, path = path, bearer_token = token)
+  creds <- sl_earthdata_creds(token)
+  rust_hdf5_groups(url = url, path = path,
+                   username = creds$username, password = creds$password)
 }
 
 #' Read a single dataset from a remote HDF5 file
@@ -28,12 +29,13 @@ sl_hdf5_groups <- function(url, path = "/", token = NULL) {
 sl_hdf5_read <- function(url, dataset, token = NULL) {
   rlang::check_required(url)
   rlang::check_required(dataset)
-  token <- sl_earthdata_token(token)
+  creds <- sl_earthdata_creds(token)
 
   result <- rust_hdf5_dataset(
     url = url,
     dataset_path = dataset,
-    bearer_token = token
+    username = creds$username,
+    password = creds$password
   )
 
   parse_column(result$data, result$info)

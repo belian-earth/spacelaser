@@ -28,6 +28,9 @@ const MAX_RETRIES: usize = 3;
 /// Base delay between retries (doubled each attempt).
 const RETRY_BASE_DELAY: Duration = Duration::from_millis(500);
 
+/// Maximum number of redirects to follow manually.
+const MAX_REDIRECTS: usize = 10;
+
 /// HTTP status codes that warrant a retry.
 fn is_retriable(status: u16) -> bool {
     matches!(status, 429 | 500 | 502 | 503 | 504)
@@ -70,11 +73,24 @@ impl Default for ReaderConfig {
 /// All reads are aligned to block boundaries and cached in an LRU cache.
 /// Adjacent block fetches are coalesced into single HTTP requests, and
 /// multiple coalesced ranges are fetched in parallel.
+///
+/// For NASA Earthdata URLs, the reader handles the multi-step OAuth
+/// redirect flow:
+///   1. GET data URL → 302 to `urs.earthdata.nasa.gov/oauth/authorize`
+///   2. GET URS with Basic auth → 302 back to data URL (sets cookies)
+///   3. GET data URL with cookies → 302 to CloudFront presigned URL
+///   4. GET CloudFront URL → 206 data
+///
+/// The final CloudFront URL is cached for subsequent Range requests.
 pub struct Reader {
     source: DataSource,
     client: reqwest::Client,
     cache: Mutex<BlockCache>,
     config: ReaderConfig,
+    /// Cached resolved URL after following the OAuth redirect chain.
+    /// Typically a CloudFront presigned URL that can be used directly
+    /// for subsequent Range requests without re-authenticating.
+    resolved_url: Mutex<Option<String>>,
 }
 
 impl Reader {
@@ -88,6 +104,12 @@ impl Reader {
             .no_gzip()
             .no_brotli()
             .no_deflate()
+            // Disable automatic redirects — we follow them manually to inject
+            // Basic auth at the URS OAuth step while keeping cookies flowing.
+            .redirect(reqwest::redirect::Policy::none())
+            // Enable the cookie store so session cookies from URS are
+            // automatically sent on subsequent requests in the redirect chain.
+            .cookie_store(true)
             .build()
             .expect("failed to build HTTP client");
         Self {
@@ -95,6 +117,7 @@ impl Reader {
             client,
             cache: Mutex::new(cache),
             config,
+            resolved_url: Mutex::new(None),
         }
     }
 
@@ -193,17 +216,134 @@ impl Reader {
         Ok(cache.extract_range(offset, length, &all_blocks))
     }
 
+    /// Send a GET request following redirects manually.
+    ///
+    /// Handles the NASA Earthdata OAuth redirect flow:
+    ///   - At `urs.earthdata.nasa.gov`: sends Basic auth credentials
+    ///   - At other `.nasa.gov` domains: sends request with cookies (no auth)
+    ///   - At non-NASA domains (S3/CloudFront): no auth, no cookies needed
+    ///
+    /// The reqwest cookie store maintains session cookies across the chain.
+    ///
+    /// Returns the response and the final URL it was fetched from.
+    async fn send_with_redirects(
+        &self,
+        start_url: &str,
+        range_header: Option<&str>,
+    ) -> Result<(reqwest::Response, String), IoError> {
+        let auth = match &self.source {
+            DataSource::Http { auth, .. } => auth.as_ref(),
+            DataSource::Local { .. } => None,
+        };
+
+        let mut current_url = start_url.to_string();
+
+        for _ in 0..MAX_REDIRECTS {
+            let mut request = self.client.get(&current_url);
+
+            if let Some(range) = range_header {
+                request = request.header("Range", range);
+            }
+
+            // Send Basic auth only at the URS OAuth endpoint.
+            if let Some(creds) = auth {
+                if current_url.contains("urs.earthdata.nasa.gov") {
+                    request = request.basic_auth(&creds.username, Some(&creds.password));
+                }
+            }
+
+            let response = request.send().await.map_err(IoError::Http)?;
+
+            if response.status().is_redirection() {
+                if let Some(location) = response.headers().get("location") {
+                    let loc = location.to_str().unwrap_or("");
+                    current_url = if loc.starts_with("http://") || loc.starts_with("https://") {
+                        loc.to_string()
+                    } else {
+                        // Relative URL: resolve against current
+                        reqwest::Url::parse(&current_url)
+                            .and_then(|base| base.join(loc))
+                            .map(|u| u.to_string())
+                            .unwrap_or_else(|_| loc.to_string())
+                    };
+                    continue;
+                }
+            }
+
+            return Ok((response, current_url));
+        }
+
+        Err(IoError::HttpStatus {
+            status: 302,
+            url: format!("Too many redirects: {}", start_url),
+        })
+    }
+
+    /// Resolve the data URL by following the OAuth redirect chain once.
+    ///
+    /// Returns the cached resolved URL if available, otherwise follows
+    /// redirects and caches the result (typically a CloudFront presigned URL).
+    async fn get_resolved_url(&self) -> Result<String, IoError> {
+        // Fast path: return cached URL
+        {
+            let resolved = self.resolved_url.lock().unwrap();
+            if let Some(url) = resolved.as_ref() {
+                return Ok(url.clone());
+            }
+        }
+
+        let (url, has_auth) = match &self.source {
+            DataSource::Http { url, auth } => (url.as_str(), auth.is_some()),
+            DataSource::Local { .. } => unreachable!(),
+        };
+
+        // If no auth credentials, no redirect dance needed
+        if !has_auth {
+            return Ok(url.to_string());
+        }
+
+        // Follow the full OAuth redirect chain with a small Range request
+        let (response, final_url) = self
+            .send_with_redirects(url, Some("bytes=0-0"))
+            .await?;
+
+        let status = response.status();
+        if !status.is_success() && status != reqwest::StatusCode::PARTIAL_CONTENT {
+            return Err(IoError::HttpStatus {
+                status: status.as_u16(),
+                url: url.to_string(),
+            });
+        }
+
+        // Cache the resolved URL (CloudFront presigned)
+        {
+            let mut resolved = self.resolved_url.lock().unwrap();
+            *resolved = Some(final_url.clone());
+        }
+
+        Ok(final_url)
+    }
+
+    /// Clear the cached resolved URL (e.g., if the presigned URL expired).
+    fn invalidate_resolved_url(&self) {
+        let mut resolved = self.resolved_url.lock().unwrap();
+        *resolved = None;
+    }
+
     /// Fetch a raw byte range from the HTTP source with retry logic.
     ///
     /// Retries up to [`MAX_RETRIES`] times with exponential backoff for
     /// transient server errors (429, 500, 502, 503, 504).
     async fn fetch_range(&self, range: Range<u64>) -> Result<Bytes, IoError> {
-        let (url, bearer_token) = match &self.source {
-            DataSource::Http { url, bearer_token } => (url.as_str(), bearer_token.as_deref()),
+        let orig_url = match &self.source {
+            DataSource::Http { url, .. } => url.as_str(),
             DataSource::Local { .. } => unreachable!("fetch_range called on local source"),
         };
 
         let range_header = format!("bytes={}-{}", range.start, range.end.saturating_sub(1));
+
+        // Resolve the URL (follows OAuth chain once, then caches)
+        let resolved = self.get_resolved_url().await?;
         let mut last_error: Option<IoError> = None;
 
         for attempt in 0..=MAX_RETRIES {
@@ -214,27 +354,44 @@ impl Reader {
                     attempt,
                     MAX_RETRIES,
                     delay,
-                    url,
+                    orig_url,
                     range_header
                 );
                 tokio::time::sleep(delay).await;
             } else {
-                log::debug!("HTTP GET {} Range: {}", url, range_header);
+                log::debug!("HTTP GET {} Range: {}", resolved, range_header);
             }
 
-            let mut request = self.client.get(url).header("Range", &range_header);
-
-            if let Some(token) = bearer_token {
-                request = request.bearer_auth(token);
-            }
-
-            let response = match request.send().await {
-                Ok(r) => r,
-                Err(e) if attempt < MAX_RETRIES => {
-                    last_error = Some(IoError::Http(e));
-                    continue;
+            // If using a resolved URL (e.g., CloudFront presigned), request
+            // directly — the presigned URL has its own auth in query params.
+            // If it's the same as the original, use the redirect-following path.
+            let (response, _) = if resolved != orig_url {
+                // Direct request to resolved (presigned) URL
+                let request = self
+                    .client
+                    .get(&resolved)
+                    .header("Range", &range_header);
+                match request.send().await {
+                    Ok(r) => (r, resolved.clone()),
+                    Err(e) if attempt < MAX_RETRIES => {
+                        last_error = Some(IoError::Http(e));
+                        continue;
+                    }
+                    Err(e) => return Err(IoError::Http(e)),
                 }
-                Err(e) => return Err(IoError::Http(e)),
+            } else {
+                // No cached resolution; use redirect-following path
+                match self
+                    .send_with_redirects(orig_url, Some(&range_header))
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(IoError::Http(e)) if attempt < MAX_RETRIES => {
+                        last_error = Some(IoError::Http(e));
+                        continue;
+                    }
+                    Err(e) => return Err(e),
+                }
             };
 
             let status = response.status();
@@ -243,10 +400,24 @@ impl Reader {
                 return Err(IoError::RangeNotSupported);
             }
 
+            // If the presigned URL expired (403) or auth failed (401),
+            // invalidate the cache and retry with a fresh redirect resolution.
+            if (status == reqwest::StatusCode::FORBIDDEN
+                || status == reqwest::StatusCode::UNAUTHORIZED)
+                && attempt < MAX_RETRIES
+            {
+                self.invalidate_resolved_url();
+                last_error = Some(IoError::HttpStatus {
+                    status: status.as_u16(),
+                    url: orig_url.to_string(),
+                });
+                continue;
+            }
+
             if is_retriable(status.as_u16()) && attempt < MAX_RETRIES {
                 last_error = Some(IoError::HttpStatus {
                     status: status.as_u16(),
-                    url: url.to_string(),
+                    url: orig_url.to_string(),
                 });
                 continue;
             }
@@ -254,7 +425,7 @@ impl Reader {
             if !status.is_success() && status != reqwest::StatusCode::PARTIAL_CONTENT {
                 return Err(IoError::HttpStatus {
                     status: status.as_u16(),
-                    url: url.to_string(),
+                    url: orig_url.to_string(),
                 });
             }
 
@@ -263,7 +434,7 @@ impl Reader {
 
         Err(last_error.unwrap_or(IoError::HttpStatus {
             status: 500,
-            url: url.to_string(),
+            url: orig_url.to_string(),
         }))
     }
 
@@ -282,12 +453,14 @@ impl Reader {
                 let metadata = std::fs::metadata(path)?;
                 Ok(metadata.len())
             }
-            DataSource::Http { url, bearer_token } => {
-                let mut request = self.client.head(url);
-                if let Some(token) = bearer_token {
-                    request = request.bearer_auth(token);
-                }
-                let response = request.send().await?;
+            DataSource::Http { .. } => {
+                let (response, _) = self.send_with_redirects(
+                    match &self.source {
+                        DataSource::Http { url, .. } => url.as_str(),
+                        _ => unreachable!(),
+                    },
+                    None,
+                ).await?;
                 let len = response
                     .headers()
                     .get("content-length")

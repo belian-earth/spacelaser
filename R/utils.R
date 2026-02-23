@@ -29,18 +29,36 @@ sl_grab <- function(x, bbox, ...) {
 
 #' @rdname sl_grab
 #' @export
-sl_grab.sl_gedi_search <- function(x, bbox, ...) {
+sl_grab.sl_gedi_search <- function(x, bbox, columns = NULL, beams = NULL,
+                                   token = NULL, ...) {
   rlang::check_required(bbox)
   product <- attr(x, "product")
-  grab_urls(x$url, bbox = bbox, grab_fn = grab_gedi, product = product, ...)
+  lat_lon <- gedi_lat_lon(product)
+
+  grab_product_multi(
+    urls = x$url, product = product, bbox = bbox,
+    columns = columns, groups = beams, token = token,
+    rust_multi_fn = rust_read_gedi_multi,
+    lat_col = lat_lon$lat, lon_col = lat_lon$lon,
+    group_label = "beam", element_label = "footprint"
+  )
 }
 
 #' @rdname sl_grab
 #' @export
-sl_grab.sl_icesat2_search <- function(x, bbox, ...) {
+sl_grab.sl_icesat2_search <- function(x, bbox, columns = NULL, tracks = NULL,
+                                      token = NULL, ...) {
   rlang::check_required(bbox)
   product <- attr(x, "product")
-  grab_urls(x$url, bbox = bbox, grab_fn = grab_icesat2, product = product, ...)
+  geo_cols <- icesat2_lat_lon(product)
+
+  grab_product_multi(
+    urls = x$url, product = product, bbox = bbox,
+    columns = columns, groups = tracks, token = token,
+    rust_multi_fn = rust_read_icesat2_multi,
+    lat_col = geo_cols$lat, lon_col = geo_cols$lon,
+    group_label = "track", element_label = "element"
+  )
 }
 
 #' @rdname sl_grab
@@ -226,19 +244,20 @@ grab_product <- function(url, product, bbox, columns, groups, token,
                          rust_fn, lat_col, lon_col,
                          group_label, element_label) {
   bbox <- validate_bbox(bbox)
-  token <- sl_earthdata_token(token)
+  b <- unclass(bbox)
+  creds <- sl_earthdata_creds(token)
 
   cli::cli_progress_step(
     "Reading {product} from {.url {basename(url)}}"
   )
 
   # Both rust_read_gedi and rust_read_icesat2 accept the group filter
-  # (beams / tracks) as the 8th positional argument.  We pass all args
-  # positionally because the parameter names differ between the two.
+  # (beams / tracks) as the 8th positional argument, followed by
+  # username and password for Earthdata OAuth.
   raw_result <- rust_fn(
     url, product,
-    bbox[["xmin"]], bbox[["ymin"]], bbox[["xmax"]], bbox[["ymax"]],
-    columns, groups, token
+    b[["xmin"]], b[["ymin"]], b[["xmax"]], b[["ymax"]],
+    columns, groups, creds$username, creds$password
   )
 
   if (length(raw_result) == 0L) {
@@ -264,6 +283,90 @@ grab_product <- function(url, product, bbox, columns, groups, token,
   ))
 
   result
+}
+
+# ---------------------------------------------------------------------------
+# Internal: multi-URL product reader (concurrent via Rust)
+# ---------------------------------------------------------------------------
+
+#' Read multiple granules concurrently via Rust.
+#'
+#' All URLs are passed to a single Rust function that processes them in
+#' parallel within one async runtime.  This gives much higher throughput
+#' than sequential per-file reads.
+#'
+#' @noRd
+grab_product_multi <- function(urls, product, bbox, columns, groups, token,
+                               rust_multi_fn, lat_col, lon_col,
+                               group_label, element_label) {
+  urls <- urls[!is.na(urls)]
+  if (length(urls) == 0L) {
+    cli::cli_inform("No URLs to read.")
+    return(vctrs::new_data_frame(list(), n = 0L))
+  }
+
+  bbox <- validate_bbox(bbox)
+  b <- unclass(bbox)
+  creds <- sl_earthdata_creds(token)
+
+  cli::cli_progress_step(
+    "Reading {product} from {length(urls)} granule{?s}"
+  )
+
+  raw_result <- rust_multi_fn(
+    urls, product,
+    b[["xmin"]], b[["ymin"]], b[["xmax"]], b[["ymax"]],
+    columns, groups, creds$username, creds$password
+  )
+
+  if (length(raw_result) == 0L) {
+    cli::cli_inform("No {element_label}s found within the bounding box.")
+    return(vctrs::new_data_frame(list(), n = 0L))
+  }
+
+  group_tbls <- purrr::map(raw_result, function(gd) {
+    tbl <- build_tibble(gd, lat_col = lat_col, lon_col = lon_col)
+    tbl[[group_label]] <- gd$group_name
+    names(tbl) <- sub(".*/", "", names(tbl))
+    tbl
+  })
+
+  result <- vctrs::vec_rbind(!!!group_tbls)
+
+  n <- nrow(result)
+  cli::cli_progress_done()
+  cli::cli_inform(c(
+    "v" = "Read {n} {element_label}{?s} from {length(group_tbls)} {group_label}{?s}."
+  ))
+
+  result
+}
+
+# ---------------------------------------------------------------------------
+# Internal: lat/lon column helpers (shared between grab_* and sl_grab)
+# ---------------------------------------------------------------------------
+
+#' @noRd
+gedi_lat_lon <- function(product) {
+  switch(product,
+    "L2A" = list(lat = "lat_lowestmode", lon = "lon_lowestmode"),
+    "L2B" = list(lat = "geolocation/lat_lowestmode",
+                 lon = "geolocation/lon_lowestmode"),
+    "L4A" = list(lat = "lat_lowestmode", lon = "lon_lowestmode"),
+    "L1B" = list(lat = "geolocation/latitude_bin0",
+                 lon = "geolocation/longitude_bin0")
+  )
+}
+
+#' @noRd
+icesat2_lat_lon <- function(product) {
+  switch(product,
+    ATL03 = list(lat = "heights/lat_ph", lon = "heights/lon_ph"),
+    ATL06 = list(lat = "land_ice_segments/latitude",
+                 lon = "land_ice_segments/longitude"),
+    ATL08 = list(lat = "land_segments/latitude",
+                 lon = "land_segments/longitude")
+  )
 }
 
 # ---------------------------------------------------------------------------
@@ -302,9 +405,14 @@ parse_column <- function(raw_bytes, info_json) {
     } else {
       if (elem_size == 1) {
         as.integer(raw_bytes)
-      } else if (elem_size <= 4) {
+      } else if (elem_size == 2) {
         readBin(raw_bytes, what = "integer", n = n,
                 size = elem_size, endian = "little", signed = FALSE)
+      } else if (elem_size <= 4) {
+        # R only supports signed = FALSE for sizes 1 and 2; for uint32
+        # read as signed (values > 2^31 - 1 are rare in practice).
+        readBin(raw_bytes, what = "integer", n = n,
+                size = elem_size, endian = "little")
       } else {
         readBin(raw_bytes, what = "double", n = n,
                 size = 8, endian = "little")
@@ -361,7 +469,7 @@ build_tibble <- function(group_data, lat_col, lon_col) {
     tbl[["geometry"]] <- wk::xy(
       x = tbl[[lon_col]],
       y = tbl[[lat_col]],
-      crs = wk::wk_crs_lonlat()
+      crs = wk::wk_crs_longlat()
     )
   }
 

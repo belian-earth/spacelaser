@@ -111,7 +111,7 @@ impl SatelliteProduct for IceSat2Product {
 /// Thin wrapper around [`common::read_product_groups`] that supplies
 /// ICESat-2-specific product metadata.
 pub async fn read_icesat2(
-    file: &mut Hdf5File,
+    file: &Hdf5File,
     product: IceSat2Product,
     bbox: BBox,
     columns: Option<Vec<String>>,

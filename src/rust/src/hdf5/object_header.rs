@@ -47,6 +47,10 @@ pub enum HeaderMessage {
 #[derive(Debug)]
 pub struct ObjectHeader {
     pub messages: Vec<HeaderMessage>,
+    /// Debug info: address where this header was read from.
+    pub debug_address: u64,
+    /// Debug info: first 32 bytes of the raw header data.
+    pub debug_prefix: Vec<u8>,
 }
 
 impl ObjectHeader {
@@ -95,71 +99,171 @@ impl ObjectHeader {
         let num_messages = u16::from_le_bytes([data[2], data[3]]) as usize;
         let _ref_count = u32::from_le_bytes([data[4], data[5], data[6], data[7]]);
         let header_size = u32::from_le_bytes([data[8], data[9], data[10], data[11]]) as usize;
+        let debug_prefix = data[..32.min(data.len())].to_vec();
+
+        log::debug!(
+            "read_v1 at 0x{:x}: version={}, num_messages={}, header_size={}, \
+             prefix={:02x?}",
+            address, version, num_messages, header_size, &debug_prefix[..16.min(debug_prefix.len())]
+        );
 
         let mut messages = Vec::new();
         let mut pos = 12; // after the fixed header
         let header_end = 12 + header_size;
 
-        // Parse messages from the current chunk, then follow continuations
-        let mut remaining_data = data;
-        let mut data_base_address = address;
-
         for _ in 0..num_messages.max(256) {
             // Align to 8-byte boundary
             pos = (pos + 7) & !7;
 
-            if pos + 8 > remaining_data.len() || pos >= header_end {
+            if pos + 8 > data.len() || pos >= header_end {
                 break;
             }
 
-            let msg_type = u16::from_le_bytes([remaining_data[pos], remaining_data[pos + 1]]);
+            let msg_type = u16::from_le_bytes([data[pos], data[pos + 1]]);
             let msg_size =
-                u16::from_le_bytes([remaining_data[pos + 2], remaining_data[pos + 3]]) as usize;
-            let _flags = remaining_data[pos + 4];
+                u16::from_le_bytes([data[pos + 2], data[pos + 3]]) as usize;
+            let _flags = data[pos + 4];
             pos += 8; // type(2) + size(2) + flags(1) + reserved(3)
+
+            log::debug!(
+                "  v1 msg at pos={}: type=0x{:04x}, size={}, header_end={}",
+                pos - 8, msg_type, msg_size, header_end
+            );
 
             if msg_size == 0 && msg_type == 0 {
                 // Null message (padding)
                 continue;
             }
 
-            if pos + msg_size > remaining_data.len() {
-                // Need more data
+            if pos + msg_size > data.len() {
+                // Need more data for this message
                 let extra = reader
-                    .read(data_base_address + pos as u64, msg_size)
+                    .read(address + pos as u64, msg_size)
                     .await?;
-                let msg = parse_message(msg_type, &extra, offset_size, length_size)?;
-                messages.push(msg);
-            } else {
-                let msg_data = &remaining_data[pos..pos + msg_size];
-                let msg = parse_message(msg_type, msg_data, offset_size, length_size)?;
 
-                // Handle continuation messages
-                if let HeaderMessage::Unknown { msg_type: t } = &msg {
-                    if *t == MSG_HEADER_CONTINUATION {
-                        let mut cpos = 0;
-                        let cont_offset = read_offset(msg_data, &mut cpos, offset_size);
-                        let cont_length = read_length(msg_data, &mut cpos, length_size);
+                if msg_type == MSG_HEADER_CONTINUATION {
+                    let mut cpos = 0;
+                    let cont_offset = read_offset(&extra, &mut cpos, offset_size);
+                    let cont_length = read_length(&extra, &mut cpos, length_size);
 
-                        if !is_undefined_address(cont_offset, offset_size) && cont_length > 0 {
-                            let cont_data =
-                                reader.read(cont_offset, cont_length as usize).await?;
-                            // Recursively parse continuation block messages
-                            remaining_data = cont_data;
-                            data_base_address = cont_offset;
-                            pos = 0;
-                            continue;
-                        }
+                    if !is_undefined_address(cont_offset, offset_size) && cont_length > 0 {
+                        let cont_msgs = Self::read_v1_continuation(
+                            reader, cont_offset, cont_length as usize,
+                            offset_size, length_size,
+                        ).await?;
+                        messages.extend(cont_msgs);
                     }
+                } else {
+                    let msg = parse_message(msg_type, &extra, offset_size, length_size)?;
+                    messages.push(msg);
                 }
+            } else {
+                let msg_data = &data[pos..pos + msg_size];
 
+                // Handle continuation messages: parse the block separately
+                // and continue with the current block afterwards.
+                if msg_type == MSG_HEADER_CONTINUATION {
+                    let mut cpos = 0;
+                    let cont_offset = read_offset(msg_data, &mut cpos, offset_size);
+                    let cont_length = read_length(msg_data, &mut cpos, length_size);
+
+                    if !is_undefined_address(cont_offset, offset_size) && cont_length > 0 {
+                        let cont_msgs = Self::read_v1_continuation(
+                            reader, cont_offset, cont_length as usize,
+                            offset_size, length_size,
+                        ).await?;
+                        messages.extend(cont_msgs);
+                    }
+                } else {
+                    let msg = parse_message(msg_type, msg_data, offset_size, length_size)?;
+                    messages.push(msg);
+                }
+            }
+
+            pos += msg_size;
+        }
+
+        log::debug!("  v1 done: parsed {} messages", messages.len());
+
+        Ok(ObjectHeader {
+            messages,
+            debug_address: address,
+            debug_prefix,
+        })
+    }
+
+    /// Read messages from a v1 continuation block.
+    ///
+    /// V1 continuation blocks have no signature — they're just raw messages
+    /// using the same 8-byte message header format as the main object header.
+    async fn read_v1_continuation(
+        reader: &Reader,
+        address: u64,
+        length: usize,
+        offset_size: u8,
+        length_size: u8,
+    ) -> Result<Vec<HeaderMessage>, Hdf5Error> {
+        let data = reader.read(address, length).await?;
+        let mut messages = Vec::new();
+        let mut pos = 0usize;
+
+        log::debug!("  v1 continuation at 0x{:x}, length={}", address, length);
+
+        while pos + 8 <= data.len() && pos < length {
+            // Align to 8-byte boundary
+            pos = (pos + 7) & !7;
+            if pos + 8 > data.len() || pos >= length {
+                break;
+            }
+
+            let msg_type =
+                u16::from_le_bytes([data[pos], data[pos + 1]]);
+            let msg_size =
+                u16::from_le_bytes([data[pos + 2], data[pos + 3]]) as usize;
+            let _flags = data[pos + 4];
+            pos += 8; // type(2) + size(2) + flags(1) + reserved(3)
+
+            log::debug!(
+                "    v1 cont msg at pos={}: type=0x{:04x}, size={}",
+                pos - 8, msg_type, msg_size
+            );
+
+            if msg_size == 0 && msg_type == 0 {
+                continue;
+            }
+
+            if pos + msg_size > data.len() {
+                break;
+            }
+
+            let msg_data = &data[pos..pos + msg_size];
+
+            // Recursively follow nested continuations
+            if msg_type == MSG_HEADER_CONTINUATION {
+                let mut cpos = 0;
+                let cont_offset = read_offset(msg_data, &mut cpos, offset_size);
+                let cont_length = read_length(msg_data, &mut cpos, length_size);
+
+                if !is_undefined_address(cont_offset, offset_size) && cont_length > 0 {
+                    let cont_msgs = Box::pin(Self::read_v1_continuation(
+                        reader,
+                        cont_offset,
+                        cont_length as usize,
+                        offset_size,
+                        length_size,
+                    ))
+                    .await?;
+                    messages.extend(cont_msgs);
+                }
+            } else {
+                let msg = parse_message(msg_type, msg_data, offset_size, length_size)?;
                 messages.push(msg);
             }
 
             pos += msg_size;
         }
 
-        Ok(ObjectHeader { messages })
+        Ok(messages)
     }
 
     /// Parse a version 2 object header.
@@ -168,8 +272,13 @@ impl ObjectHeader {
     ///   0-3: "OHDR" signature
     ///   4: version (2)
     ///   5: flags
-    ///   then (if flags & 0x04): access time, modification time, change time, birth time (4 bytes each)
-    ///   then (if flags & 0x02): max compact attrs(2), min dense attrs(2)
+    ///     bits 0-1: size of chunk#0 size field (0→1B, 1→2B, 2→4B, 3→8B)
+    ///     bit 2 (0x04): attribute creation order tracked
+    ///     bit 3 (0x08): attribute creation order indexed
+    ///     bit 4 (0x10): non-default attribute storage phase change values
+    ///     bit 5 (0x20): times (access, modification, change, birth) stored
+    ///   then (if flags & 0x20): 4 timestamps × 4 bytes = 16 bytes
+    ///   then (if flags & 0x10): max compact attrs(2), min dense attrs(2)
     ///   then: chunk#0 size (1/2/4/8 bytes depending on flags & 0x03)
     ///   then: messages
     async fn read_v2(
@@ -182,16 +291,22 @@ impl ObjectHeader {
 
         let _version = data[4]; // should be 2
         let flags = data[5];
+        let debug_prefix = data[..32.min(data.len())].to_vec();
+
+        log::debug!(
+            "read_v2 at 0x{:x}: version={}, flags=0x{:02x}, prefix={:02x?}",
+            address, _version, flags, &debug_prefix[..16.min(debug_prefix.len())]
+        );
 
         let mut pos = 6;
 
-        // Timestamps
-        if flags & 0x04 != 0 {
+        // Timestamps (bit 5 = 0x20: times stored)
+        if flags & 0x20 != 0 {
             pos += 16; // 4 timestamps x 4 bytes
         }
 
-        // Attribute storage phase change values
-        if flags & 0x02 != 0 {
+        // Attribute storage phase change values (bit 4 = 0x10)
+        if flags & 0x10 != 0 {
             pos += 4; // max_compact(2) + min_dense(2)
         }
 
@@ -225,7 +340,8 @@ impl ObjectHeader {
             let msg_flags = data[pos + 4];
             pos += 5;
 
-            // v2 has creation order if object header flags & 0x04
+            // Bit 2 (0x04): attribute creation order tracked → each message
+            // has a 2-byte creation order field after the flags byte.
             if flags & 0x04 != 0 {
                 pos += 2; // creation order (2 bytes)
             }
@@ -267,7 +383,13 @@ impl ObjectHeader {
             pos += msg_size;
         }
 
-        Ok(ObjectHeader { messages })
+        log::debug!("  v2 done: parsed {} messages", messages.len());
+
+        Ok(ObjectHeader {
+            messages,
+            debug_address: address,
+            debug_prefix,
+        })
     }
 
     /// Read messages from a v2 continuation block (OCHK).

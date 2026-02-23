@@ -25,25 +25,51 @@ use crate::products::icesat2::{self, IceSat2Product};
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// Simple stderr logger for debug diagnostics.
+struct SimpleLogger;
+impl log::Log for SimpleLogger {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        metadata.level() <= log::max_level()
+    }
+    fn log(&self, record: &log::Record) {
+        if self.enabled(record.metadata()) {
+            eprintln!("[spacelaser:{}] {}", record.level(), record.args());
+        }
+    }
+    fn flush(&self) {}
+}
+static LOGGER: SimpleLogger = SimpleLogger;
+
+/// Initialize logging (once).
+fn init_logging() {
+    // Only enable debug logging when SPACELASER_DEBUG is set
+    let level = if std::env::var("SPACELASER_DEBUG").is_ok() {
+        log::LevelFilter::Debug
+    } else {
+        log::LevelFilter::Warn
+    };
+    let _ = log::set_logger(&LOGGER).map(|()| log::set_max_level(level));
+}
+
 /// Create a tokio runtime for blocking on async operations.
 ///
 /// We use a single-threaded runtime because R is single-threaded.
 /// All async concurrency happens within this runtime via `block_on`.
 fn runtime() -> tokio::runtime::Runtime {
+    init_logging();
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("Failed to create tokio runtime")
 }
 
-/// Build a `DataSource` from URL and optional bearer token.
-///
-/// Extracts the repeated pattern that was previously inlined in every
-/// exported function.
-fn make_source(url: &str, bearer_token: Nullable<&str>) -> DataSource {
-    match bearer_token {
-        Nullable::NotNull(token) => DataSource::http_with_token(url, token),
-        Nullable::Null => DataSource::http(url),
+/// Build a `DataSource` from URL and optional Earthdata credentials.
+fn make_source(url: &str, username: Nullable<&str>, password: Nullable<&str>) -> DataSource {
+    match (username, password) {
+        (Nullable::NotNull(u), Nullable::NotNull(p)) => {
+            DataSource::http_with_auth(url, u, p)
+        }
+        _ => DataSource::http(url),
     }
 }
 
@@ -118,10 +144,11 @@ fn rust_read_gedi(
     ymax: f64,
     columns: Nullable<Vec<String>>,
     beams: Nullable<Vec<String>>,
-    bearer_token: Nullable<&str>,
+    username: Nullable<&str>,
+    password: Nullable<&str>,
 ) -> extendr_api::Result<List> {
     let rt = runtime();
-    let source = make_source(url, bearer_token);
+    let source = make_source(url, username, password);
 
     let product_type = match product {
         "L1B" | "l1b" => GediProduct::L1B,
@@ -136,8 +163,8 @@ fn rust_read_gedi(
     let bms = match beams { Nullable::NotNull(b) => Some(b), Nullable::Null => None };
 
     let result = rt.block_on(async {
-        let mut file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
-        gedi::read_gedi(&mut file, product_type, bbox, cols, bms)
+        let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
+        gedi::read_gedi(&file, product_type, bbox, cols, bms)
             .await
             .map_err(|e| e.to_string())
     });
@@ -163,10 +190,11 @@ fn rust_read_icesat2(
     ymax: f64,
     columns: Nullable<Vec<String>>,
     tracks: Nullable<Vec<String>>,
-    bearer_token: Nullable<&str>,
+    username: Nullable<&str>,
+    password: Nullable<&str>,
 ) -> extendr_api::Result<List> {
     let rt = runtime();
-    let source = make_source(url, bearer_token);
+    let source = make_source(url, username, password);
 
     let product_type = match product {
         "ATL03" | "atl03" => IceSat2Product::ATL03,
@@ -180,8 +208,8 @@ fn rust_read_icesat2(
     let trks = match tracks { Nullable::NotNull(t) => Some(t), Nullable::Null => None };
 
     let result = rt.block_on(async {
-        let mut file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
-        icesat2::read_icesat2(&mut file, product_type, bbox, cols, trks)
+        let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
+        icesat2::read_icesat2(&file, product_type, bbox, cols, trks)
             .await
             .map_err(|e| e.to_string())
     });
@@ -198,12 +226,17 @@ fn rust_read_icesat2(
 /// List available groups in an HDF5 file (for exploration).
 /// @export
 #[extendr]
-fn rust_hdf5_groups(url: &str, path: &str, bearer_token: Nullable<&str>) -> extendr_api::Result<Vec<String>> {
+fn rust_hdf5_groups(
+    url: &str,
+    path: &str,
+    username: Nullable<&str>,
+    password: Nullable<&str>,
+) -> extendr_api::Result<Vec<String>> {
     let rt = runtime();
-    let source = make_source(url, bearer_token);
+    let source = make_source(url, username, password);
 
     let result = rt.block_on(async {
-        let mut file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
+        let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
         file.list_group(path).await.map_err(|e| e.to_string())
     });
 
@@ -219,13 +252,14 @@ fn rust_hdf5_groups(url: &str, path: &str, bearer_token: Nullable<&str>) -> exte
 fn rust_hdf5_dataset(
     url: &str,
     dataset_path: &str,
-    bearer_token: Nullable<&str>,
+    username: Nullable<&str>,
+    password: Nullable<&str>,
 ) -> extendr_api::Result<List> {
     let rt = runtime();
-    let source = make_source(url, bearer_token);
+    let source = make_source(url, username, password);
 
     let result = rt.block_on(async {
-        let mut file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
+        let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
         file.read_dataset(dataset_path)
             .await
             .map_err(|e| e.to_string())
@@ -247,6 +281,140 @@ fn rust_hdf5_dataset(
     }
 }
 
+/// Read GEDI data from multiple remote HDF5 files concurrently.
+///
+/// All files are processed in parallel within a single async runtime.
+/// Returns a list of per-file results (each is a list of beam data).
+/// @export
+#[extendr]
+fn rust_read_gedi_multi(
+    urls: Vec<String>,
+    product: &str,
+    xmin: f64,
+    ymin: f64,
+    xmax: f64,
+    ymax: f64,
+    columns: Nullable<Vec<String>>,
+    beams: Nullable<Vec<String>>,
+    username: Nullable<&str>,
+    password: Nullable<&str>,
+) -> extendr_api::Result<List> {
+    let rt = runtime();
+
+    let product_type = match product {
+        "L1B" | "l1b" => GediProduct::L1B,
+        "L2A" | "l2a" => GediProduct::L2A,
+        "L2B" | "l2b" => GediProduct::L2B,
+        "L4A" | "l4a" => GediProduct::L4A,
+        _ => return Err(extendr_api::Error::Other(format!("Unknown GEDI product: {product}"))),
+    };
+
+    let bbox = crate::BBox::new(xmin, ymin, xmax, ymax);
+    let cols = match columns { Nullable::NotNull(c) => Some(c), Nullable::Null => None };
+    let bms = match beams { Nullable::NotNull(b) => Some(b), Nullable::Null => None };
+
+    // Extract auth strings so they can be shared across closures.
+    let user = match username { Nullable::NotNull(u) => Some(u.to_string()), Nullable::Null => None };
+    let pass = match password { Nullable::NotNull(p) => Some(p.to_string()), Nullable::Null => None };
+
+    let results = rt.block_on(async {
+        let futs: Vec<_> = urls.iter().map(|url| {
+            let source = match (&user, &pass) {
+                (Some(u), Some(p)) => DataSource::http_with_auth(url, u, p),
+                _ => DataSource::http(url),
+            };
+            let cols = cols.clone();
+            let bms = bms.clone();
+            async move {
+                let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
+                gedi::read_gedi(&file, product_type, bbox, cols, bms)
+                    .await
+                    .map_err(|e| e.to_string())
+            }
+        }).collect();
+
+        futures::future::join_all(futs).await
+    });
+
+    // Flatten: each file's result is a Vec<GroupData>
+    let mut all_groups = Vec::new();
+    for result in results {
+        match result {
+            Ok(groups) => all_groups.extend(groups),
+            Err(e) => {
+                log::warn!("File read failed: {}", e);
+            }
+        }
+    }
+
+    let lists: Vec<List> = all_groups.into_iter().map(group_data_to_list).collect();
+    Ok(List::from_values(lists))
+}
+
+/// Read ICESat-2 data from multiple remote HDF5 files concurrently.
+/// @export
+#[extendr]
+fn rust_read_icesat2_multi(
+    urls: Vec<String>,
+    product: &str,
+    xmin: f64,
+    ymin: f64,
+    xmax: f64,
+    ymax: f64,
+    columns: Nullable<Vec<String>>,
+    tracks: Nullable<Vec<String>>,
+    username: Nullable<&str>,
+    password: Nullable<&str>,
+) -> extendr_api::Result<List> {
+    let rt = runtime();
+
+    let product_type = match product {
+        "ATL03" | "atl03" => IceSat2Product::ATL03,
+        "ATL06" | "atl06" => IceSat2Product::ATL06,
+        "ATL08" | "atl08" => IceSat2Product::ATL08,
+        _ => return Err(extendr_api::Error::Other(format!("Unknown ICESat-2 product: {product}"))),
+    };
+
+    let bbox = crate::BBox::new(xmin, ymin, xmax, ymax);
+    let cols = match columns { Nullable::NotNull(c) => Some(c), Nullable::Null => None };
+    let trks = match tracks { Nullable::NotNull(t) => Some(t), Nullable::Null => None };
+
+    let user = match username { Nullable::NotNull(u) => Some(u.to_string()), Nullable::Null => None };
+    let pass = match password { Nullable::NotNull(p) => Some(p.to_string()), Nullable::Null => None };
+
+    let results = rt.block_on(async {
+        let futs: Vec<_> = urls.iter().map(|url| {
+            let source = match (&user, &pass) {
+                (Some(u), Some(p)) => DataSource::http_with_auth(url, u, p),
+                _ => DataSource::http(url),
+            };
+            let cols = cols.clone();
+            let trks = trks.clone();
+            async move {
+                let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
+                icesat2::read_icesat2(&file, product_type, bbox, cols, trks)
+                    .await
+                    .map_err(|e| e.to_string())
+            }
+        }).collect();
+
+        futures::future::join_all(futs).await
+    });
+
+    let mut all_groups = Vec::new();
+    for result in results {
+        match result {
+            Ok(groups) => all_groups.extend(groups),
+            Err(e) => {
+                log::warn!("File read failed: {}", e);
+            }
+        }
+    }
+
+    let lists: Vec<List> = all_groups.into_iter().map(group_data_to_list).collect();
+    Ok(List::from_values(lists))
+}
+
 /// Exchange Earthdata username/password for a bearer token.
 ///
 /// Calls the NASA Earthdata Login token API. Returns the access token string.
@@ -265,6 +433,8 @@ extendr_module! {
     mod spacelaser;
     fn rust_read_gedi;
     fn rust_read_icesat2;
+    fn rust_read_gedi_multi;
+    fn rust_read_icesat2_multi;
     fn rust_hdf5_groups;
     fn rust_hdf5_dataset;
     fn rust_earthdata_token;

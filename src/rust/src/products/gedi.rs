@@ -367,7 +367,7 @@ impl SatelliteProduct for GediProduct {
 /// Thin wrapper around [`common::read_product_groups`] that supplies
 /// GEDI-specific product metadata.
 pub async fn read_gedi(
-    file: &mut Hdf5File,
+    file: &Hdf5File,
     product: GediProduct,
     bbox: BBox,
     columns: Option<Vec<String>>,

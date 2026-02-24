@@ -4,14 +4,12 @@
 \alias{sl_hdf5_groups}
 \title{List groups in a remote HDF5 file}
 \usage{
-sl_hdf5_groups(url, path = "/", token = NULL)
+sl_hdf5_groups(url, path = "/")
 }
 \arguments{
 \item{url}{Character. URL of the HDF5 file.}
 
 \item{path}{Character. HDF5 group path to list (default: \code{"/"}).}
-
-\item{token}{Bearer token for NASA Earthdata authentication.}
 }
 \value{
 A character vector of group/dataset names.

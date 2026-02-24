@@ -9,12 +9,14 @@
 #'   or `"L1B"`.
 #' @param bbox An `sl_bbox` object created by [sl_bbox()], or a numeric vector
 #'   `c(xmin, ymin, xmax, ymax)`.
-#' @param columns Character vector of dataset names to read. If `NULL` (the
-#'   default), reads the standard columns for the specified product.
+#' @param columns Character vector of column names to read, using short names
+#'   (e.g., `"quality_flag"`, `"rh"`, `"landsat_treecover"`). Use
+#'   [gedi_columns()] to list available columns for each product. Latitude and
+#'   longitude columns are always included automatically. If `NULL` (the
+#'   default), reads all default columns for the specified product. Full HDF5
+#'   paths (containing `/`) are passed through without validation.
 #' @param beams Character vector of beam names to read (e.g., `"BEAM0101"`).
 #'   If `NULL`, reads all 8 beams.
-#' @param token Bearer token for NASA Earthdata authentication. If `NULL`,
-#'   uses [sl_earthdata_token()] to find credentials.
 #'
 #' @returns A data frame (tibble-like) with one row per footprint. Columns
 #'   include the requested datasets plus a `beam` identifier and a `geometry`
@@ -38,8 +40,7 @@ grab_gedi <- function(url,
                       product = c("L2A", "L2B", "L4A", "L1B"),
                       bbox,
                       columns = NULL,
-                      beams = NULL,
-                      token = NULL) {
+                      beams = NULL) {
   rlang::check_required(url)
   rlang::check_required(bbox)
   product <- rlang::arg_match(product)
@@ -52,7 +53,6 @@ grab_gedi <- function(url,
     bbox = bbox,
     columns = columns,
     groups = beams,
-    token = token,
     rust_fn = rust_read_gedi,
     lat_col = lat_lon$lat,
     lon_col = lat_lon$lon,

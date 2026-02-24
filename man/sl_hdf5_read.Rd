@@ -4,15 +4,13 @@
 \alias{sl_hdf5_read}
 \title{Read a single dataset from a remote HDF5 file}
 \usage{
-sl_hdf5_read(url, dataset, token = NULL)
+sl_hdf5_read(url, dataset)
 }
 \arguments{
 \item{url}{Character. URL of the HDF5 file.}
 
 \item{dataset}{Character. Full HDF5 path to the dataset (e.g.,
 \code{"/BEAM0101/lat_lowestmode"}).}
-
-\item{token}{Bearer token for NASA Earthdata authentication.}
 }
 \value{
 An R vector (numeric, integer, or raw depending on the datatype).

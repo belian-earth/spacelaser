@@ -29,35 +29,55 @@ sl_grab <- function(x, bbox, ...) {
 
 #' @rdname sl_grab
 #' @export
-sl_grab.sl_gedi_search <- function(x, bbox, columns = NULL, beams = NULL,
-                                   token = NULL, ...) {
+sl_grab.sl_gedi_search <- function(
+  x,
+  bbox,
+  columns = NULL,
+  beams = NULL,
+  ...
+) {
   rlang::check_required(bbox)
   product <- attr(x, "product")
   lat_lon <- gedi_lat_lon(product)
 
   grab_product_multi(
-    urls = x$url, product = product, bbox = bbox,
-    columns = columns, groups = beams, token = token,
+    urls = x$url,
+    product = product,
+    bbox = bbox,
+    columns = columns,
+    groups = beams,
     rust_multi_fn = rust_read_gedi_multi,
-    lat_col = lat_lon$lat, lon_col = lat_lon$lon,
-    group_label = "beam", element_label = "footprint"
+    lat_col = lat_lon$lat,
+    lon_col = lat_lon$lon,
+    group_label = "beam",
+    element_label = "footprint"
   )
 }
 
 #' @rdname sl_grab
 #' @export
-sl_grab.sl_icesat2_search <- function(x, bbox, columns = NULL, tracks = NULL,
-                                      token = NULL, ...) {
+sl_grab.sl_icesat2_search <- function(
+  x,
+  bbox,
+  columns = NULL,
+  tracks = NULL,
+  ...
+) {
   rlang::check_required(bbox)
   product <- attr(x, "product")
   geo_cols <- icesat2_lat_lon(product)
 
   grab_product_multi(
-    urls = x$url, product = product, bbox = bbox,
-    columns = columns, groups = tracks, token = token,
+    urls = x$url,
+    product = product,
+    bbox = bbox,
+    columns = columns,
+    groups = tracks,
     rust_multi_fn = rust_read_icesat2_multi,
-    lat_col = geo_cols$lat, lon_col = geo_cols$lon,
-    group_label = "track", element_label = "element"
+    lat_col = geo_cols$lat,
+    lon_col = geo_cols$lon,
+    group_label = "track",
+    element_label = "element"
   )
 }
 
@@ -125,25 +145,36 @@ detect_sensor <- function(url, product = NULL) {
   if (grepl("^GEDI", bn, ignore.case = TRUE)) {
     grab_fn <- grab_gedi
     if (is.null(product)) {
-      product <- if (grepl("GEDI01_B", bn)) "L1B"
-        else if (grepl("GEDI02_A", bn)) "L2A"
-        else if (grepl("GEDI02_B", bn)) "L2B"
-        else if (grepl("GEDI_L4A|GEDI04_A", bn)) "L4A"
-        else rlang::abort(c(
+      product <- if (grepl("GEDI01_B", bn)) {
+        "L1B"
+      } else if (grepl("GEDI02_A", bn)) {
+        "L2A"
+      } else if (grepl("GEDI02_B", bn)) {
+        "L2B"
+      } else if (grepl("GEDI_L4A|GEDI04_A", bn)) {
+        "L4A"
+      } else {
+        rlang::abort(c(
           "Cannot detect GEDI product from filename.",
           "i" = "Pass {.arg product} explicitly."
         ))
+      }
     }
   } else if (grepl("^ATL", bn, ignore.case = TRUE)) {
     grab_fn <- grab_icesat2
     if (is.null(product)) {
-      product <- if (grepl("ATL03", bn)) "ATL03"
-        else if (grepl("ATL06", bn)) "ATL06"
-        else if (grepl("ATL08", bn)) "ATL08"
-        else rlang::abort(c(
+      product <- if (grepl("ATL03", bn)) {
+        "ATL03"
+      } else if (grepl("ATL06", bn)) {
+        "ATL06"
+      } else if (grepl("ATL08", bn)) {
+        "ATL08"
+      } else {
+        rlang::abort(c(
           "Cannot detect ICESat-2 product from filename.",
           "i" = "Pass {.arg product} explicitly."
         ))
+      }
     }
   } else {
     if (is.null(product)) {
@@ -204,8 +235,13 @@ sl_bbox <- function(xmin, ymin, xmax, ymax) {
 
 #' @export
 format.sl_bbox <- function(x, ...) {
-  sprintf("(%.4f, %.4f) - (%.4f, %.4f)",
-    x[["xmin"]], x[["ymin"]], x[["xmax"]], x[["ymax"]])
+  sprintf(
+    "(%.4f, %.4f) - (%.4f, %.4f)",
+    x[["xmin"]],
+    x[["ymin"]],
+    x[["xmax"]],
+    x[["ymax"]]
+  )
 }
 
 #' @export
@@ -221,15 +257,12 @@ print.sl_bbox <- function(x, ...) {
 #' Common implementation behind grab_gedi() and grab_icesat2().
 #'
 #' Both functions follow the same workflow:
-#'   1. Validate bbox, obtain auth token
+#'   1. Validate bbox, resolve credentials
 #'   2. Call the appropriate Rust reader
 #'   3. Convert each group's raw byte columns into an R data frame
 #'   4. Attach geometry and group label, combine rows
 #'
-#' Extracting this logic here eliminates ~50 lines of duplication and
-#' ensures both APIs evolve consistently.
-#'
-#' @param url,product,bbox,columns,token  Forwarded from the public wrapper.
+#' @param url,product,bbox,columns  Forwarded from the public wrapper.
 #' @param groups  Beam names (GEDI) or track names (ICESat-2), or `NULL`.
 #' @param rust_fn  The Rust FFI function to call (`rust_read_gedi` or
 #'   `rust_read_icesat2`).
@@ -240,12 +273,23 @@ print.sl_bbox <- function(x, ...) {
 #' @param element_label  Human-readable name for a row, used in the log
 #'   message (`"footprint"` or `"element"`).
 #' @noRd
-grab_product <- function(url, product, bbox, columns, groups, token,
-                         rust_fn, lat_col, lon_col,
-                         group_label, element_label) {
+grab_product <- function(
+  url,
+  product,
+  bbox,
+  columns,
+  groups,
+  rust_fn,
+  lat_col,
+  lon_col,
+  group_label,
+  element_label
+) {
   bbox <- validate_bbox(bbox)
+  columns <- validate_columns(columns, product)
+  columns <- ensure_lat_lon(columns, lat_col, lon_col)
   b <- unclass(bbox)
-  creds <- sl_earthdata_creds(token)
+  creds <- sl_earthdata_creds()
 
   cli::cli_progress_step(
     "Reading {product} from {.url {basename(url)}}"
@@ -255,9 +299,16 @@ grab_product <- function(url, product, bbox, columns, groups, token,
   # (beams / tracks) as the 8th positional argument, followed by
   # username and password for Earthdata OAuth.
   raw_result <- rust_fn(
-    url, product,
-    b[["xmin"]], b[["ymin"]], b[["xmax"]], b[["ymax"]],
-    columns, groups, creds$username, creds$password
+    url,
+    product,
+    b[["xmin"]],
+    b[["ymin"]],
+    b[["xmax"]],
+    b[["ymax"]],
+    columns,
+    groups,
+    creds$username,
+    creds$password
   )
 
   if (length(raw_result) == 0L) {
@@ -296,9 +347,18 @@ grab_product <- function(url, product, bbox, columns, groups, token,
 #' than sequential per-file reads.
 #'
 #' @noRd
-grab_product_multi <- function(urls, product, bbox, columns, groups, token,
-                               rust_multi_fn, lat_col, lon_col,
-                               group_label, element_label) {
+grab_product_multi <- function(
+  urls,
+  product,
+  bbox,
+  columns,
+  groups,
+  rust_multi_fn,
+  lat_col,
+  lon_col,
+  group_label,
+  element_label
+) {
   urls <- urls[!is.na(urls)]
   if (length(urls) == 0L) {
     cli::cli_inform("No URLs to read.")
@@ -306,17 +366,26 @@ grab_product_multi <- function(urls, product, bbox, columns, groups, token,
   }
 
   bbox <- validate_bbox(bbox)
+  columns <- validate_columns(columns, product)
+  columns <- ensure_lat_lon(columns, lat_col, lon_col)
   b <- unclass(bbox)
-  creds <- sl_earthdata_creds(token)
+  creds <- sl_earthdata_creds()
 
   cli::cli_progress_step(
     "Reading {product} from {length(urls)} granule{?s}"
   )
 
   raw_result <- rust_multi_fn(
-    urls, product,
-    b[["xmin"]], b[["ymin"]], b[["xmax"]], b[["ymax"]],
-    columns, groups, creds$username, creds$password
+    urls,
+    product,
+    b[["xmin"]],
+    b[["ymin"]],
+    b[["xmax"]],
+    b[["ymax"]],
+    columns,
+    groups,
+    creds$username,
+    creds$password
   )
 
   if (length(raw_result) == 0L) {
@@ -348,24 +417,34 @@ grab_product_multi <- function(urls, product, bbox, columns, groups, token,
 
 #' @noRd
 gedi_lat_lon <- function(product) {
-  switch(product,
+  switch(
+    product,
     "L2A" = list(lat = "lat_lowestmode", lon = "lon_lowestmode"),
-    "L2B" = list(lat = "geolocation/lat_lowestmode",
-                 lon = "geolocation/lon_lowestmode"),
+    "L2B" = list(
+      lat = "geolocation/lat_lowestmode",
+      lon = "geolocation/lon_lowestmode"
+    ),
     "L4A" = list(lat = "lat_lowestmode", lon = "lon_lowestmode"),
-    "L1B" = list(lat = "geolocation/latitude_bin0",
-                 lon = "geolocation/longitude_bin0")
+    "L1B" = list(
+      lat = "geolocation/latitude_bin0",
+      lon = "geolocation/longitude_bin0"
+    )
   )
 }
 
 #' @noRd
 icesat2_lat_lon <- function(product) {
-  switch(product,
+  switch(
+    product,
     ATL03 = list(lat = "heights/lat_ph", lon = "heights/lon_ph"),
-    ATL06 = list(lat = "land_ice_segments/latitude",
-                 lon = "land_ice_segments/longitude"),
-    ATL08 = list(lat = "land_segments/latitude",
-                 lon = "land_segments/longitude")
+    ATL06 = list(
+      lat = "land_ice_segments/latitude",
+      lon = "land_ice_segments/longitude"
+    ),
+    ATL08 = list(
+      lat = "land_segments/latitude",
+      lon = "land_segments/longitude"
+    )
   )
 }
 
@@ -390,32 +469,51 @@ parse_column <- function(raw_bytes, info_json) {
   elem_size <- info$element_size
 
   if (grepl("FloatingPoint", dtype, fixed = TRUE)) {
-    readBin(raw_bytes, what = "double", n = n,
-            size = elem_size, endian = "little")
+    readBin(
+      raw_bytes,
+      what = "double",
+      n = n,
+      size = elem_size,
+      endian = "little"
+    )
   } else if (grepl("FixedPoint", dtype, fixed = TRUE)) {
     signed <- grepl("signed: true", dtype, fixed = TRUE)
     if (signed) {
       if (elem_size <= 4) {
-        readBin(raw_bytes, what = "integer", n = n,
-                size = elem_size, endian = "little")
+        readBin(
+          raw_bytes,
+          what = "integer",
+          n = n,
+          size = elem_size,
+          endian = "little"
+        )
       } else {
-        readBin(raw_bytes, what = "double", n = n,
-                size = 8, endian = "little")
+        readBin(raw_bytes, what = "double", n = n, size = 8, endian = "little")
       }
     } else {
       if (elem_size == 1) {
         as.integer(raw_bytes)
       } else if (elem_size == 2) {
-        readBin(raw_bytes, what = "integer", n = n,
-                size = elem_size, endian = "little", signed = FALSE)
+        readBin(
+          raw_bytes,
+          what = "integer",
+          n = n,
+          size = elem_size,
+          endian = "little",
+          signed = FALSE
+        )
       } else if (elem_size <= 4) {
         # R only supports signed = FALSE for sizes 1 and 2; for uint32
         # read as signed (values > 2^31 - 1 are rare in practice).
-        readBin(raw_bytes, what = "integer", n = n,
-                size = elem_size, endian = "little")
+        readBin(
+          raw_bytes,
+          what = "integer",
+          n = n,
+          size = elem_size,
+          endian = "little"
+        )
       } else {
-        readBin(raw_bytes, what = "double", n = n,
-                size = 8, endian = "little")
+        readBin(raw_bytes, what = "double", n = n, size = 8, endian = "little")
       }
     }
   } else {
@@ -431,8 +529,10 @@ parse_column <- function(raw_bytes, info_json) {
 #' @noRd
 parse_column_info <- function(json_str) {
   extract_int <- function(key) {
-    m <- regmatches(json_str,
-      regexpr(paste0('"', key, '":\\s*(\\d+)'), json_str))
+    m <- regmatches(
+      json_str,
+      regexpr(paste0('"', key, '":\\s*(\\d+)'), json_str)
+    )
     as.integer(sub(paste0('"', key, '":\\s*'), "", m))
   }
   m <- regmatches(json_str, regexpr('"dtype":"([^"]*)"', json_str))

@@ -9,8 +9,7 @@ grab_gedi(
   product = c("L2A", "L2B", "L4A", "L1B"),
   bbox,
   columns = NULL,
-  beams = NULL,
-  token = NULL
+  beams = NULL
 )
 }
 \arguments{
@@ -22,14 +21,15 @@ or \code{"L1B"}.}
 \item{bbox}{An \code{sl_bbox} object created by \code{\link[=sl_bbox]{sl_bbox()}}, or a numeric vector
 \code{c(xmin, ymin, xmax, ymax)}.}
 
-\item{columns}{Character vector of dataset names to read. If \code{NULL} (the
-default), reads the standard columns for the specified product.}
+\item{columns}{Character vector of column names to read, using short names
+(e.g., \code{"quality_flag"}, \code{"rh"}, \code{"landsat_treecover"}). Use
+\code{\link[=gedi_columns]{gedi_columns()}} to list available columns for each product. Latitude and
+longitude columns are always included automatically. If \code{NULL} (the
+default), reads all default columns for the specified product. Full HDF5
+paths (containing \code{/}) are passed through without validation.}
 
 \item{beams}{Character vector of beam names to read (e.g., \code{"BEAM0101"}).
 If \code{NULL}, reads all 8 beams.}
-
-\item{token}{Bearer token for NASA Earthdata authentication. If \code{NULL},
-uses \code{\link[=sl_earthdata_token]{sl_earthdata_token()}} to find credentials.}
 }
 \value{
 A data frame (tibble-like) with one row per footprint. Columns

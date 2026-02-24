@@ -9,8 +9,7 @@ grab_icesat2(
   product = c("ATL08", "ATL03", "ATL06"),
   bbox,
   columns = NULL,
-  tracks = NULL,
-  token = NULL
+  tracks = NULL
 )
 }
 \arguments{
@@ -22,14 +21,15 @@ grab_icesat2(
 \item{bbox}{An \code{sl_bbox} object created by \code{\link[=sl_bbox]{sl_bbox()}}, or a numeric vector
 \code{c(xmin, ymin, xmax, ymax)}.}
 
-\item{columns}{Character vector of dataset paths to read (relative to the
-ground track group, e.g., \code{"land_segments/canopy/h_canopy"}). If \code{NULL},
-reads the standard columns for the specified product.}
+\item{columns}{Character vector of column names to read, using short names
+(e.g., \code{"h_canopy"}, \code{"h_te_best_fit"}, \code{"night_flag"}). Use
+\code{\link[=icesat2_columns]{icesat2_columns()}} to list available columns for each product. Latitude
+and longitude columns are always included automatically. If \code{NULL} (the
+default), reads all default columns for the specified product. Full HDF5
+paths (containing \code{/}) are passed through without validation.}
 
 \item{tracks}{Character vector of ground track names (e.g., \code{"gt1l"}). If
 \code{NULL}, reads all 6 tracks.}
-
-\item{token}{Bearer token for NASA Earthdata authentication.}
 }
 \value{
 A data frame with one row per element (segment, photon, etc.).

@@ -5,12 +5,11 @@
 #'
 #' @param url Character. URL of the HDF5 file.
 #' @param path Character. HDF5 group path to list (default: `"/"`).
-#' @param token Bearer token for NASA Earthdata authentication.
 #' @returns A character vector of group/dataset names.
 #' @export
-sl_hdf5_groups <- function(url, path = "/", token = NULL) {
+sl_hdf5_groups <- function(url, path = "/") {
   rlang::check_required(url)
-  creds <- sl_earthdata_creds(token)
+  creds <- sl_earthdata_creds()
   rust_hdf5_groups(url = url, path = path,
                    username = creds$username, password = creds$password)
 }
@@ -23,13 +22,12 @@ sl_hdf5_groups <- function(url, path = "/", token = NULL) {
 #' @param url Character. URL of the HDF5 file.
 #' @param dataset Character. Full HDF5 path to the dataset (e.g.,
 #'   `"/BEAM0101/lat_lowestmode"`).
-#' @param token Bearer token for NASA Earthdata authentication.
 #' @returns An R vector (numeric, integer, or raw depending on the datatype).
 #' @export
-sl_hdf5_read <- function(url, dataset, token = NULL) {
+sl_hdf5_read <- function(url, dataset) {
   rlang::check_required(url)
   rlang::check_required(dataset)
-  creds <- sl_earthdata_creds(token)
+  creds <- sl_earthdata_creds()
 
   result <- rust_hdf5_dataset(
     url = url,

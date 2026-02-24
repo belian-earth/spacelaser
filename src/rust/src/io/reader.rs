@@ -98,8 +98,8 @@ impl Reader {
     pub fn new(source: DataSource, config: ReaderConfig) -> Self {
         let cache = BlockCache::new(config.block_size, config.max_cache_blocks);
         let client = reqwest::Client::builder()
-            .connect_timeout(Duration::from_secs(5))
-            .timeout(Duration::from_secs(30))
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(60))
             .http1_only()
             .no_gzip()
             .no_brotli()
@@ -429,7 +429,17 @@ impl Reader {
                 });
             }
 
-            return Ok(response.bytes().await?);
+            // Body download can also fail (connection reset, timeout).
+            // Retry these as well.
+            match response.bytes().await {
+                Ok(bytes) => return Ok(bytes),
+                Err(e) if attempt < MAX_RETRIES => {
+                    log::debug!("Body read failed (attempt {}): {}", attempt + 1, e);
+                    last_error = Some(IoError::Http(e));
+                    continue;
+                }
+                Err(e) => return Err(IoError::Http(e)),
+            }
         }
 
         Err(last_error.unwrap_or(IoError::HttpStatus {

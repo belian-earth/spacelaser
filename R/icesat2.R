@@ -8,12 +8,14 @@
 #'   `"ATL06"`.
 #' @param bbox An `sl_bbox` object created by [sl_bbox()], or a numeric vector
 #'   `c(xmin, ymin, xmax, ymax)`.
-#' @param columns Character vector of dataset paths to read (relative to the
-#'   ground track group, e.g., `"land_segments/canopy/h_canopy"`). If `NULL`,
-#'   reads the standard columns for the specified product.
+#' @param columns Character vector of column names to read, using short names
+#'   (e.g., `"h_canopy"`, `"h_te_best_fit"`, `"night_flag"`). Use
+#'   [icesat2_columns()] to list available columns for each product. Latitude
+#'   and longitude columns are always included automatically. If `NULL` (the
+#'   default), reads all default columns for the specified product. Full HDF5
+#'   paths (containing `/`) are passed through without validation.
 #' @param tracks Character vector of ground track names (e.g., `"gt1l"`). If
 #'   `NULL`, reads all 6 tracks.
-#' @param token Bearer token for NASA Earthdata authentication.
 #'
 #' @returns A data frame with one row per element (segment, photon, etc.).
 #'   Columns include the requested datasets plus a `track` identifier and a
@@ -34,8 +36,7 @@ grab_icesat2 <- function(url,
                          product = c("ATL08", "ATL03", "ATL06"),
                          bbox,
                          columns = NULL,
-                         tracks = NULL,
-                         token = NULL) {
+                         tracks = NULL) {
   rlang::check_required(url)
   rlang::check_required(bbox)
   product <- rlang::arg_match(product)
@@ -48,7 +49,6 @@ grab_icesat2 <- function(url,
     bbox = bbox,
     columns = columns,
     groups = tracks,
-    token = token,
     rust_fn = rust_read_icesat2,
     lat_col = geo_cols$lat,
     lon_col = geo_cols$lon,

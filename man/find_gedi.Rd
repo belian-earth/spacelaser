@@ -39,12 +39,12 @@ overlap a bounding box and optional date range. Returns granule URLs that
 can be passed directly to \code{\link[=grab_gedi]{grab_gedi()}}.
 }
 \details{
-No authentication is needed for the search itself; a token is only
-required when reading data via \code{\link[=grab_gedi]{grab_gedi()}}.
+No authentication is needed for the search itself; Earthdata credentials
+are only required when reading data via \code{\link[=grab_gedi]{grab_gedi()}}.
 
 The CMR search filters by bounding box on the server side. For finer
 spatial filtering (e.g. against an irregular polygon), filter the returned
-\code{geometry} column with \code{\link[wk:wk_intersects]{wk::wk_intersects()}} or similar.
+\code{geometry} column with your favourite spatial package.
 }
 \seealso{
 \code{\link[=grab_gedi]{grab_gedi()}} to read data from the returned URLs.

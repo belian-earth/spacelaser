@@ -9,9 +9,9 @@
 \usage{
 sl_grab(x, bbox, ...)
 
-\method{sl_grab}{sl_gedi_search}(x, bbox, columns = NULL, beams = NULL, token = NULL, ...)
+\method{sl_grab}{sl_gedi_search}(x, bbox, columns = NULL, beams = NULL, ...)
 
-\method{sl_grab}{sl_icesat2_search}(x, bbox, columns = NULL, tracks = NULL, token = NULL, ...)
+\method{sl_grab}{sl_icesat2_search}(x, bbox, columns = NULL, tracks = NULL, ...)
 
 \method{sl_grab}{character}(x, bbox, ..., product = NULL)
 }

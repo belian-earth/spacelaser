@@ -71,39 +71,6 @@ impl SatelliteProduct for IceSat2Product {
             IceSat2Product::ATL08 => "land_segments/longitude",
         }
     }
-
-    /// Default columns for each product (paths relative to the track group).
-    fn default_columns(&self) -> Vec<&'static str> {
-        match self {
-            IceSat2Product::ATL03 => vec![
-                "heights/lat_ph",
-                "heights/lon_ph",
-                "heights/h_ph",
-                "heights/signal_conf_ph",
-                "heights/delta_time",
-            ],
-            IceSat2Product::ATL06 => vec![
-                "land_ice_segments/latitude",
-                "land_ice_segments/longitude",
-                "land_ice_segments/h_li",
-                "land_ice_segments/h_li_sigma",
-                "land_ice_segments/atl06_quality_summary",
-                "land_ice_segments/delta_time",
-                "land_ice_segments/segment_id",
-            ],
-            IceSat2Product::ATL08 => vec![
-                "land_segments/latitude",
-                "land_segments/longitude",
-                "land_segments/canopy/h_canopy",
-                "land_segments/canopy/canopy_openness",
-                "land_segments/terrain/h_te_best_fit",
-                "land_segments/terrain/h_te_uncertainty",
-                "land_segments/delta_time",
-                "land_segments/segment_id_beg",
-                "land_segments/night_flag",
-            ],
-        }
-    }
 }
 
 /// Read ICESat-2 data with spatial subsetting.

@@ -85,9 +85,6 @@ pub trait SatelliteProduct {
 
     /// Longitude dataset path relative to the group root.
     fn lon_dataset(&self) -> &'static str;
-
-    /// Default column names to read when the user doesn't specify any.
-    fn default_columns(&self) -> Vec<&'static str>;
 }
 
 // ---------------------------------------------------------------------------
@@ -119,9 +116,8 @@ pub async fn read_product_groups(
     columns: Option<Vec<String>>,
     groups: Option<Vec<String>>,
 ) -> Result<Vec<GroupData>, Hdf5Error> {
-    let columns: Vec<String> = columns.unwrap_or_else(|| {
-        product.default_columns().into_iter().map(String::from).collect()
-    });
+    // R always resolves defaults; empty vec is a no-op safety net.
+    let columns: Vec<String> = columns.unwrap_or_default();
 
     let group_list: Vec<String> = groups.unwrap_or_else(|| {
         product.group_names().into_iter().map(String::from).collect()

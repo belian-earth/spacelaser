@@ -37,11 +37,5 @@ rust_hdf5_groups <- function(url, path, username, password) .Call(wrap__rust_hdf
 #' @export
 rust_hdf5_dataset <- function(url, dataset_path, username, password) .Call(wrap__rust_hdf5_dataset, url, dataset_path, username, password)
 
-#' Exchange Earthdata username/password for a bearer token.
-#'
-#' Calls the NASA Earthdata Login token API. Returns the access token string.
-#' @export
-rust_earthdata_token <- function(username, password) .Call(wrap__rust_earthdata_token, username, password)
-
 
 # nolint end

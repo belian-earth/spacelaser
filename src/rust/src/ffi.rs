@@ -317,35 +317,42 @@ fn rust_read_gedi_multi(
     let user = match username { Nullable::NotNull(u) => Some(u.to_string()), Nullable::Null => None };
     let pass = match password { Nullable::NotNull(p) => Some(p.to_string()), Nullable::Null => None };
 
-    let results = rt.block_on(async {
-        let futs: Vec<_> = urls.iter().map(|url| {
-            let source = match (&user, &pass) {
-                (Some(u), Some(p)) => DataSource::http_with_auth(url, u, p),
-                _ => DataSource::http(url),
-            };
-            let cols = cols.clone();
-            let bms = bms.clone();
-            async move {
-                let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
-                gedi::read_gedi(&file, product_type, bbox, cols, bms)
-                    .await
-                    .map_err(|e| e.to_string())
-            }
-        }).collect();
+    // Process granules with bounded concurrency (4 at a time) to avoid
+    // overwhelming the server.  Each granule internally runs its beams and
+    // columns concurrently, so 4 granules is already a high request fan-out.
+    let all_groups = rt.block_on(async {
+        use futures::stream::{self, StreamExt};
 
-        futures::future::join_all(futs).await
-    });
+        let results: Vec<_> = stream::iter(urls.iter())
+            .map(|url| {
+                let source = match (&user, &pass) {
+                    (Some(u), Some(p)) => DataSource::http_with_auth(url, u, p),
+                    _ => DataSource::http(url),
+                };
+                let cols = cols.clone();
+                let bms = bms.clone();
+                async move {
+                    let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
+                    gedi::read_gedi(&file, product_type, bbox, cols, bms)
+                        .await
+                        .map_err(|e| e.to_string())
+                }
+            })
+            .buffer_unordered(4)
+            .collect()
+            .await;
 
-    // Flatten: each file's result is a Vec<GroupData>
-    let mut all_groups = Vec::new();
-    for result in results {
-        match result {
-            Ok(groups) => all_groups.extend(groups),
-            Err(e) => {
-                log::warn!("File read failed: {}", e);
+        let mut all_groups = Vec::new();
+        for result in results {
+            match result {
+                Ok(groups) => all_groups.extend(groups),
+                Err(e) => {
+                    log::warn!("File read failed: {}", e);
+                }
             }
         }
-    }
+        all_groups
+    });
 
     let lists: Vec<List> = all_groups.into_iter().map(group_data_to_list).collect();
     Ok(List::from_values(lists))
@@ -382,51 +389,42 @@ fn rust_read_icesat2_multi(
     let user = match username { Nullable::NotNull(u) => Some(u.to_string()), Nullable::Null => None };
     let pass = match password { Nullable::NotNull(p) => Some(p.to_string()), Nullable::Null => None };
 
-    let results = rt.block_on(async {
-        let futs: Vec<_> = urls.iter().map(|url| {
-            let source = match (&user, &pass) {
-                (Some(u), Some(p)) => DataSource::http_with_auth(url, u, p),
-                _ => DataSource::http(url),
-            };
-            let cols = cols.clone();
-            let trks = trks.clone();
-            async move {
-                let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
-                icesat2::read_icesat2(&file, product_type, bbox, cols, trks)
-                    .await
-                    .map_err(|e| e.to_string())
-            }
-        }).collect();
+    let all_groups = rt.block_on(async {
+        use futures::stream::{self, StreamExt};
 
-        futures::future::join_all(futs).await
-    });
+        let results: Vec<_> = stream::iter(urls.iter())
+            .map(|url| {
+                let source = match (&user, &pass) {
+                    (Some(u), Some(p)) => DataSource::http_with_auth(url, u, p),
+                    _ => DataSource::http(url),
+                };
+                let cols = cols.clone();
+                let trks = trks.clone();
+                async move {
+                    let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
+                    icesat2::read_icesat2(&file, product_type, bbox, cols, trks)
+                        .await
+                        .map_err(|e| e.to_string())
+                }
+            })
+            .buffer_unordered(4)
+            .collect()
+            .await;
 
-    let mut all_groups = Vec::new();
-    for result in results {
-        match result {
-            Ok(groups) => all_groups.extend(groups),
-            Err(e) => {
-                log::warn!("File read failed: {}", e);
+        let mut all_groups = Vec::new();
+        for result in results {
+            match result {
+                Ok(groups) => all_groups.extend(groups),
+                Err(e) => {
+                    log::warn!("File read failed: {}", e);
+                }
             }
         }
-    }
+        all_groups
+    });
 
     let lists: Vec<List> = all_groups.into_iter().map(group_data_to_list).collect();
     Ok(List::from_values(lists))
-}
-
-/// Exchange Earthdata username/password for a bearer token.
-///
-/// Calls the NASA Earthdata Login token API. Returns the access token string.
-/// @export
-#[extendr]
-fn rust_earthdata_token(username: &str, password: &str) -> extendr_api::Result<String> {
-    let rt = runtime();
-    rt.block_on(async {
-        crate::auth::fetch_earthdata_token(username, password)
-            .await
-            .map_err(extendr_api::Error::Other)
-    })
 }
 
 extendr_module! {
@@ -437,5 +435,4 @@ extendr_module! {
     fn rust_read_icesat2_multi;
     fn rust_hdf5_groups;
     fn rust_hdf5_dataset;
-    fn rust_earthdata_token;
 }

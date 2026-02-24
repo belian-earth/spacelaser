@@ -1,86 +1,19 @@
-# Package-level environment for caching the bearer token within a session.
+# Package-level environment for caching credentials within a session.
 .sl_env <- new.env(parent = emptyenv())
 
-#' Get a NASA Earthdata bearer token
+#' Resolve Earthdata credentials for data access.
 #'
-#' Retrieves a bearer token for authenticating with NASA Earthdata HTTPS
-#' endpoints. Credentials are resolved in this order:
+#' Returns username/password for the NASA Earthdata OAuth flow. Credentials
+#' are resolved in this order:
 #'
-#' 1. The `token` argument (pass-through)
-#' 2. The `EARTHDATA_TOKEN` environment variable (a pre-existing bearer token)
-#' 3. `EARTHDATA_USERNAME` + `EARTHDATA_PASSWORD` environment variables
-#' 4. A `~/.netrc` entry for `urs.earthdata.nasa.gov`
-#' 5. Interactive prompt (if running interactively)
+#' 1. `EARTHDATA_USERNAME` + `EARTHDATA_PASSWORD` environment variables
+#' 2. A `.netrc` file (checks `GDAL_HTTP_NETRC_FILE` env var, then `~/.netrc`)
 #'
-#' For options 3-5, the username/password are exchanged for a bearer token
-#' via the Earthdata Login token API. The token is cached for the session.
+#' Cached for the session after first successful resolution.
 #'
-#' @param token Optional token string. If provided, returned as-is.
-#' @returns A character string with the bearer token, or `NULL` if no
-#'   credentials are found.
-#' @export
-sl_earthdata_token <- function(token = NULL) {
-  if (!is.null(token)) {
-    return(token)
-  }
-
-  # 1. EARTHDATA_TOKEN env var (pre-existing bearer token)
-  env_token <- Sys.getenv("EARTHDATA_TOKEN", unset = "")
-  if (nzchar(env_token)) {
-    return(env_token)
-  }
-
-  # 2. Check session cache (from a previous call)
-  cached <- .sl_env$earthdata_token
-  if (!is.null(cached)) {
-    return(cached)
-  }
-
-  # 3. Obtain credentials and exchange for a bearer token
-  creds <- earthdata_credentials()
-  if (!is.null(creds)) {
-    token <- tryCatch(
-      rust_earthdata_token(creds$username, creds$password),
-      error = function(e) {
-        cli::cli_warn(c(
-          "!" = "Failed to obtain Earthdata bearer token.",
-          "i" = "{conditionMessage(e)}"
-        ))
-        NULL
-      }
-    )
-    if (!is.null(token) && nzchar(token)) {
-      .sl_env$earthdata_token <- token
-      cli::cli_inform(c(
-        "i" = "Obtained NASA Earthdata bearer token (cached for session)."
-      ))
-      return(token)
-    }
-  }
-
-  cli::cli_warn(c(
-    "!" = "No NASA Earthdata credentials found.",
-    "i" = "Set {.envvar EARTHDATA_TOKEN} or create a {.file ~/.netrc} file.",
-    "i" = "Register at {.url https://urs.earthdata.nasa.gov/}."
-  ))
-
-  NULL
-}
-
-#' Get Earthdata credentials for data access
-#'
-#' Returns username/password for the NASA Earthdata OAuth flow used by
-#' LPDAAC and NSIDC data endpoints. Credentials are resolved from:
-#' `EARTHDATA_USERNAME`/`EARTHDATA_PASSWORD` env vars, `~/.netrc`, or
-#' interactive prompt. Cached for the session.
-#'
-#' @param token Ignored (kept for API compatibility). Credentials always
-#'   come from username/password, not bearer tokens.
-#' @returns A list with `username` and `password` (may be `NULL` if
-#'   no credentials are found).
+#' @returns A list with `username` and `password`.
 #' @noRd
-sl_earthdata_creds <- function(token = NULL) {
-  # Check session cache first
+sl_earthdata_creds <- function() {
   cached <- .sl_env$earthdata_creds
   if (!is.null(cached)) {
     return(cached)
@@ -92,88 +25,82 @@ sl_earthdata_creds <- function(token = NULL) {
     return(creds)
   }
 
-  cli::cli_warn(c(
-    "!" = "No NASA Earthdata credentials found.",
-    "i" = "Create a {.file ~/.netrc} file with your Earthdata Login credentials,",
+  cli::cli_abort(c(
+    "No NASA Earthdata credentials found.",
+    "i" = 'Run {.code earthdatalogin::edl_netrc()} to set up authentication,',
     "i" = "or set {.envvar EARTHDATA_USERNAME} and {.envvar EARTHDATA_PASSWORD}.",
     "i" = "Register at {.url https://urs.earthdata.nasa.gov/}."
   ))
-
-  list(username = NULL, password = NULL)
 }
 
 #' Resolve Earthdata username/password from available sources.
 #' @returns A list with `username` and `password`, or `NULL`.
 #' @noRd
 earthdata_credentials <- function() {
-  # a. Environment variables
+  # 1. Environment variables
   username <- Sys.getenv("EARTHDATA_USERNAME", unset = "")
   password <- Sys.getenv("EARTHDATA_PASSWORD", unset = "")
   if (nzchar(username) && nzchar(password)) {
     return(list(username = username, password = password))
   }
 
-  # b. .netrc file
+  # 2. Netrc file (earthdatalogin's path via GDAL env var, then ~/.netrc)
   netrc <- parse_netrc("urs.earthdata.nasa.gov")
   if (!is.null(netrc)) {
     return(netrc)
-  }
-
-  # c. Interactive prompt
-  if (interactive()) {
-    cli::cli_inform(c(
-      "i" = "Enter your NASA Earthdata Login credentials.",
-      "i" = "Register at {.url https://urs.earthdata.nasa.gov/} if needed."
-    ))
-    username <- readline("Earthdata username: ")
-    password <- readline("Earthdata password: ")
-    if (nzchar(username) && nzchar(password)) {
-      return(list(username = username, password = password))
-    }
   }
 
   NULL
 }
 
 #' Parse a .netrc file for a specific machine entry.
+#'
+#' Checks `GDAL_HTTP_NETRC_FILE` first (set by earthdatalogin::edl_netrc()),
+#' then falls back to `~/.netrc`.
+#'
 #' @param machine The machine hostname to look for.
 #' @returns A list with `username` and `password`, or `NULL`.
 #' @noRd
 parse_netrc <- function(machine) {
-  netrc_path <- file.path(Sys.getenv("HOME", "~"), ".netrc")
-  if (!file.exists(netrc_path)) {
-    return(NULL)
-  }
+  # Check earthdatalogin's netrc path first (set by edl_netrc())
+  gdal_netrc <- Sys.getenv("GDAL_HTTP_NETRC_FILE", unset = "")
+  home_netrc <- file.path(Sys.getenv("HOME", "~"), ".netrc")
+  paths <- unique(c(
+    if (nzchar(gdal_netrc)) gdal_netrc,
+    home_netrc
+  ))
 
-  lines <- readLines(netrc_path, warn = FALSE)
-  # Collapse into a single string and tokenize
-  tokens <- unlist(strsplit(paste(lines, collapse = " "), "\\s+"))
-  tokens <- tokens[nzchar(tokens)]
+  for (netrc_path in paths) {
+    if (!file.exists(netrc_path)) next
 
-  i <- 1L
-  while (i <= length(tokens)) {
-    if (tokens[i] == "machine" && i + 1L <= length(tokens) &&
-        tokens[i + 1L] == machine) {
-      # Found our machine -- scan for login and password
-      login <- NULL
-      password <- NULL
-      j <- i + 2L
-      while (j <= length(tokens) && tokens[j] != "machine") {
-        if (tokens[j] == "login" && j + 1L <= length(tokens)) {
-          login <- tokens[j + 1L]
-          j <- j + 2L
-        } else if (tokens[j] == "password" && j + 1L <= length(tokens)) {
-          password <- tokens[j + 1L]
-          j <- j + 2L
-        } else {
-          j <- j + 1L
+    lines <- readLines(netrc_path, warn = FALSE)
+    tokens <- unlist(strsplit(paste(lines, collapse = " "), "\\s+"))
+    tokens <- tokens[nzchar(tokens)]
+
+    i <- 1L
+    while (i <= length(tokens)) {
+      if (tokens[i] == "machine" && i + 1L <= length(tokens) &&
+          tokens[i + 1L] == machine) {
+        login <- NULL
+        password <- NULL
+        j <- i + 2L
+        while (j <= length(tokens) && tokens[j] != "machine") {
+          if (tokens[j] == "login" && j + 1L <= length(tokens)) {
+            login <- tokens[j + 1L]
+            j <- j + 2L
+          } else if (tokens[j] == "password" && j + 1L <= length(tokens)) {
+            password <- tokens[j + 1L]
+            j <- j + 2L
+          } else {
+            j <- j + 1L
+          }
+        }
+        if (!is.null(login) && !is.null(password)) {
+          return(list(username = login, password = password))
         }
       }
-      if (!is.null(login) && !is.null(password)) {
-        return(list(username = login, password = password))
-      }
+      i <- i + 1L
     }
-    i <- i + 1L
   }
 
   NULL

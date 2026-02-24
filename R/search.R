@@ -22,12 +22,12 @@
 #'   }
 #'
 #' @details
-#' No authentication is needed for the search itself; a token is only
-#' required when reading data via [grab_gedi()].
+#' No authentication is needed for the search itself; Earthdata credentials
+#' are only required when reading data via [grab_gedi()].
 #'
 #' The CMR search filters by bounding box on the server side. For finer
 #' spatial filtering (e.g. against an irregular polygon), filter the returned
-#' `geometry` column with [wk::wk_intersects()] or similar.
+#' `geometry` column with your favourite spatial package.
 #'
 #' @seealso [grab_gedi()] to read data from the returned URLs.
 #' @importFrom rlang check_required arg_match

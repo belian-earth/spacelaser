@@ -22,6 +22,7 @@ Imports:
     vctrs,
     wk
 Suggests:
+    earthdatalogin,
     gdalraster,
     mirai,
     testthat (>= 3.0.0)

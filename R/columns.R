@@ -302,44 +302,28 @@
 # Exported: column discovery
 # ---------------------------------------------------------------------------
 
-#' List available columns for a GEDI product
+#' List available columns for a GEDI or ICESat-2 product
 #'
 #' Returns a named character vector of all available columns for the given
-#' GEDI product level. Names are the short user-facing column names (used in
-#' the `columns` argument of [grab_gedi()] / [sl_grab()]). Values are the
-#' full HDF5 dataset paths.
+#' product. Names are the short user-facing column names (used in the
+#' `columns` argument of [sl_read()]). Values are the full HDF5 dataset
+#' paths.
 #'
-#' @param product Character. One of `"L1B"`, `"L2A"`, `"L2B"`, or `"L4A"`.
+#' @param product Character. One of:
+#'   * GEDI: `"L1B"`, `"L2A"`, `"L2B"`, `"L4A"`
+#'   * ICESat-2: `"ATL03"`, `"ATL06"`, `"ATL08"`
 #' @returns A named character vector.
 #'
 #' @examples
-#' gedi_columns("L2A")
-#' names(gedi_columns("L2A"))
+#' sl_columns("L2A")
+#' names(sl_columns("ATL08"))
 #'
 #' @export
-gedi_columns <- function(product = c("L2A", "L2B", "L4A", "L1B")) {
+sl_columns <- function(
+  product = c("L2A", "L2B", "L4A", "L1B", "ATL08", "ATL03", "ATL06")
+) {
   product <- rlang::arg_match(product)
-  .gedi_column_registry[[product]]
-}
-
-#' List available columns for an ICESat-2 product
-#'
-#' Returns a named character vector of all available columns for the given
-#' ICESat-2 product. Names are the short user-facing column names (used in
-#' the `columns` argument of [grab_icesat2()] / [sl_grab()]). Values are the
-#' full HDF5 dataset paths.
-#'
-#' @param product Character. One of `"ATL08"`, `"ATL03"`, or `"ATL06"`.
-#' @returns A named character vector.
-#'
-#' @examples
-#' icesat2_columns("ATL08")
-#' names(icesat2_columns("ATL08"))
-#'
-#' @export
-icesat2_columns <- function(product = c("ATL08", "ATL03", "ATL06")) {
-  product <- rlang::arg_match(product)
-  .icesat2_column_registry[[product]]
+  .gedi_column_registry[[product]] %||% .icesat2_column_registry[[product]]
 }
 
 # ---------------------------------------------------------------------------

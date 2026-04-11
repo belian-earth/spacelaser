@@ -1,105 +1,84 @@
-#' Find GEDI granules for a spatial area
+#' Search NASA CMR for GEDI or ICESat-2 granules
 #'
-#' Searches NASA's Common Metadata Repository (CMR) for GEDI granules that
-#' overlap a bounding box and optional date range. Returns granule URLs that
-#' can be passed directly to [grab_gedi()].
+#' Searches NASA's Common Metadata Repository (CMR) for satellite lidar
+#' granules that overlap a bounding box and optional date range. The sensor
+#' (GEDI or ICESat-2) is determined automatically from `product`, since the
+#' valid product strings do not overlap.
 #'
 #' @param bbox An `sl_bbox` object created by [sl_bbox()], or a numeric vector
 #'   `c(xmin, ymin, xmax, ymax)`.
-#' @param product Character. GEDI product level: `"L2A"`, `"L2B"`, `"L4A"`, or
-#'   `"L1B"`.
-#' @param date_start Character or POSIXct. Start of date range (default:
-#'   `"2019-03-25"`, the start of GEDI operations).
+#' @param product Character. One of:
+#'   * GEDI: `"L1B"`, `"L2A"`, `"L2B"`, `"L4A"`
+#'   * ICESat-2: `"ATL03"`, `"ATL06"`, `"ATL08"`
+#' @param date_start Character or POSIXct. Start of date range. Defaults to
+#'   the start of the relevant mission (2019-03-25 for GEDI, 2018-10-14 for
+#'   ICESat-2).
 #' @param date_end Character or POSIXct. End of date range (default: today).
 #'
-#' @returns A data frame with columns:
+#' @returns A classed data frame (`sl_gedi_search` or `sl_icesat2_search`)
+#'   with columns:
 #'   \describe{
 #'     \item{id}{CMR granule identifier.}
 #'     \item{time_start}{POSIXct start time of the granule.}
 #'     \item{time_end}{POSIXct end time of the granule.}
-#'     \item{url}{HTTPS data URL — pass to [grab_gedi()].}
+#'     \item{url}{HTTPS data URL.}
 #'     \item{geometry}{`wk_wkt` polygon of the granule swath footprint.}
 #'   }
+#'   The returned object carries `bbox` and `product` as attributes so
+#'   [sl_read()] can dispatch without re-specifying them.
 #'
 #' @details
 #' No authentication is needed for the search itself; Earthdata credentials
-#' are only required when reading data via [grab_gedi()].
+#' are only required when reading data via [sl_read()].
 #'
 #' The CMR search filters by bounding box on the server side. For finer
 #' spatial filtering (e.g. against an irregular polygon), filter the returned
 #' `geometry` column with your favourite spatial package.
 #'
-#' @seealso [grab_gedi()] to read data from the returned URLs.
+#' @seealso [sl_read()] to read data from the returned granules.
 #' @importFrom rlang check_required arg_match
 #' @export
-find_gedi <- function(
+sl_search <- function(
   bbox,
-  product = c("L2A", "L2B", "L4A", "L1B"),
+  product = c("L2A", "L2B", "L4A", "L1B", "ATL08", "ATL03", "ATL06"),
   date_start = NULL,
   date_end = NULL
 ) {
   rlang::check_required(bbox)
   product <- rlang::arg_match(product)
+  bbox <- validate_bbox(bbox)
 
-  concept_id <- switch(
-    product,
-    "L1B" = "C2142749196-LPCLOUD",
-    "L2A" = "C2142771958-LPCLOUD",
-    "L2B" = "C2142776747-LPCLOUD",
-    "L4A" = "C2237824918-ORNL_CLOUD"
-  )
+  spec <- product_search_spec(product)
 
   result <- search_cmr(
     bbox = bbox,
-    concept_id = concept_id,
-    date_start = date_start %||% "2019-03-25",
+    concept_id = spec$concept_id,
+    date_start = date_start %||% spec$default_start,
     date_end = date_end,
-    product_label = paste0("GEDI ", product)
+    product_label = spec$label
   )
 
-  new_sl_search(result, product = product, sensor = "gedi")
+  new_sl_search(result, product = product, bbox = bbox, sensor = spec$sensor)
 }
 
-#' Find ICESat-2 granules for a spatial area
+#' Per-product CMR search parameters.
 #'
-#' Searches NASA's CMR for ICESat-2 granules that overlap a bounding box and
-#' optional date range. Returns granule URLs that can be passed directly to
-#' [grab_icesat2()].
-#'
-#' @inheritParams find_gedi
-#' @param product Character. ICESat-2 product: `"ATL08"`, `"ATL03"`, or
-#'   `"ATL06"`.
-#'
-#' @returns A data frame with the same structure as [find_gedi()].
-#'
-#' @seealso [grab_icesat2()] to read data from the returned URLs.
-#' @importFrom rlang check_required arg_match
-#' @export
-find_icesat2 <- function(
-  bbox,
-  product = c("ATL08", "ATL03", "ATL06"),
-  date_start = NULL,
-  date_end = NULL
-) {
-  rlang::check_required(bbox)
-  product <- rlang::arg_match(product)
-
-  concept_id <- switch(
+#' Maps a product string to its CMR concept ID, default mission start date,
+#' sensor (used to pick the search-result class), and a human-readable label
+#' for progress messages. Centralising the table here keeps `sl_search()`
+#' free of branching.
+#' @noRd
+product_search_spec <- function(product) {
+  switch(
     product,
-    "ATL03" = "C2596864127-NSIDC_CPRD",
-    "ATL06" = "C2670138092-NSIDC_CPRD",
-    "ATL08" = "C2613553260-NSIDC_CPRD"
+    L1B   = list(sensor = "gedi",    concept_id = "C2142749196-LPCLOUD",  default_start = "2019-03-25", label = "GEDI L1B"),
+    L2A   = list(sensor = "gedi",    concept_id = "C2142771958-LPCLOUD",  default_start = "2019-03-25", label = "GEDI L2A"),
+    L2B   = list(sensor = "gedi",    concept_id = "C2142776747-LPCLOUD",  default_start = "2019-03-25", label = "GEDI L2B"),
+    L4A   = list(sensor = "gedi",    concept_id = "C2237824918-ORNL_CLOUD", default_start = "2019-03-25", label = "GEDI L4A"),
+    ATL03 = list(sensor = "icesat2", concept_id = "C2596864127-NSIDC_CPRD", default_start = "2018-10-14", label = "ICESat-2 ATL03"),
+    ATL06 = list(sensor = "icesat2", concept_id = "C2670138092-NSIDC_CPRD", default_start = "2018-10-14", label = "ICESat-2 ATL06"),
+    ATL08 = list(sensor = "icesat2", concept_id = "C2613553260-NSIDC_CPRD", default_start = "2018-10-14", label = "ICESat-2 ATL08")
   )
-
-  result <- search_cmr(
-    bbox = bbox,
-    concept_id = concept_id,
-    date_start = date_start %||% "2018-10-14",
-    date_end = date_end,
-    product_label = paste0("ICESat-2 ", product)
-  )
-
-  new_sl_search(result, product = product, sensor = "icesat2")
 }
 
 # ---------------------------------------------------------------------------
@@ -294,14 +273,15 @@ empty_find_result <- function() {
 #' Construct an S3 search result.
 #'
 #' Wraps the data frame from `build_find_result()` in either
-#' `sl_gedi_search` or `sl_icesat2_search`, carrying `product` as an
-#' attribute so `grab()` can dispatch without the user re-specifying it.
+#' `sl_gedi_search` or `sl_icesat2_search`, carrying `product` and `bbox` as
+#' attributes so `sl_read()` can dispatch without the user re-specifying them.
 #'
 #' @noRd
-new_sl_search <- function(df, product, sensor = c("gedi", "icesat2")) {
+new_sl_search <- function(df, product, bbox, sensor = c("gedi", "icesat2")) {
   sensor <- match.arg(sensor)
   cls <- paste0("sl_", sensor, "_search")
   attr(df, "product") <- product
+  attr(df, "bbox") <- bbox
   class(df) <- c(cls, class(df))
   df
 }
@@ -309,8 +289,9 @@ new_sl_search <- function(df, product, sensor = c("gedi", "icesat2")) {
 #' @export
 print.sl_gedi_search <- function(x, ...) {
   product <- attr(x, "product")
+  bbox <- attr(x, "bbox")
   cli::cli_text(
-    "{.cls sl_gedi_search} | GEDI {product} | {nrow(x)} granule{?s}"
+    "{.cls sl_gedi_search} | GEDI {product} | {nrow(x)} granule{?s} | {.field {format(bbox)}}"
   )
   print_search_result(x, ...)
 }
@@ -318,10 +299,44 @@ print.sl_gedi_search <- function(x, ...) {
 #' @export
 print.sl_icesat2_search <- function(x, ...) {
   product <- attr(x, "product")
+  bbox <- attr(x, "bbox")
   cli::cli_text(
-    "{.cls sl_icesat2_search} | ICESat-2 {product} | {nrow(x)} granule{?s}"
+    "{.cls sl_icesat2_search} | ICESat-2 {product} | {nrow(x)} granule{?s} | {.field {format(bbox)}}"
   )
   print_search_result(x, ...)
+}
+
+# Subset operators must preserve `product`, `bbox`, and class so that
+# `granules[1:2, ]` still dispatches to the search-result methods of
+# `sl_read()`. Base `[.data.frame` strips both the subclass and the
+# attributes; we restore them.
+
+#' @export
+`[.sl_gedi_search` <- function(x, ...) {
+  reattach_search_attrs(NextMethod(), x, "sl_gedi_search")
+}
+
+#' @export
+`[.sl_icesat2_search` <- function(x, ...) {
+  reattach_search_attrs(NextMethod(), x, "sl_icesat2_search")
+}
+
+#' Restore search-result class and attributes after a subset.
+#'
+#' Only attaches the class if the subset still resembles a data frame
+#' (i.e. preserves the column structure). Column-wise drops to a single
+#' vector fall through unchanged.
+#' @noRd
+reattach_search_attrs <- function(out, x, cls) {
+  if (!is.data.frame(out)) {
+    return(out)
+  }
+  attr(out, "product") <- attr(x, "product")
+  attr(out, "bbox") <- attr(x, "bbox")
+  if (!inherits(out, cls)) {
+    class(out) <- c(cls, class(out))
+  }
+  out
 }
 
 #' Print the body of a search result (shared helper).

@@ -1,51 +1,69 @@
 # ---------------------------------------------------------------------------
-# S3 generic: sl_grab()
+# S3 generic: sl_read()
 # ---------------------------------------------------------------------------
 
-#' Grab satellite lidar data
+# TODO(vignette): write a "post-hoc filtering" vignette covering the
+# power-vs-coverage beam pattern for GEDI (filter on the `beam` column after
+# reading: e.g., `dplyr::filter(beam %in% c("BEAM0101","BEAM0110","BEAM1000",
+# "BEAM1011"))` for power beams) and the strong-vs-weak ground-track pattern
+# for ICESat-2 (which depends on spacecraft yaw orientation, so requires
+# checking the `sc_orient` metadata, not hard-coding gt IDs). The vignette
+# should explain why this is post-hoc rather than a read-time argument.
+
+#' Read satellite lidar data
 #'
-#' `sl_grab()` is an S3 generic that reads GEDI or ICESat-2 data from remote
-#' HDF5 files. It dispatches on the type of its first argument:
+#' `sl_read()` is an S3 generic that reads GEDI or ICESat-2 data from remote
+#' HDF5 files using HTTP range requests. Only the chunks intersecting the
+#' bounding box are fetched; no full-file download. It dispatches on the type
+#' of its first argument:
 #'
-#' * An `sl_gedi_search` or `sl_icesat2_search` object (from [find_gedi()] /
-#'   [find_icesat2()]) — reads all granules in the search result, combining
-#'   rows into a single data frame.
-#' * A character vector of URLs — auto-detects the sensor and product from the
+#' * An `sl_gedi_search` or `sl_icesat2_search` object (from [sl_search()]):
+#'   reads all granules in the search result, combining rows into a single
+#'   data frame. The search bbox is used by default; an explicit `bbox` may
+#'   be supplied to subset further but must be contained within it.
+#' * A character vector of URLs: auto-detects the sensor and product from the
 #'   file name, or uses the explicit `product` argument.
+#'
+#' All beams (GEDI) or ground tracks (ICESat-2) are always read; the returned
+#' data frame includes a `beam` (GEDI) or `track` (ICESat-2) identifier
+#' column for post-hoc filtering with [dplyr::filter()] or base subsetting.
 #'
 #' @param x An `sl_gedi_search`, `sl_icesat2_search`, or character vector of
 #'   HDF5 URLs.
-#' @param bbox An `sl_bbox` or numeric `c(xmin, ymin, xmax, ymax)`. Required.
-#' @param ... Additional arguments passed to the underlying reader
-#'   ([grab_gedi()] or [grab_icesat2()]).
+#' @param bbox An `sl_bbox` or numeric `c(xmin, ymin, xmax, ymax)`. Required
+#'   when `x` is a character vector. Optional when `x` is a search result: it
+#'   defaults to the bbox the search was performed with. If supplied, it
+#'   must be fully contained within the search bbox; supplying a wider bbox
+#'   is an error to avoid silently missing data outside the original search.
+#' @param columns Character vector of column names to read (short names from
+#'   [sl_columns()]). Latitude and longitude are always included
+#'   automatically. `NULL` (default) reads the full column registry for the
+#'   product.
+#' @param ... Reserved for method-specific arguments and forwarding.
 #'
-#' @returns A data frame with one row per footprint/segment.
+#' @returns A data frame with one row per footprint (GEDI) or
+#'   segment/photon (ICESat-2).
 #'
-#' @seealso [find_gedi()], [find_icesat2()], [grab_gedi()], [grab_icesat2()]
+#' @seealso [sl_search()], [sl_columns()]
 #' @export
-sl_grab <- function(x, bbox, ...) {
-  UseMethod("sl_grab")
+sl_read <- function(x, bbox, ...) {
+  UseMethod("sl_read")
 }
 
-#' @rdname sl_grab
+#' @rdname sl_read
 #' @export
-sl_grab.sl_gedi_search <- function(
-  x,
-  bbox,
-  columns = NULL,
-  beams = NULL,
-  ...
-) {
-  rlang::check_required(bbox)
+sl_read.sl_gedi_search <- function(x, bbox = NULL, columns = NULL, ...) {
+  search_bbox <- attr(x, "bbox")
+  bbox <- bbox %||% search_bbox
+  check_bbox_within(bbox, search_bbox)
   product <- attr(x, "product")
   lat_lon <- gedi_lat_lon(product)
 
-  grab_product_multi(
+  read_product_multi(
     urls = x$url,
     product = product,
     bbox = bbox,
     columns = columns,
-    groups = beams,
     rust_multi_fn = rust_read_gedi_multi,
     lat_col = lat_lon$lat,
     lon_col = lat_lon$lon,
@@ -54,25 +72,20 @@ sl_grab.sl_gedi_search <- function(
   )
 }
 
-#' @rdname sl_grab
+#' @rdname sl_read
 #' @export
-sl_grab.sl_icesat2_search <- function(
-  x,
-  bbox,
-  columns = NULL,
-  tracks = NULL,
-  ...
-) {
-  rlang::check_required(bbox)
+sl_read.sl_icesat2_search <- function(x, bbox = NULL, columns = NULL, ...) {
+  search_bbox <- attr(x, "bbox")
+  bbox <- bbox %||% search_bbox
+  check_bbox_within(bbox, search_bbox)
   product <- attr(x, "product")
   geo_cols <- icesat2_lat_lon(product)
 
-  grab_product_multi(
+  read_product_multi(
     urls = x$url,
     product = product,
     bbox = bbox,
     columns = columns,
-    groups = tracks,
     rust_multi_fn = rust_read_icesat2_multi,
     lat_col = geo_cols$lat,
     lon_col = geo_cols$lon,
@@ -81,35 +94,35 @@ sl_grab.sl_icesat2_search <- function(
   )
 }
 
-#' @rdname sl_grab
+#' @rdname sl_read
 #' @param product Character. Product level (e.g., `"L2A"`, `"ATL08"`).
 #'   Required when `x` is a character vector and the product cannot be
 #'   inferred from the file name.
 #' @export
-sl_grab.character <- function(x, bbox, ..., product = NULL) {
+sl_read.character <- function(x, bbox, ..., product = NULL) {
   rlang::check_required(bbox)
   info <- detect_sensor(x[[1L]], product)
-  grab_urls(
+  read_urls(
     x,
     bbox = bbox,
-    grab_fn = info$grab_fn,
+    read_fn = info$read_fn,
     product = info$product,
     ...
   )
 }
 
 #' @export
-sl_grab.default <- function(x, bbox, ...) {
+sl_read.default <- function(x, bbox, ...) {
   cls <- paste(class(x), collapse = "/")
   cli::cli_abort(c(
-    "{.fun sl_grab} does not know how to handle an object of class {.cls {cls}}.",
+    "{.fun sl_read} does not know how to handle an object of class {.cls {cls}}.",
     "i" = "Expected an {.cls sl_gedi_search}, {.cls sl_icesat2_search}, or {.cls character} URL vector."
   ))
 }
 
 #' Read multiple URLs and row-bind results.
 #' @noRd
-grab_urls <- function(urls, bbox, grab_fn, product, ...) {
+read_urls <- function(urls, bbox, read_fn, product, ...) {
   urls <- urls[!is.na(urls)]
   if (length(urls) == 0L) {
     cli::cli_inform("No URLs to read.")
@@ -118,7 +131,7 @@ grab_urls <- function(urls, bbox, grab_fn, product, ...) {
 
   results <- purrr::map(urls, function(u) {
     tryCatch(
-      grab_fn(url = u, product = product, bbox = bbox, ...),
+      read_fn(url = u, product = product, bbox = bbox, ...),
       error = function(e) {
         cli::cli_warn(c(
           "!" = "Failed to read {.file {basename(u)}}.",
@@ -143,7 +156,7 @@ detect_sensor <- function(url, product = NULL) {
   bn <- basename(url)
 
   if (grepl("^GEDI", bn, ignore.case = TRUE)) {
-    grab_fn <- grab_gedi
+    read_fn <- read_gedi
     if (is.null(product)) {
       product <- if (grepl("GEDI01_B", bn)) {
         "L1B"
@@ -161,7 +174,7 @@ detect_sensor <- function(url, product = NULL) {
       }
     }
   } else if (grepl("^ATL", bn, ignore.case = TRUE)) {
-    grab_fn <- grab_icesat2
+    read_fn <- read_icesat2
     if (is.null(product)) {
       product <- if (grepl("ATL03", bn)) {
         "ATL03"
@@ -185,15 +198,15 @@ detect_sensor <- function(url, product = NULL) {
     }
     # Infer sensor from the product string
     if (product %in% c("L1B", "L2A", "L2B", "L4A")) {
-      grab_fn <- grab_gedi
+      read_fn <- read_gedi
     } else if (product %in% c("ATL03", "ATL06", "ATL08")) {
-      grab_fn <- grab_icesat2
+      read_fn <- read_icesat2
     } else {
       rlang::abort("Unknown product {.val {product}}.")
     }
   }
 
-  list(grab_fn = grab_fn, product = product)
+  list(read_fn = read_fn, product = product)
 }
 
 # ---------------------------------------------------------------------------
@@ -250,11 +263,42 @@ print.sl_bbox <- function(x, ...) {
   invisible(x)
 }
 
+#' Check that one bbox is fully contained within another.
+#'
+#' Used by `sl_read.sl_*_search()` methods to ensure a user-supplied `bbox`
+#' does not extend outside the bbox the search was performed with. Equality
+#' on any edge is allowed.
+#'
+#' @param inner The candidate bbox (will be coerced via `validate_bbox`).
+#' @param outer The reference bbox (already an `sl_bbox`).
+#' @noRd
+check_bbox_within <- function(inner, outer, call = rlang::caller_env()) {
+  i <- unclass(validate_bbox(inner))
+  o <- unclass(outer)
+  if (
+    i[["xmin"]] < o[["xmin"]] ||
+      i[["ymin"]] < o[["ymin"]] ||
+      i[["xmax"]] > o[["xmax"]] ||
+      i[["ymax"]] > o[["ymax"]]
+  ) {
+    cli::cli_abort(
+      c(
+        "{.arg bbox} extends outside the search bbox.",
+        "i" = "Search bbox: {format(outer)}",
+        "x" = "Grab bbox:   {format(validate_bbox(inner))}",
+        "i" = "Re-run {.fun find_gedi} / {.fun find_icesat2} with a wider bbox to avoid silently missing data."
+      ),
+      call = call
+    )
+  }
+  invisible(inner)
+}
+
 # ---------------------------------------------------------------------------
 # Internal: shared product reader
 # ---------------------------------------------------------------------------
 
-#' Common implementation behind grab_gedi() and grab_icesat2().
+#' Common implementation behind read_gedi() and read_icesat2().
 #'
 #' Both functions follow the same workflow:
 #'   1. Validate bbox, resolve credentials
@@ -263,7 +307,6 @@ print.sl_bbox <- function(x, ...) {
 #'   4. Attach geometry and group label, combine rows
 #'
 #' @param url,product,bbox,columns  Forwarded from the public wrapper.
-#' @param groups  Beam names (GEDI) or track names (ICESat-2), or `NULL`.
 #' @param rust_fn  The Rust FFI function to call (`rust_read_gedi` or
 #'   `rust_read_icesat2`).
 #' @param lat_col,lon_col  Column names for latitude / longitude (used to
@@ -273,12 +316,11 @@ print.sl_bbox <- function(x, ...) {
 #' @param element_label  Human-readable name for a row, used in the log
 #'   message (`"footprint"` or `"element"`).
 #' @noRd
-grab_product <- function(
+read_product <- function(
   url,
   product,
   bbox,
   columns,
-  groups,
   rust_fn,
   lat_col,
   lon_col,
@@ -295,9 +337,9 @@ grab_product <- function(
     "Reading {product} from {.url {basename(url)}}"
   )
 
-  # Both rust_read_gedi and rust_read_icesat2 accept the group filter
-  # (beams / tracks) as the 8th positional argument, followed by
-  # username and password for Earthdata OAuth.
+  # All beams (GEDI) / ground tracks (ICESat-2) are always read; users
+  # filter post-hoc on the `beam` / `track` column. The Rust functions
+  # still accept a group filter argument, which we always pass as NULL.
   raw_result <- rust_fn(
     url,
     product,
@@ -306,7 +348,7 @@ grab_product <- function(
     b[["xmax"]],
     b[["ymax"]],
     columns,
-    groups,
+    NULL,
     creds$username,
     creds$password
   )
@@ -347,12 +389,11 @@ grab_product <- function(
 #' than sequential per-file reads.
 #'
 #' @noRd
-grab_product_multi <- function(
+read_product_multi <- function(
   urls,
   product,
   bbox,
   columns,
-  groups,
   rust_multi_fn,
   lat_col,
   lon_col,
@@ -383,7 +424,7 @@ grab_product_multi <- function(
     b[["xmax"]],
     b[["ymax"]],
     columns,
-    groups,
+    NULL,
     creds$username,
     creds$password
   )
@@ -412,7 +453,7 @@ grab_product_multi <- function(
 }
 
 # ---------------------------------------------------------------------------
-# Internal: lat/lon column helpers (shared between grab_* and sl_grab)
+# Internal: lat/lon column helpers (shared between read_* and sl_read)
 # ---------------------------------------------------------------------------
 
 #' @noRd

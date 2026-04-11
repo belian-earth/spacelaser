@@ -1,41 +1,38 @@
 # ---------------------------------------------------------------------------
-# gedi_columns() / icesat2_columns()
+# sl_columns()
 # ---------------------------------------------------------------------------
 
-test_that("gedi_columns() returns correct counts per product", {
-  expect_length(gedi_columns("L1B"), 77)
-  expect_length(gedi_columns("L2A"), 44)
-  expect_length(gedi_columns("L2B"), 77)
-  expect_length(gedi_columns("L4A"), 37)
+test_that("sl_columns() returns correct counts for GEDI products", {
+  expect_length(sl_columns("L1B"), 77)
+  expect_length(sl_columns("L2A"), 44)
+  expect_length(sl_columns("L2B"), 77)
+  expect_length(sl_columns("L4A"), 37)
 })
 
-test_that("icesat2_columns() returns correct counts per product", {
-  expect_length(icesat2_columns("ATL03"), 5)
-  expect_length(icesat2_columns("ATL06"), 7)
-  expect_length(icesat2_columns("ATL08"), 9)
+test_that("sl_columns() returns correct counts for ICESat-2 products", {
+  expect_length(sl_columns("ATL03"), 5)
+  expect_length(sl_columns("ATL06"), 7)
+  expect_length(sl_columns("ATL08"), 9)
 })
 
-test_that("gedi_columns() returns named character vector", {
-  cols <- gedi_columns("L2A")
+test_that("sl_columns() returns named character vector for GEDI", {
+  cols <- sl_columns("L2A")
   expect_type(cols, "character")
   expect_true(!is.null(names(cols)))
   expect_true("rh" %in% names(cols))
   expect_equal(unname(cols[["landsat_treecover"]]), "land_cover_data/landsat_treecover")
 })
 
-test_that("icesat2_columns() returns named character vector", {
-  cols <- icesat2_columns("ATL08")
+test_that("sl_columns() returns named character vector for ICESat-2", {
+  cols <- sl_columns("ATL08")
   expect_type(cols, "character")
   expect_true("h_canopy" %in% names(cols))
   expect_equal(unname(cols[["h_canopy"]]), "land_segments/canopy/h_canopy")
 })
 
-test_that("gedi_columns() errors on invalid product", {
-  expect_error(gedi_columns("L3A"))
-})
-
-test_that("icesat2_columns() errors on invalid product", {
-  expect_error(icesat2_columns("ATL99"))
+test_that("sl_columns() errors on invalid product", {
+  expect_error(sl_columns("L3A"))
+  expect_error(sl_columns("ATL99"))
 })
 
 # ---------------------------------------------------------------------------

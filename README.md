@@ -22,50 +22,94 @@ library(spacelaser)
 
 bbox <- sl_bbox(-55.5, -12.5, -55.0, -12.0)
 
-# Search for granules, then grab the data
-granules <- find_gedi(bbox, product = "L2A")
-gedi <- sl_grab(granules, bbox = bbox)
+# Search, then read. The sensor is determined from the product string.
+granules <- sl_search(bbox, product = "L2A")
+gedi <- sl_read(granules)
 
-# Or pass URLs directly — product is auto-detected from the filename
-gedi <- sl_grab(
+# ICESat-2 works the same way; same two verbs, no sensor in the call.
+granules <- sl_search(bbox, product = "ATL08")
+icesat <- sl_read(granules)
+
+# Or pass URLs directly. Sensor and product are auto-detected from the
+# filename, and bbox is required because there's no search result to defer to.
+gedi <- sl_read(
   "https://e4ftl01.cr.usgs.gov/.../GEDI02_A_2024100.h5",
   bbox = bbox
 )
-
-# ICESat-2 works the same way
-granules <- find_icesat2(bbox, product = "ATL08")
-icesat <- sl_grab(granules, bbox = bbox)
 ```
 
-### Search and grab workflow
+### Search and read workflow
 
-`find_gedi()` and `find_icesat2()` return S3 classed data frames
-(`sl_gedi_search` / `sl_icesat2_search`) that carry the product type.
-`sl_grab()` is an S3 generic that dispatches on these classes, so you
-never need to re-specify the product:
+`sl_search()` returns a classed data frame (`sl_gedi_search` or
+`sl_icesat2_search`) that carries the product **and** the bbox the search
+was performed with. `sl_read()` is an S3 generic that dispatches on these
+classes, so you never need to re-specify either:
 
 ```r
-# find_*() returns a typed search result
-granules <- find_gedi(bbox, product = "L2A", date_start = "2024-01-01")
+granules <- sl_search(bbox, product = "L2A", date_start = "2024-01-01")
 granules
-#> <sl_gedi_search> | GEDI L2A | 12 granules
+#> <sl_gedi_search> | GEDI L2A | 12 granules | (-55.5000, -12.5000) - (-55.0000, -12.0000)
 #>   id         time_start          url                          geometry
 #>   G1234...   2024-01-03 12:00:00 https://e4ftl01.cr.usgs.gov/...
 #>   ...
 
-# sl_grab() reads all granules, combining into one data frame
-data <- sl_grab(granules, bbox = bbox)
+# Reads all granules in parallel, combining into one data frame.
+# Uses the search bbox automatically.
+data <- sl_read(granules)
 ```
 
-`sl_grab()` also accepts a plain character vector of URLs:
+You can pass an explicit `bbox` to `sl_read()` to subset further within the
+search area, but it must be fully contained within the search bbox.
+Supplying a wider bbox is an error: this is by design, to prevent silently
+missing data outside the original search.
 
 ```r
-sl_grab("https://.../GEDI02_A_2024100.h5", bbox = bbox)
-sl_grab(c(url1, url2, url3), bbox = bbox, product = "ATL08")
+# OK: tighter bbox inside the search area
+data <- sl_read(granules, bbox = sl_bbox(-55.3, -12.4, -55.1, -12.1))
+
+# Error: wider bbox would silently miss granules
+data <- sl_read(granules, bbox = sl_bbox(-56, -13, -54, -11))
+#> Error in `sl_read()`:
+#> ! `bbox` extends outside the search bbox.
+#> i Re-run `sl_search()` with a wider bbox to avoid silently missing data.
 ```
 
-The underlying single-file readers (`grab_gedi()` / `grab_icesat2()`)
-remain exported for direct use when you already have a URL and product.
+### Filtering after reading
+
+All beams (GEDI) and ground tracks (ICESat-2) are read by default. The
+returned data frame includes a `beam` (GEDI) or `track` (ICESat-2)
+identifier column, so you can filter post-hoc using your preferred tools:
+
+```r
+library(dplyr)
+
+# GEDI: keep only the 4 power beams (better canopy penetration)
+data |> filter(beam %in% c("BEAM0101","BEAM0110","BEAM1000","BEAM1011"))
+
+# Combine with quality filtering in one step
+data |> filter(quality_flag == 1, degrade_flag == 0)
+```
+
+This is a deliberate API choice. The cost of reading 4 beams versus 8 is
+small (HTTP latency dominates over data volume), and post-hoc filtering
+keeps the spatial-subset reader uncoupled from the user's analytical
+filtering. See the *Power beams and ground tracks* vignette for details.
+
+### Discovering columns
+
+```r
+sl_columns("L2A")    # GEDI L2A: 44 columns
+sl_columns("ATL08")  # ICESat-2 ATL08: 9 columns
+```
+
+`sl_read()` accepts the short names from these registries via its
+`columns` argument:
+
+```r
+sl_read(granules, columns = c("rh", "quality_flag", "solar_elevation"))
+```
+
+If `columns` is omitted, the full registry for the product is read.
 
 ## Architecture
 
@@ -97,10 +141,10 @@ over libhdf5 for remote reads.
   User (R)                           spacelaser (Rust)                          NASA Earthdata (HTTPS)
   ========                           =================                          ======================
 
-  grab_gedi(url, bbox)
+  sl_read(granules)
        |
-       |  validate bbox, obtain
-       |  Earthdata bearer token
+       |  validate bbox, resolve
+       |  Earthdata creds (.netrc)
        |
        +----> rust_read_gedi() ----+
               (via extendr FFI)    |
@@ -195,23 +239,26 @@ over libhdf5 for remote reads.
 +-------------------------------------------------------+
 |                    R Package Layer                     |
 |                                                       |
-|  find_gedi() / find_icesat2()    Search (CMR API)      |
-|       |  returns sl_*_search S3 class                  |
+|  sl_search()             Search (CMR API)              |
+|       |  returns sl_gedi_search / sl_icesat2_search    |
+|       |  carrying product + bbox attributes            |
 |       v                                               |
-|  sl_grab()               S3 generic dispatch           |
+|  sl_read()               S3 generic dispatch           |
 |       |  methods: sl_gedi_search, sl_icesat2_search,   |
 |       |           character (URL auto-detect)           |
 |       v                                               |
-|  grab_gedi() / grab_icesat2()    Single-file readers   |
+|  read_gedi() / read_icesat2()    Per-sensor internals  |
+|       |                  (lat/lon paths, group label)  |
+|       v                                               |
+|  read_product() / read_product_multi()                 |
+|       |                  Shared workflow:              |
+|       |                  validate, call Rust,          |
+|       |                  build tibble, combine         |
 |       |                                               |
-|  grab_product()          Shared internal workflow      |
-|       |                  (validate, call Rust,         |
-|       |                   build tibble, combine)       |
-|       |                                               |
-|  sl_earthdata_token()    Auth: env vars / .netrc /    |
-|  sl_bbox()               interactive / token API      |
-|  sl_hdf5_groups()        Low-level HDF5 exploration   |
-|  sl_hdf5_read()                                       |
+|  sl_columns()            Column registry per product   |
+|  sl_bbox()               Bounding box constructor      |
+|  sl_hdf5_groups()        Low-level HDF5 exploration    |
+|  sl_hdf5_read()                                        |
 +-------------------+-----------------------------------+
                     |  extendr FFI (.Call)
 +-------------------+-----------------------------------+
@@ -242,8 +289,7 @@ over libhdf5 for remote reads.
 |  filters/                                             |
 |    mod.rs           Deflate, shuffle, Fletcher32       |
 |                                                       |
-|  auth.rs            Earthdata token API client         |
-|  ffi.rs             R <-> Rust bridge (extendr)        |
+|  ffi.rs             R <-> Rust bridge (extendr)       |
 +-------------------------------------------------------+
 ```
 
@@ -254,7 +300,7 @@ over libhdf5 for remote reads.
 | **Pure Rust, no libhdf5** | libhdf5's internal navigation pattern issues hundreds of tiny reads, each becoming an HTTP round trip. A purpose-built parser controls I/O granularity. Also eliminates the C build dependency. |
 | **Block-aligned LRU cache** | HDF5 metadata is scattered but spatially clustered. 256 KiB block reads with LRU caching absorb nearby metadata lookups, reducing B-tree traversal from ~20 requests to ~3-5. |
 | **Request coalescing** | Adjacent missing cache blocks are merged into single HTTP Range requests, minimizing round trips further. |
-| **Full lat/lon scan** | GEDI lat/lon arrays are ~1-2 MB per beam — small relative to the file. Scanning linearly is simpler and more robust than maintaining a spatial index. |
+| **Full lat/lon scan** | GEDI lat/lon arrays are ~1-2 MB per beam, small relative to the file. Scanning linearly is simpler and more robust than maintaining a spatial index. |
 | **Raw bytes + JSON metadata (not Arrow)** | The extendr <-> arrow interop is immature. Raw bytes + `readBin()` is fast, dependency-free, and works reliably across platforms. |
 | **`SatelliteProduct` trait** | GEDI and ICESat-2 share the same read algorithm (iterate groups, filter spatially, read columns). The trait captures per-product metadata (group names, lat/lon paths, default columns) without duplicating the core logic. |
 | **Product-specific lat/lon paths** | GEDI products inconsistently store coordinates (root vs `geolocation/` subgroup, different variable names by product). The trait method captures this per-product knowledge. |
@@ -276,16 +322,25 @@ GEDI and ICESat-2 files:
 
 ## Authentication
 
-spacelaser authenticates with NASA Earthdata in this order:
+spacelaser uses NASA Earthdata Basic auth with cookie-based session
+following (not bearer tokens). Credentials are resolved in this order:
 
-1. `token` argument (pass-through)
-2. `EARTHDATA_TOKEN` environment variable (pre-existing bearer token)
-3. `EARTHDATA_USERNAME` + `EARTHDATA_PASSWORD` environment variables
-4. `~/.netrc` entry for `urs.earthdata.nasa.gov`
-5. Interactive prompt (if running interactively)
+1. `EARTHDATA_USERNAME` + `EARTHDATA_PASSWORD` environment variables.
+2. A `.netrc` file containing an entry for `urs.earthdata.nasa.gov`.
+   Both `~/.netrc` and the path in `GDAL_HTTP_NETRC_FILE` are checked, so
+   credentials set up via [earthdatalogin](https://github.com/boettiger-lab/earthdatalogin)
+   work out of the box.
 
-For options 3-5, credentials are exchanged for a bearer token via the
-Earthdata Login token API.  The token is cached for the R session.
+The simplest setup, if you already have an Earthdata account:
+
+```r
+# Once per machine: writes ~/.netrc and sets GDAL_HTTP_NETRC_FILE
+earthdatalogin::edl_netrc()
+```
+
+Credentials are cached in the package namespace for the R session after
+first successful resolution. No bearer token, no token endpoint, no
+interactive prompt.
 
 Register at <https://urs.earthdata.nasa.gov/> if you don't have an account.
 
@@ -293,21 +348,29 @@ Register at <https://urs.earthdata.nasa.gov/> if you don't have an account.
 
 ### Search
 
-- `find_gedi(bbox, product, ...)` — Search CMR for GEDI granules → `sl_gedi_search`
-- `find_icesat2(bbox, product, ...)` — Search CMR for ICESat-2 granules → `sl_icesat2_search`
+- `sl_search(bbox, product, date_start = NULL, date_end = NULL)`: search
+  CMR for GEDI or ICESat-2 granules. Returns an `sl_gedi_search` or
+  `sl_icesat2_search` (chosen automatically from `product`) carrying the
+  product and bbox as attributes.
 
 ### Read
 
-- `sl_grab(x, bbox, ...)` — S3 generic: read data from search results or URL(s)
-- `grab_gedi(url, product, bbox)` — Read a single GEDI file (L1B/L2A/L2B/L4A)
-- `grab_icesat2(url, product, bbox)` — Read a single ICESat-2 file (ATL03/ATL06/ATL08)
+- `sl_read(x, bbox = NULL, columns = NULL, ...)`: S3 generic that reads
+  satellite lidar data. Dispatches on:
+  - `sl_gedi_search` / `sl_icesat2_search`: reads all granules; bbox
+    defaults to the search bbox.
+  - `character`: a vector of HDF5 URLs; auto-detects sensor and product
+    from the filename. `bbox` is required.
 
 ### Utilities
 
-- `sl_bbox(xmin, ymin, xmax, ymax)` — Create a bounding box
-- `sl_earthdata_token()` — Obtain/cache a bearer token
-- `sl_hdf5_groups(url, path)` — List groups in a remote HDF5 file
-- `sl_hdf5_read(url, dataset)` — Read a single dataset (low-level)
+- `sl_bbox(xmin, ymin, xmax, ymax)`: create a bounding box (WGS84).
+- `sl_columns(product)`: list the column registry for a product.
+- `sl_hdf5_groups(url, path)`: list groups in a remote HDF5 file.
+- `sl_hdf5_read(url, dataset)`: read a single dataset (low-level).
+
+Valid `product` values: `"L1B"`, `"L2A"`, `"L2B"`, `"L4A"` (GEDI);
+`"ATL03"`, `"ATL06"`, `"ATL08"` (ICESat-2).
 
 ## License
 

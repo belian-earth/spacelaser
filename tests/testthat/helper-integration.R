@@ -103,3 +103,28 @@ expect_valid_read <- function(
   testthat::expect_true(all(lon >= b[["xmin"]] & lon <= b[["xmax"]]))
   testthat::expect_true(all(lat >= b[["ymin"]] & lat <= b[["ymax"]]))
 }
+
+#' Every column in a product's registry must round-trip to the output.
+#'
+#' For scalar columns, the registry name must appear as a column in the
+#' result. For 2D profile columns (e.g. GEDI `rh`, `cover_z`, `pai_z`),
+#' the Rust side de-interleaves and emits expanded column names
+#' (`{name}0`, `{name}1`, ...), so we accept either the base name or at
+#' least one expanded variant as satisfying the round-trip.
+#' @noRd
+expect_registry_roundtrip <- function(data, product) {
+  registry_names <- names(sl_columns(product))
+  out_names <- names(data)
+  missing <- character(0)
+  for (nm in registry_names) {
+    if (nm %in% out_names) next
+    pattern <- paste0("^", nm, "\\d+$")
+    if (any(grepl(pattern, out_names))) next
+    missing <- c(missing, nm)
+  }
+  testthat::expect_equal(
+    missing,
+    character(0),
+    label = sprintf("%s registry columns missing from output", product)
+  )
+}

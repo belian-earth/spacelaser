@@ -90,13 +90,6 @@ test_that("L4A: every column in the registry round-trips through a real read", {
   skip_unless_integration()
   granules <- search_or_skip("L4A", max_granules = 1L)
 
-  registry <- sl_columns("L4A")
-  data <- sl_read(granules, columns = names(registry))
-
-  # Every short name in the registry should appear as a column in the
-  # result. The Rust side returns full HDF5 paths; the R side strips
-  # subgroup prefixes (e.g. "land_cover_data/leaf_off_doy" -> "leaf_off_doy"),
-  # which is exactly what the registry's *short names* already are.
-  missing_cols <- setdiff(names(registry), names(data))
-  expect_equal(missing_cols, character(0))
+  data <- sl_read(granules, columns = names(sl_columns("L4A")))
+  expect_registry_roundtrip(data, "L4A")
 })

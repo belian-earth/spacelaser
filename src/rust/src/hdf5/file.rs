@@ -230,6 +230,17 @@ impl Hdf5File {
             for entry in &entries {
                 let entry_name = btree::heap_string(&heap_data, entry.name_offset);
                 if entry_name == name {
+                    // Cache type 2 means the entry is a soft (symbolic)
+                    // link. Per the HDF5 spec, `object_header_address` is
+                    // *undefined* for such entries (GEDI L2B files set it
+                    // to the all-ones sentinel), so we must not feed it to
+                    // `ObjectHeader::read` or the parser will panic on an
+                    // empty slice. Transparent soft-link resolution is a
+                    // TODO; for now, return a clean error telling the user
+                    // which path is affected and what to do about it.
+                    if entry.cache_type == 2 {
+                        return Err(Hdf5Error::SoftLinkNotSupported(name.to_string()));
+                    }
                     return Ok(entry.object_header_address);
                 }
             }

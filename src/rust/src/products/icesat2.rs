@@ -76,13 +76,17 @@ impl SatelliteProduct for IceSat2Product {
 /// Read ICESat-2 data with spatial subsetting.
 ///
 /// Thin wrapper around [`common::read_product_groups`] that supplies
-/// ICESat-2-specific product metadata.
+/// ICESat-2-specific product metadata. `pool_columns` is accepted for
+/// signature symmetry with GEDI but ICESat-2 has no pool datasets in
+/// the currently supported products (ATLAS is photon-counting, not
+/// analog-waveform), so it is typically `None`.
 pub async fn read_icesat2(
     file: &Hdf5File,
     product: IceSat2Product,
     bbox: BBox,
     columns: Option<Vec<String>>,
     tracks: Option<Vec<String>>,
+    pool_columns: Option<Vec<String>>,
 ) -> Result<Vec<GroupData>, Hdf5Error> {
-    common::read_product_groups(file, &product, bbox, columns, tracks).await
+    common::read_product_groups(file, &product, bbox, columns, tracks, pool_columns).await
 }

@@ -78,14 +78,49 @@
   range_bias_correction              = "geolocation/range_bias_correction",
   solar_azimuth                      = "geolocation/solar_azimuth",
   solar_elevation                    = "geolocation/solar_elevation",
-  dynamic_atmosphere_correction      = "geolocation/dynamic_atmosphere_correction",
-  geoid                              = "geolocation/geoid",
-  tide_earth                         = "geolocation/tide_earth",
-  tide_load                          = "geolocation/tide_load",
-  tide_ocean                         = "geolocation/tide_ocean",
-  tide_ocean_pole                    = "geolocation/tide_ocean_pole",
-  tide_pole                          = "geolocation/tide_pole"
+  # Geophysical corrections live under geophys_corr/, not geolocation/.
+  dynamic_atmosphere_correction      = "geophys_corr/dynamic_atmosphere_correction",
+  geoid                              = "geophys_corr/geoid",
+  tide_earth                         = "geophys_corr/tide_earth",
+  tide_load                          = "geophys_corr/tide_load",
+  tide_ocean                         = "geophys_corr/tide_ocean",
+  tide_ocean_pole                    = "geophys_corr/tide_ocean_pole",
+  tide_pole                          = "geophys_corr/tide_pole",
+  # ------------------------------------------------------------------
+  # Pool datasets (variable-length per shot; opt-in via `columns`).
+  # These are flat 1D arrays concatenating all shots' waveform samples
+  # across the beam. The reader fetches them in full and the R side
+  # slices each shot's waveform into a list column using the
+  # rx_/tx_sample_start_index and rx_/tx_sample_count vectors.
+  # Not returned when `columns = NULL` (too expensive, and produces
+  # list columns which most downstream code doesn't expect).
+  # ------------------------------------------------------------------
+  rxwaveform                         = "rxwaveform",
+  txwaveform                         = "txwaveform"
 )
+
+#' L1B pool columns — opt-in waveform datasets.
+#'
+#' Short names of the L1B columns that live at the beam root as flat
+#' 1D arrays of variable-length-per-shot samples rather than shot-rate
+#' values. They are read in full by the Rust layer and sliced into
+#' per-shot list columns by `build_tibble()` using the map below.
+#' Excluded from the default column set so a plain `sl_read(granules)`
+#' does not silently download tens of megabytes per beam.
+#' @noRd
+.gedi_l1b_pool_columns <- c("rxwaveform", "txwaveform")
+
+#' Index columns needed to slice each pool column into per-shot vectors.
+#'
+#' Keys are pool column short names; values are lists with `start` and
+#' `count` short names giving the HDF5 start-index and count vectors
+#' that describe where each shot's data lives inside the pool.
+#' @noRd
+.gedi_l1b_pool_index_map <- list(
+  rxwaveform = list(start = "rx_sample_start_index", count = "rx_sample_count"),
+  txwaveform = list(start = "tx_sample_start_index", count = "tx_sample_count")
+)
+
 # fmt: skip
 .gedi_l2a_columns <- c(
   lat_lowestmode                 = "lat_lowestmode",
@@ -339,7 +374,9 @@ sl_columns <- function(
 #' Validate and resolve column names to full HDF5 paths.
 #'
 #' When `columns` is `NULL`, returns the full default column set for the
-#' product (R is the single source of truth — Rust receives explicit paths).
+#' product, excluding any pool columns (see `.gedi_l1b_pool_columns`).
+#' Pool columns are opt-in because they are expensive and produce list
+#' columns.
 #'
 #' Short user-facing names are matched against the registry. Names that look
 #' like expanded 2D columns (e.g., `"rh90"`) are resolved by stripping
@@ -358,9 +395,11 @@ validate_columns <- function(columns, product) {
     cli::cli_abort("Unknown product {.val {product}}.")
   }
 
-  # NULL → all defaults
+  # NULL → all scalar defaults, with pool columns excluded
   if (is.null(columns)) {
-    return(unique(unname(registry)))
+    pool_short <- product_pool_columns(product)
+    default_short <- setdiff(names(registry), pool_short)
+    return(unique(unname(registry[default_short])))
   }
 
   # Columns containing "/" are raw HDF5 paths — pass through unchanged
@@ -401,4 +440,125 @@ validate_columns <- function(columns, product) {
 ensure_lat_lon <- function(columns, lat_col, lon_col) {
   missing <- setdiff(c(lat_col, lon_col), columns)
   c(missing, columns)
+}
+
+# ---------------------------------------------------------------------------
+# Internal: pool column handling (GEDI L1B waveforms)
+# ---------------------------------------------------------------------------
+
+#' Short names of pool columns for a given product.
+#'
+#' Only GEDI L1B has pool columns in the current registry set. Other
+#' products return `character(0)`.
+#' @noRd
+product_pool_columns <- function(product) {
+  switch(
+    product,
+    L1B = .gedi_l1b_pool_columns,
+    character(0)
+  )
+}
+
+#' Index-column map for pool columns in a given product.
+#'
+#' Returns a named list keyed by pool column short name; each entry has
+#' `start` and `count` short names naming the HDF5 index columns needed
+#' to slice that pool into per-shot vectors.
+#' @noRd
+product_pool_index_map <- function(product) {
+  switch(
+    product,
+    L1B = .gedi_l1b_pool_index_map,
+    list()
+  )
+}
+
+#' Ensure that pool-index columns are included in the scalar column list.
+#'
+#' For each pool column requested, the R side needs the corresponding
+#' `*_sample_start_index` and `*_sample_count` vectors to slice the
+#' per-shot waveforms out of the flat pool. This helper inspects the
+#' requested pool columns and prepends the required index columns
+#' (using the registry's HDF5 paths) if they are not already present.
+#'
+#' @param columns Character vector of resolved scalar HDF5 paths.
+#' @param pool_short Character vector of requested pool column short names.
+#' @param product Character product identifier.
+#' @returns Updated scalar-column character vector.
+#' @noRd
+ensure_pool_indices <- function(columns, pool_short, product) {
+  if (length(pool_short) == 0L) {
+    return(columns)
+  }
+  registry <- .gedi_column_registry[[product]] %||%
+    .icesat2_column_registry[[product]]
+  idx_map <- product_pool_index_map(product)
+
+  required_short <- character(0)
+  for (pc in pool_short) {
+    spec <- idx_map[[pc]]
+    if (is.null(spec)) next
+    required_short <- c(required_short, spec$start, spec$count)
+  }
+  required_paths <- unname(registry[unique(required_short)])
+  c(setdiff(required_paths, columns), columns)
+}
+
+#' Build colon-delimited pool specs for the Rust FFI.
+#'
+#' Each spec is `"hdf5_path:start_col:count_col"` so the Rust side can
+#' parse the start/count index columns it already has from the scalar
+#' read and compute targeted sample-level byte ranges into the pool
+#' dataset, instead of reading the entire (potentially 50+ MB) pool.
+#'
+#' @param pool_short Character vector of pool column short names.
+#' @param pool_paths Character vector of pool column HDF5 paths (parallel).
+#' @param product Character product identifier.
+#' @returns Character vector of colon-delimited specs, or `character(0)`.
+#' @noRd
+build_pool_specs <- function(pool_short, pool_paths, product) {
+  if (length(pool_short) == 0L) {
+    return(character(0))
+  }
+  idx_map <- product_pool_index_map(product)
+  vapply(seq_along(pool_short), function(i) {
+    spec <- idx_map[[pool_short[[i]]]]
+    if (is.null(spec)) return(NA_character_)
+    paste(pool_paths[[i]], spec$start, spec$count, sep = ":")
+  }, character(1))
+}
+
+#' Split a resolved column list into scalar and pool components.
+#'
+#' Pool columns are identified by their registry path appearing in the
+#' product's pool-column list. Returns paths for the Rust FFI call and
+#' short names for `ensure_pool_indices()` / `build_tibble()` slicing.
+#'
+#' @param columns Character vector of resolved HDF5 paths.
+#' @param product Character product identifier.
+#' @returns A list with `scalar` (paths), `pool_paths` (paths), and
+#'   `pool_short` (short names, parallel to `pool_paths`).
+#' @noRd
+split_pool_columns <- function(columns, product) {
+  pool_short_all <- product_pool_columns(product)
+  if (length(pool_short_all) == 0L) {
+    return(list(
+      scalar = columns,
+      pool_paths = character(0),
+      pool_short = character(0)
+    ))
+  }
+  registry <- .gedi_column_registry[[product]] %||%
+    .icesat2_column_registry[[product]]
+  pool_paths_all <- unname(registry[pool_short_all])
+
+  is_pool <- columns %in% pool_paths_all
+  requested_paths <- unname(columns[is_pool])
+  requested_short <- pool_short_all[match(requested_paths, pool_paths_all)]
+
+  list(
+    scalar = unname(columns[!is_pool]),
+    pool_paths = requested_paths,
+    pool_short = requested_short
+  )
 }

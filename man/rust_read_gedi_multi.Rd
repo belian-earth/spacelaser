@@ -14,7 +14,8 @@ rust_read_gedi_multi(
   columns,
   beams,
   username,
-  password
+  password,
+  pool_columns
 )
 }
 \description{

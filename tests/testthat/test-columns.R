@@ -3,7 +3,8 @@
 # ---------------------------------------------------------------------------
 
 test_that("sl_columns() returns correct counts for GEDI products", {
-  expect_length(sl_columns("L1B"), 77)
+  # L1B: 77 scalar + 2 pool (rxwaveform, txwaveform) = 79
+  expect_length(sl_columns("L1B"), 79)
   expect_length(sl_columns("L2A"), 44)
   expect_length(sl_columns("L2B"), 77)
   expect_length(sl_columns("L4A"), 37)

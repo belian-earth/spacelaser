@@ -330,6 +330,9 @@ read_product <- function(
   bbox <- validate_bbox(bbox)
   columns <- validate_columns(columns, product)
   columns <- ensure_lat_lon(columns, lat_col, lon_col)
+  split <- split_pool_columns(columns, product)
+  scalar_cols <- ensure_pool_indices(split$scalar, split$pool_short, product)
+  pool_specs <- build_pool_specs(split$pool_short, split$pool_paths, product)
   b <- unclass(bbox)
   creds <- sl_earthdata_creds()
 
@@ -340,6 +343,8 @@ read_product <- function(
   # All beams (GEDI) / ground tracks (ICESat-2) are always read; users
   # filter post-hoc on the `beam` / `track` column. The Rust functions
   # still accept a group filter argument, which we always pass as NULL.
+  # Pool columns (GEDI L1B waveforms) are read in full and returned in
+  # a separate `pool_columns` slot of each group_data for R-side slicing.
   raw_result <- rust_fn(
     url,
     product,
@@ -347,10 +352,11 @@ read_product <- function(
     b[["ymin"]],
     b[["xmax"]],
     b[["ymax"]],
-    columns,
+    scalar_cols,
     NULL,
     creds$username,
-    creds$password
+    creds$password,
+    if (length(pool_specs) > 0L) pool_specs else NULL
   )
 
   if (length(raw_result) == 0L) {
@@ -358,8 +364,15 @@ read_product <- function(
     return(vctrs::new_data_frame(list(), n = 0L))
   }
 
+  pool_idx_map <- product_pool_index_map(product)
   group_tbls <- purrr::map(raw_result, function(gd) {
-    tbl <- build_tibble(gd, lat_col = lat_col, lon_col = lon_col)
+    tbl <- build_tibble(
+      gd,
+      lat_col = lat_col,
+      lon_col = lon_col,
+      pool_short = split$pool_short,
+      pool_index_map = pool_idx_map
+    )
     tbl[[group_label]] <- gd$group_name
     # Strip subgroup prefixes (e.g. "geolocation/lat_lowestmode" ->
     # "lat_lowestmode") for cleaner column names, matching chewie output.
@@ -409,6 +422,9 @@ read_product_multi <- function(
   bbox <- validate_bbox(bbox)
   columns <- validate_columns(columns, product)
   columns <- ensure_lat_lon(columns, lat_col, lon_col)
+  split <- split_pool_columns(columns, product)
+  scalar_cols <- ensure_pool_indices(split$scalar, split$pool_short, product)
+  pool_specs <- build_pool_specs(split$pool_short, split$pool_paths, product)
   b <- unclass(bbox)
   creds <- sl_earthdata_creds()
 
@@ -423,10 +439,11 @@ read_product_multi <- function(
     b[["ymin"]],
     b[["xmax"]],
     b[["ymax"]],
-    columns,
+    scalar_cols,
     NULL,
     creds$username,
-    creds$password
+    creds$password,
+    if (length(pool_specs) > 0L) pool_specs else NULL
   )
 
   if (length(raw_result) == 0L) {
@@ -434,8 +451,15 @@ read_product_multi <- function(
     return(vctrs::new_data_frame(list(), n = 0L))
   }
 
+  pool_idx_map <- product_pool_index_map(product)
   group_tbls <- purrr::map(raw_result, function(gd) {
-    tbl <- build_tibble(gd, lat_col = lat_col, lon_col = lon_col)
+    tbl <- build_tibble(
+      gd,
+      lat_col = lat_col,
+      lon_col = lon_col,
+      pool_short = split$pool_short,
+      pool_index_map = pool_idx_map
+    )
     tbl[[group_label]] <- gd$group_name
     names(tbl) <- sub(".*/", "", names(tbl))
     tbl
@@ -589,8 +613,17 @@ parse_column_info <- function(json_str) {
 #' Build a data frame from a Rust group data list.
 #'
 #' Converts raw byte columns to proper R types and attaches geometry via wk.
+#' If `pool_short` is non-empty, also slices each requested pool dataset
+#' (e.g. GEDI L1B `rxwaveform` / `txwaveform`) into a per-shot list column
+#' using the `start`/`count` index columns specified by `pool_index_map`.
 #' @noRd
-build_tibble <- function(group_data, lat_col, lon_col) {
+build_tibble <- function(
+  group_data,
+  lat_col,
+  lon_col,
+  pool_short = character(0),
+  pool_index_map = list()
+) {
   col_names <- names(group_data$columns)
   col_info <- group_data$col_info
 
@@ -612,6 +645,39 @@ build_tibble <- function(group_data, lat_col, lon_col) {
       y = tbl[[lat_col]],
       crs = wk::wk_crs_longlat()
     )
+  }
+
+  # Pool columns (GEDI L1B waveforms): Rust returns only the requested
+  # samples, concatenated per-shot in the same order as the selected
+  # rows. We split the flat vector into per-shot list columns using
+  # the count values (the start_index is implicit: each shot's data
+  # follows the previous shot's in the concatenated buffer).
+  if (length(pool_short) > 0L) {
+    pool_raw <- group_data$pool_columns %||% list()
+    pool_info <- group_data$pool_col_info %||% list()
+    for (pc in pool_short) {
+      if (is.null(pool_raw[[pc]])) next
+      flat <- parse_column(pool_raw[[pc]], pool_info[[pc]])
+      spec <- pool_index_map[[pc]]
+      if (is.null(spec)) next
+      counts <- tbl[[spec$count]]
+      if (is.null(counts)) next
+
+      # Sequential slicing: the Rust side returned only the bytes
+      # for the selected shots, concatenated in row order.
+      slices <- vector("list", n)
+      pos <- 1L
+      for (i in seq_len(n)) {
+        k <- as.integer(counts[[i]])
+        if (is.na(k) || k <= 0L) {
+          slices[[i]] <- flat[integer(0)]
+        } else {
+          slices[[i]] <- flat[pos:(pos + k - 1L)]
+          pos <- pos + k
+        }
+      }
+      tbl[[pc]] <- slices
+    }
   }
 
   tbl

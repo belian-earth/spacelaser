@@ -68,6 +68,12 @@ pub struct GroupData {
     pub columns: HashMap<String, ColumnData>,
     /// Row indices (in the original file) that passed the spatial filter.
     pub selected_indices: Vec<u64>,
+    /// Pool datasets read in full (no row filtering). Used for GEDI L1B
+    /// variable-length waveforms (`rxwaveform`, `txwaveform`), which are
+    /// flat 1D arrays of concatenated samples across *all* shots in the
+    /// beam. The R side slices these into per-shot list columns using
+    /// `rx_sample_start_index` / `rx_sample_count` (and the tx equivalents).
+    pub pool_columns: HashMap<String, ColumnData>,
 }
 
 // ---------------------------------------------------------------------------
@@ -115,9 +121,11 @@ pub async fn read_product_groups(
     bbox: BBox,
     columns: Option<Vec<String>>,
     groups: Option<Vec<String>>,
+    pool_columns: Option<Vec<String>>,
 ) -> Result<Vec<GroupData>, Hdf5Error> {
     // R always resolves defaults; empty vec is a no-op safety net.
     let columns: Vec<String> = columns.unwrap_or_default();
+    let pool_columns: Vec<String> = pool_columns.unwrap_or_default();
 
     let group_list: Vec<String> = groups.unwrap_or_else(|| {
         product.group_names().into_iter().map(String::from).collect()
@@ -126,9 +134,10 @@ pub async fn read_product_groups(
     // Process all beams/tracks concurrently.
     let beam_futures: Vec<_> = group_list.iter().map(|group_name| {
         let columns = &columns;
+        let pool_columns = &pool_columns;
         let group_name = group_name.clone();
         async move {
-            read_single_group(file, &group_name, product, bbox, columns).await
+            read_single_group(file, &group_name, product, bbox, columns, pool_columns).await
         }
     }).collect();
 
@@ -153,6 +162,7 @@ async fn read_single_group(
     product: &dyn SatelliteProduct,
     bbox: BBox,
     columns: &[String],
+    pool_columns: &[String],
 ) -> Result<Option<GroupData>, Hdf5Error> {
     let group_path = format!("/{}", group_name);
 
@@ -272,10 +282,89 @@ async fn read_single_group(
         }
     }
 
+    // 5. Pool columns: targeted reads using the start-index / count
+    //    columns that were already read as scalar columns above.
+    //
+    //    Each pool_columns entry is a colon-delimited spec:
+    //      "dataset_name:start_index_col:count_col"
+    //    e.g. "rxwaveform:rx_sample_start_index:rx_sample_count"
+    //
+    //    The start/count columns give per-shot positions into the pool
+    //    dataset (a flat 1D array of concatenated samples). We parse
+    //    them, compute sample-level ranges for just the selected shots,
+    //    and issue targeted chunk reads rather than downloading the
+    //    entire pool (which can be 50-200 MB per beam).
+    let mut pool_data = HashMap::new();
+    for spec in pool_columns.iter() {
+        let parts: Vec<&str> = spec.splitn(3, ':').collect();
+        if parts.len() != 3 {
+            log::warn!("Invalid pool spec (expected name:start:count): {}", spec);
+            continue;
+        }
+        let pool_name = parts[0];
+        let start_col = parts[1];
+        let count_col = parts[2];
+
+        let start_data = match col_data.get(start_col) {
+            Some(d) => d,
+            None => {
+                log::warn!("Pool index column '{}' not in scalar results", start_col);
+                continue;
+            }
+        };
+        let count_data = match col_data.get(count_col) {
+            Some(d) => d,
+            None => {
+                log::warn!("Pool index column '{}' not in scalar results", count_col);
+                continue;
+            }
+        };
+
+        let starts = parse_as_u64_vec(start_data);
+        let counts = parse_as_u64_vec(count_data);
+
+        if starts.len() != counts.len() || starts.is_empty() {
+            continue;
+        }
+
+        let sample_ranges: Vec<(u64, u64)> = starts
+            .iter()
+            .zip(counts.iter())
+            .filter(|(_, &c)| c > 0)
+            .map(|(&s, &c)| (s, s + c))
+            .collect();
+
+        if sample_ranges.is_empty() {
+            continue;
+        }
+
+        let col_path = format!("{}/{}", group_path, pool_name);
+        match file.read_dataset_rows(&col_path, &sample_ranges).await {
+            Ok((meta, bytes)) => {
+                let elem_size = meta.datatype.size();
+                let num_elements = bytes.len() / elem_size.max(1);
+                pool_data.insert(
+                    pool_name.to_string(),
+                    ColumnData {
+                        bytes,
+                        element_size: elem_size,
+                        num_elements,
+                        dtype_desc: format!("{:?}", meta.datatype),
+                    },
+                );
+            }
+            Err(Hdf5Error::PathNotFound(_)) => {}
+            Err(e) => {
+                log::warn!("Failed to read pool column '{}': {}", pool_name, e);
+            }
+        }
+    }
+
     Ok(Some(GroupData {
         group_name: group_name.to_string(),
         columns: col_data,
         selected_indices,
+        pool_columns: pool_data,
     }))
 }
 
@@ -364,6 +453,49 @@ fn indices_to_ranges(indices: &[u64]) -> Vec<(u64, u64)> {
     }
     ranges.push((start, end));
     ranges
+}
+
+/// Parse a `ColumnData` (raw bytes from an HDF5 integer or float dataset)
+/// into a `Vec<u64>` for use as pool column sample indices. Handles the
+/// common integer and float types found in GEDI start-index / count columns.
+fn parse_as_u64_vec(col: &ColumnData) -> Vec<u64> {
+    let n = col.num_elements;
+    let s = col.element_size;
+    let b = &col.bytes;
+
+    (0..n)
+        .map(|i| {
+            let off = i * s;
+            if off + s > b.len() {
+                return 0;
+            }
+            match s {
+                1 => b[off] as u64,
+                2 => u16::from_le_bytes([b[off], b[off + 1]]) as u64,
+                4 => {
+                    if col.dtype_desc.contains("FloatingPoint") {
+                        f32::from_le_bytes([b[off], b[off + 1], b[off + 2], b[off + 3]]) as u64
+                    } else {
+                        u32::from_le_bytes([b[off], b[off + 1], b[off + 2], b[off + 3]]) as u64
+                    }
+                }
+                8 => {
+                    if col.dtype_desc.contains("FloatingPoint") {
+                        f64::from_le_bytes([
+                            b[off], b[off + 1], b[off + 2], b[off + 3], b[off + 4], b[off + 5],
+                            b[off + 6], b[off + 7],
+                        ]) as u64
+                    } else {
+                        u64::from_le_bytes([
+                            b[off], b[off + 1], b[off + 2], b[off + 3], b[off + 4], b[off + 5],
+                            b[off + 6], b[off + 7],
+                        ])
+                    }
+                }
+                _ => 0,
+            }
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------

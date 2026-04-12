@@ -81,21 +81,48 @@ fn make_source(url: &str, username: Nullable<&str>, password: Nullable<&str>) ->
 ///   group_name   = "BEAM0101",
 ///   n_elements   = 1234L,
 ///   columns      = list(col1 = <raw>, col2 = <raw>, ...),
-///   col_info     = list(col1 = "<json>", col2 = "<json>", ...)
+///   col_info     = list(col1 = "<json>", col2 = "<json>", ...),
+///   pool_columns = list(rxwaveform = <raw>, txwaveform = <raw>),
+///   pool_col_info = list(rxwaveform = "<json>", txwaveform = "<json>"),
 /// )
 /// ```
+/// `pool_columns` are datasets read in full (no row filter). The R side
+/// slices each pool column into a per-shot list column using the
+/// `{rx,tx}_sample_start_index` / `{rx,tx}_sample_count` vectors that
+/// are auto-added to the scalar column request.
 fn group_data_to_list(gd: GroupData) -> List {
     let n_elements = gd.selected_indices.len() as i32;
     let group_name = gd.group_name;
 
-    let mut col_names: Vec<String> = Vec::new();
-    let mut col_bytes: Vec<Raw> = Vec::new();
-    let mut col_info_strs: Vec<String> = Vec::new();
+    let (columns, col_info) = columns_to_lists(gd.columns);
+    let (pool_columns, pool_col_info) = columns_to_lists(gd.pool_columns);
 
-    for (name, cdata) in gd.columns {
-        col_names.push(name);
-        col_bytes.push(Raw::from_bytes(&cdata.bytes));
-        col_info_strs.push(
+    // Use generic field names so the R side doesn't need to branch
+    // on GEDI vs ICESat-2.  The R wrapper renames `group_name` to
+    // `beam` or `track` as appropriate.
+    list!(
+        group_name = group_name,
+        n_elements = n_elements,
+        columns = columns,
+        col_info = col_info,
+        pool_columns = pool_columns,
+        pool_col_info = pool_col_info
+    )
+}
+
+/// Convert a `HashMap<String, ColumnData>` into two parallel R lists:
+/// one of raw byte vectors, one of JSON info strings.
+fn columns_to_lists(
+    cols: std::collections::HashMap<String, crate::products::common::ColumnData>,
+) -> (List, List) {
+    let mut names: Vec<String> = Vec::new();
+    let mut bytes: Vec<Raw> = Vec::new();
+    let mut info_strs: Vec<String> = Vec::new();
+
+    for (name, cdata) in cols {
+        names.push(name);
+        bytes.push(Raw::from_bytes(&cdata.bytes));
+        info_strs.push(
             serde_json::json!({
                 "element_size": cdata.element_size,
                 "num_elements": cdata.num_elements,
@@ -105,27 +132,19 @@ fn group_data_to_list(gd: GroupData) -> List {
         );
     }
 
-    let columns = List::from_names_and_values(
-        col_names.iter().map(|s| s.as_str()),
-        col_bytes,
+    let col_list = List::from_names_and_values(
+        names.iter().map(|s| s.as_str()),
+        bytes,
     )
     .unwrap_or_else(|_| List::new(0));
 
-    let col_info = List::from_names_and_values(
-        col_names.iter().map(|s| s.as_str()),
-        col_info_strs,
+    let info_list = List::from_names_and_values(
+        names.iter().map(|s| s.as_str()),
+        info_strs,
     )
     .unwrap_or_else(|_| List::new(0));
 
-    // Use generic field names so the R side doesn't need to branch
-    // on GEDI vs ICESat-2.  The R wrapper renames `group_name` to
-    // `beam` or `track` as appropriate.
-    list!(
-        group_name = group_name,
-        n_elements = n_elements,
-        columns = columns,
-        col_info = col_info
-    )
+    (col_list, info_list)
 }
 
 // ---------------------------------------------------------------------------
@@ -146,6 +165,7 @@ fn rust_read_gedi(
     beams: Nullable<Vec<String>>,
     username: Nullable<&str>,
     password: Nullable<&str>,
+    pool_columns: Nullable<Vec<String>>,
 ) -> extendr_api::Result<List> {
     let rt = runtime();
     let source = make_source(url, username, password);
@@ -161,10 +181,11 @@ fn rust_read_gedi(
     let bbox = crate::BBox::new(xmin, ymin, xmax, ymax);
     let cols = match columns { Nullable::NotNull(c) => Some(c), Nullable::Null => None };
     let bms = match beams { Nullable::NotNull(b) => Some(b), Nullable::Null => None };
+    let pool = match pool_columns { Nullable::NotNull(p) => Some(p), Nullable::Null => None };
 
     let result = rt.block_on(async {
         let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
-        gedi::read_gedi(&file, product_type, bbox, cols, bms)
+        gedi::read_gedi(&file, product_type, bbox, cols, bms, pool)
             .await
             .map_err(|e| e.to_string())
     });
@@ -192,6 +213,7 @@ fn rust_read_icesat2(
     tracks: Nullable<Vec<String>>,
     username: Nullable<&str>,
     password: Nullable<&str>,
+    pool_columns: Nullable<Vec<String>>,
 ) -> extendr_api::Result<List> {
     let rt = runtime();
     let source = make_source(url, username, password);
@@ -206,10 +228,11 @@ fn rust_read_icesat2(
     let bbox = crate::BBox::new(xmin, ymin, xmax, ymax);
     let cols = match columns { Nullable::NotNull(c) => Some(c), Nullable::Null => None };
     let trks = match tracks { Nullable::NotNull(t) => Some(t), Nullable::Null => None };
+    let pool = match pool_columns { Nullable::NotNull(p) => Some(p), Nullable::Null => None };
 
     let result = rt.block_on(async {
         let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
-        icesat2::read_icesat2(&file, product_type, bbox, cols, trks)
+        icesat2::read_icesat2(&file, product_type, bbox, cols, trks, pool)
             .await
             .map_err(|e| e.to_string())
     });
@@ -298,6 +321,7 @@ fn rust_read_gedi_multi(
     beams: Nullable<Vec<String>>,
     username: Nullable<&str>,
     password: Nullable<&str>,
+    pool_columns: Nullable<Vec<String>>,
 ) -> extendr_api::Result<List> {
     let rt = runtime();
 
@@ -312,6 +336,7 @@ fn rust_read_gedi_multi(
     let bbox = crate::BBox::new(xmin, ymin, xmax, ymax);
     let cols = match columns { Nullable::NotNull(c) => Some(c), Nullable::Null => None };
     let bms = match beams { Nullable::NotNull(b) => Some(b), Nullable::Null => None };
+    let pool = match pool_columns { Nullable::NotNull(p) => Some(p), Nullable::Null => None };
 
     // Extract auth strings so they can be shared across closures.
     let user = match username { Nullable::NotNull(u) => Some(u.to_string()), Nullable::Null => None };
@@ -331,9 +356,10 @@ fn rust_read_gedi_multi(
                 };
                 let cols = cols.clone();
                 let bms = bms.clone();
+                let pool = pool.clone();
                 async move {
                     let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
-                    gedi::read_gedi(&file, product_type, bbox, cols, bms)
+                    gedi::read_gedi(&file, product_type, bbox, cols, bms, pool)
                         .await
                         .map_err(|e| e.to_string())
                 }
@@ -372,6 +398,7 @@ fn rust_read_icesat2_multi(
     tracks: Nullable<Vec<String>>,
     username: Nullable<&str>,
     password: Nullable<&str>,
+    pool_columns: Nullable<Vec<String>>,
 ) -> extendr_api::Result<List> {
     let rt = runtime();
 
@@ -385,6 +412,7 @@ fn rust_read_icesat2_multi(
     let bbox = crate::BBox::new(xmin, ymin, xmax, ymax);
     let cols = match columns { Nullable::NotNull(c) => Some(c), Nullable::Null => None };
     let trks = match tracks { Nullable::NotNull(t) => Some(t), Nullable::Null => None };
+    let pool = match pool_columns { Nullable::NotNull(p) => Some(p), Nullable::Null => None };
 
     let user = match username { Nullable::NotNull(u) => Some(u.to_string()), Nullable::Null => None };
     let pass = match password { Nullable::NotNull(p) => Some(p.to_string()), Nullable::Null => None };
@@ -400,9 +428,10 @@ fn rust_read_icesat2_multi(
                 };
                 let cols = cols.clone();
                 let trks = trks.clone();
+                let pool = pool.clone();
                 async move {
                     let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
-                    icesat2::read_icesat2(&file, product_type, bbox, cols, trks)
+                    icesat2::read_icesat2(&file, product_type, bbox, cols, trks, pool)
                         .await
                         .map_err(|e| e.to_string())
                 }

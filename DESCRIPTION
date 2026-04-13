@@ -14,16 +14,14 @@ RoxygenNote: 7.3.3
 SystemRequirements: Cargo (Rust's package manager), rustc
 Config/rextendr/version: 0.4.2
 Imports:
-    arrow,
     cli,
     jsonlite,
     purrr,
     rlang (>= 1.1.0),
+    tibble,
     vctrs,
     wk
 Suggests:
     earthdatalogin,
-    gdalraster,
-    mirai,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3

@@ -184,7 +184,7 @@ read_urls <- function(urls, bbox, read_fn, product, ...) {
   urls <- urls[!is.na(urls)]
   if (length(urls) == 0L) {
     cli::cli_inform("No URLs to read.")
-    return(vctrs::new_data_frame(list(), n = 0L))
+    return(tibble::tibble())
   }
 
   results <- purrr::map(urls, function(u) {
@@ -202,7 +202,7 @@ read_urls <- function(urls, bbox, read_fn, product, ...) {
 
   results <- purrr::compact(results)
   if (length(results) == 0L) {
-    return(vctrs::new_data_frame(list(), n = 0L))
+    return(tibble::tibble())
   }
 
   vctrs::vec_rbind(!!!results)
@@ -432,7 +432,7 @@ assemble_read_result <- function(
 ) {
   if (length(raw_result) == 0L) {
     cli::cli_inform("No {element_label}s found within the bounding box.")
-    return(vctrs::new_data_frame(list(), n = 0L))
+    return(tibble::tibble())
   }
 
   group_tbls <- purrr::map(raw_result, function(gd) {
@@ -502,7 +502,7 @@ read_product_multi <- function(
   urls <- urls[!is.na(urls)]
   if (length(urls) == 0L) {
     cli::cli_inform("No URLs to read.")
-    return(vctrs::new_data_frame(list(), n = 0L))
+    return(tibble::tibble())
   }
 
   params <- prepare_read_params(product, bbox, columns, lat_col, lon_col)
@@ -671,7 +671,7 @@ build_tibble <- function(
     n <- length(cols[[1]])
   }
 
-  tbl <- vctrs::new_data_frame(cols, n = n)
+  tbl <- tibble::new_tibble(cols, nrow = n)
 
   # Apply per-column scale factors (R-side only: product-specific,
   # currently only L2B rh100 cm→m).
@@ -737,4 +737,5 @@ build_tibble <- function(
   tbl
 }
 
-`%||%` <- function(x, y) if (is.null(x)) y else x
+#' @importFrom rlang `%||%`
+NULL

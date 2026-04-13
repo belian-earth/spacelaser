@@ -83,7 +83,7 @@ sl_extract_waveforms <- function(x) {
       amplitude = numeric(0)
     )
     if ("beam" %in% names(x)) cols$beam <- character(0)
-    return(vctrs::new_data_frame(cols))
+    return(tibble::new_tibble(cols))
   }
 
   n_total <- sum(counts)
@@ -106,5 +106,5 @@ sl_extract_waveforms <- function(x) {
     cols$beam <- rep(x$beam, counts)
   }
 
-  vctrs::new_data_frame(cols, n = n_total)
+  tibble::new_tibble(cols, nrow = n_total)
 }

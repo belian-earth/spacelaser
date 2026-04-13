@@ -213,7 +213,7 @@ build_find_result <- function(entries) {
     }
   }
 
-  vctrs::new_data_frame(list(
+  tibble::new_tibble(list(
     id = ids,
     time_start = as.POSIXct(starts, format = "%Y-%m-%dT%H:%M:%OS", tz = "UTC"),
     time_end = as.POSIXct(ends, format = "%Y-%m-%dT%H:%M:%OS", tz = "UTC"),
@@ -262,7 +262,7 @@ format_iso8601 <- function(x) {
 #' Empty result for zero-match searches.
 #' @noRd
 empty_find_result <- function() {
-  vctrs::new_data_frame(list(
+  tibble::new_tibble(list(
     id = character(),
     time_start = as.POSIXct(character(), tz = "UTC"),
     time_end = as.POSIXct(character(), tz = "UTC"),

@@ -240,8 +240,12 @@ detect_sensor <- function(url, product = NULL) {
         "ATL03"
       } else if (grepl("ATL06", bn)) {
         "ATL06"
+      } else if (grepl("ATL07", bn)) {
+        "ATL07"
       } else if (grepl("ATL08", bn)) {
         "ATL08"
+      } else if (grepl("ATL10", bn)) {
+        "ATL10"
       } else if (grepl("ATL13", bn)) {
         "ATL13"
       } else if (grepl("ATL24", bn)) {
@@ -263,7 +267,7 @@ detect_sensor <- function(url, product = NULL) {
     # Infer sensor from the product string
     if (product %in% c("L1B", "L2A", "L2B", "L4A", "L4C")) {
       read_fn <- read_gedi
-    } else if (product %in% c("ATL03", "ATL06", "ATL08", "ATL13", "ATL24")) {
+    } else if (product %in% c("ATL03", "ATL06", "ATL07", "ATL08", "ATL10", "ATL13", "ATL24")) {
       read_fn <- read_icesat2
     } else {
       rlang::abort("Unknown product {.val {product}}.")
@@ -548,6 +552,14 @@ icesat2_lat_lon <- function(product) {
     ATL08 = list(
       lat = "land_segments/latitude",
       lon = "land_segments/longitude"
+    ),
+    ATL07 = list(
+      lat = "sea_ice_segments/latitude",
+      lon = "sea_ice_segments/longitude"
+    ),
+    ATL10 = list(
+      lat = "freeboard_segment/latitude",
+      lon = "freeboard_segment/longitude"
     ),
     ATL13 = list(lat = "segment_lat", lon = "segment_lon"),
     ATL24 = list(lat = "lat_ph", lon = "lon_ph")

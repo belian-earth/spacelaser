@@ -590,6 +590,86 @@
   sensor_depth_exceeded          = "sensor_depth_exceeded"
 )
 
+# fmt: skip
+.icesat2_atl07_columns <- c(
+  # ATL07 main data under sea_ice_segments/ and its subgroups.
+  # sea_ice_segments_10m/ and dda_surface_segments/ excluded (different
+  # row dimensions).
+  latitude                         = "sea_ice_segments/latitude",
+  longitude                        = "sea_ice_segments/longitude",
+  delta_time                       = "sea_ice_segments/delta_time",
+  height_segment_id                = "sea_ice_segments/height_segment_id",
+  seg_dist_x                       = "sea_ice_segments/seg_dist_x",
+  # heights
+  height_segment_height            = "sea_ice_segments/heights/height_segment_height",
+  height_segment_confidence        = "sea_ice_segments/heights/height_segment_confidence",
+  height_segment_fit_quality_flag  = "sea_ice_segments/heights/height_segment_fit_quality_flag",
+  height_segment_quality           = "sea_ice_segments/heights/height_segment_quality",
+  height_segment_length_seg        = "sea_ice_segments/heights/height_segment_length_seg",
+  height_segment_type              = "sea_ice_segments/heights/height_segment_type",
+  height_segment_ssh_flag          = "sea_ice_segments/heights/height_segment_ssh_flag",
+  height_segment_surface_error_est = "sea_ice_segments/heights/height_segment_surface_error_est",
+  height_segment_w_gaussian        = "sea_ice_segments/heights/height_segment_w_gaussian",
+  height_segment_asr_calc          = "sea_ice_segments/heights/height_segment_asr_calc",
+  height_segment_rms               = "sea_ice_segments/heights/height_segment_rms",
+  height_segment_n_pulse_seg       = "sea_ice_segments/heights/height_segment_n_pulse_seg",
+  across_track_distance            = "sea_ice_segments/heights/across_track_distance",
+  # geolocation
+  solar_azimuth                    = "sea_ice_segments/geolocation/solar_azimuth",
+  solar_elevation                  = "sea_ice_segments/geolocation/solar_elevation",
+  sigma_h                          = "sea_ice_segments/geolocation/sigma_h",
+  # geophysical
+  height_segment_mss               = "sea_ice_segments/geophysical/height_segment_mss",
+  height_segment_ocean             = "sea_ice_segments/geophysical/height_segment_ocean",
+  height_segment_dac               = "sea_ice_segments/geophysical/height_segment_dac",
+  height_segment_earth             = "sea_ice_segments/geophysical/height_segment_earth",
+  height_segment_geoid             = "sea_ice_segments/geophysical/height_segment_geoid",
+  height_segment_load              = "sea_ice_segments/geophysical/height_segment_load",
+  # stats
+  photon_rate                      = "sea_ice_segments/stats/photon_rate",
+  cloud_flag_asr                   = "sea_ice_segments/stats/cloud_flag_asr",
+  cloud_flag_atm                   = "sea_ice_segments/stats/cloud_flag_atm",
+  layer_flag                       = "sea_ice_segments/stats/layer_flag",
+  n_photons_actual                 = "sea_ice_segments/stats/n_photons_actual",
+  n_photons_used                   = "sea_ice_segments/stats/n_photons_used",
+  ice_conc_amsr2                   = "sea_ice_segments/stats/ice_conc_amsr2",
+  fpb_corr                         = "sea_ice_segments/stats/fpb_corr",
+  dist2land                        = "sea_ice_segments/stats/dist2land"
+)
+
+# fmt: skip
+.icesat2_atl10_columns <- c(
+  # ATL10 main data under freeboard_segment/ and its subgroups.
+  # leads/ and reference_surface_section/ excluded (different row
+  # dimensions from the freeboard segment rate).
+  latitude                         = "freeboard_segment/latitude",
+  longitude                        = "freeboard_segment/longitude",
+  delta_time                       = "freeboard_segment/delta_time",
+  beam_fb_height                   = "freeboard_segment/beam_fb_height",
+  beam_fb_confidence               = "freeboard_segment/beam_fb_confidence",
+  beam_fb_quality_flag             = "freeboard_segment/beam_fb_quality_flag",
+  beam_fb_sigma                    = "freeboard_segment/beam_fb_sigma",
+  height_segment_id                = "freeboard_segment/height_segment_id",
+  seg_dist_x                       = "freeboard_segment/seg_dist_x",
+  # heights (ATL07 height segment parameters at freeboard rate)
+  height_segment_height            = "freeboard_segment/heights/height_segment_height",
+  height_segment_confidence        = "freeboard_segment/heights/height_segment_confidence",
+  height_segment_type              = "freeboard_segment/heights/height_segment_type",
+  height_segment_ssh_flag          = "freeboard_segment/heights/height_segment_ssh_flag",
+  height_segment_length_seg        = "freeboard_segment/heights/height_segment_length_seg",
+  height_segment_sigma             = "freeboard_segment/heights/height_segment_sigma",
+  ice_conc_ssmi                    = "freeboard_segment/heights/ice_conc_ssmi",
+  photon_rate                      = "freeboard_segment/heights/photon_rate",
+  layer_flag                       = "freeboard_segment/heights/layer_flag",
+  # geophysical
+  height_segment_dac               = "freeboard_segment/geophysical/height_segment_dac",
+  height_segment_earth             = "freeboard_segment/geophysical/height_segment_earth",
+  height_segment_geoid             = "freeboard_segment/geophysical/height_segment_geoid",
+  height_segment_mss               = "freeboard_segment/geophysical/height_segment_mss",
+  height_segment_ocean             = "freeboard_segment/geophysical/height_segment_ocean",
+  height_segment_load              = "freeboard_segment/geophysical/height_segment_load"
+)
+
 # ---------------------------------------------------------------------------
 # Column lookup tables (product -> registry)
 # ---------------------------------------------------------------------------
@@ -606,6 +686,8 @@
   ATL03 = .icesat2_atl03_columns,
   ATL06 = .icesat2_atl06_columns,
   ATL08 = .icesat2_atl08_columns,
+  ATL07 = .icesat2_atl07_columns,
+  ATL10 = .icesat2_atl10_columns,
   ATL13 = .icesat2_atl13_columns,
   ATL24 = .icesat2_atl24_columns
 )
@@ -709,6 +791,27 @@
   "sensor_depth_exceeded"
 )
 
+# fmt: skip
+.icesat2_atl07_default <- c(
+  "delta_time", "height_segment_id",
+  "height_segment_height", "height_segment_confidence",
+  "height_segment_quality", "height_segment_type",
+  "height_segment_ssh_flag", "height_segment_length_seg",
+  "height_segment_surface_error_est",
+  "photon_rate", "n_photons_used",
+  "ice_conc_amsr2", "cloud_flag_asr", "layer_flag",
+  "solar_elevation", "dist2land"
+)
+# fmt: skip
+.icesat2_atl10_default <- c(
+  "delta_time",
+  "beam_fb_height", "beam_fb_quality_flag", "beam_fb_confidence",
+  "beam_fb_sigma",
+  "height_segment_height", "height_segment_type",
+  "height_segment_ssh_flag", "ice_conc_ssmi",
+  "photon_rate", "layer_flag"
+)
+
 .default_column_registry <- list(
   L1B   = .gedi_l1b_default,
   L2A   = .gedi_l2a_default,
@@ -718,6 +821,8 @@
   ATL03 = .icesat2_atl03_default,
   ATL06 = .icesat2_atl06_default,
   ATL08 = .icesat2_atl08_default,
+  ATL07 = .icesat2_atl07_default,
+  ATL10 = .icesat2_atl10_default,
   ATL13 = .icesat2_atl13_default,
   ATL24 = .icesat2_atl24_default
 )
@@ -755,7 +860,7 @@ product_default_columns <- function(product) {
 #'
 #' @export
 sl_columns <- function(
-  product = c("L2A", "L2B", "L4A", "L4C", "L1B", "ATL08", "ATL03", "ATL06", "ATL13", "ATL24"),
+  product = c("L2A", "L2B", "L4A", "L4C", "L1B", "ATL03", "ATL06", "ATL07", "ATL08", "ATL10", "ATL13", "ATL24"),
   set = c("all", "default")
 ) {
   product <- rlang::arg_match(product)

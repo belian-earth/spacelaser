@@ -48,7 +48,9 @@ pub const WEAK_BEAMS: [&str; 3] = ["gt1r", "gt2r", "gt3r"];
 pub enum IceSat2Product {
     ATL03,
     ATL06,
+    ATL07,
     ATL08,
+    ATL10,
     ATL13,
     ATL24,
 }
@@ -63,6 +65,8 @@ impl SatelliteProduct for IceSat2Product {
             IceSat2Product::ATL03 => "heights/lat_ph",
             IceSat2Product::ATL06 => "land_ice_segments/latitude",
             IceSat2Product::ATL08 => "land_segments/latitude",
+            IceSat2Product::ATL07 => "sea_ice_segments/latitude",
+            IceSat2Product::ATL10 => "freeboard_segment/latitude",
             IceSat2Product::ATL13 => "segment_lat",
             IceSat2Product::ATL24 => "lat_ph",
         }
@@ -73,6 +77,8 @@ impl SatelliteProduct for IceSat2Product {
             IceSat2Product::ATL03 => "heights/lon_ph",
             IceSat2Product::ATL06 => "land_ice_segments/longitude",
             IceSat2Product::ATL08 => "land_segments/longitude",
+            IceSat2Product::ATL07 => "sea_ice_segments/longitude",
+            IceSat2Product::ATL10 => "freeboard_segment/longitude",
             IceSat2Product::ATL13 => "segment_lon",
             IceSat2Product::ATL24 => "lon_ph",
         }

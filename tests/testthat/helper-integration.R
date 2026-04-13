@@ -59,6 +59,12 @@ test_bbox_icesat2 <- function() {
   sl_bbox(-124.10, 41.36, -124.00, 41.45)
 }
 
+#' Polar bbox near Svalbard for sea ice products (ATL07/ATL10).
+#' @noRd
+test_bbox_polar <- function() {
+  sl_bbox(19.57, 77.84, 19.77, 77.94)
+}
+
 #' Test date range for ICESat-2. Wider than GEDI because ICESat-2's
 #' narrow ground tracks (~14m footprint) revisit on a 91-day cycle, so
 #' a small bbox needs a longer window for guaranteed coverage.

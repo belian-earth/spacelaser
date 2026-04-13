@@ -222,7 +222,9 @@ fn rust_read_icesat2(
     let product_type = match product {
         "ATL03" | "atl03" => IceSat2Product::ATL03,
         "ATL06" | "atl06" => IceSat2Product::ATL06,
+        "ATL07" | "atl07" => IceSat2Product::ATL07,
         "ATL08" | "atl08" => IceSat2Product::ATL08,
+        "ATL10" | "atl10" => IceSat2Product::ATL10,
         "ATL13" | "atl13" => IceSat2Product::ATL13,
         "ATL24" | "atl24" => IceSat2Product::ATL24,
         _ => return Err(extendr_api::Error::Other(format!("Unknown ICESat-2 product: {product}"))),
@@ -409,7 +411,9 @@ fn rust_read_icesat2_multi(
     let product_type = match product {
         "ATL03" | "atl03" => IceSat2Product::ATL03,
         "ATL06" | "atl06" => IceSat2Product::ATL06,
+        "ATL07" | "atl07" => IceSat2Product::ATL07,
         "ATL08" | "atl08" => IceSat2Product::ATL08,
+        "ATL10" | "atl10" => IceSat2Product::ATL10,
         "ATL13" | "atl13" => IceSat2Product::ATL13,
         "ATL24" | "atl24" => IceSat2Product::ATL24,
         _ => return Err(extendr_api::Error::Other(format!("Unknown ICESat-2 product: {product}"))),

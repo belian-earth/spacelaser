@@ -11,7 +11,7 @@
 #' @param columns Character vector of short column names, or `NULL` for the
 #'   product default registry.
 #'
-#' @importFrom rlang check_required arg_match abort inform warn is_string
+#' @importFrom rlang check_required arg_match
 #' @noRd
 read_gedi <- function(url,
                       product = c("L2A", "L2B", "L4A", "L1B"),

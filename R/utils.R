@@ -2,13 +2,7 @@
 # S3 generic: sl_read()
 # ---------------------------------------------------------------------------
 
-# TODO(vignette): write a "post-hoc filtering" vignette covering the
-# power-vs-coverage beam pattern for GEDI (filter on the `beam` column after
-# reading: e.g., `dplyr::filter(beam %in% c("BEAM0101","BEAM0110","BEAM1000",
-# "BEAM1011"))` for power beams) and the strong-vs-weak ground-track pattern
-# for ICESat-2 (which depends on spacecraft yaw orientation, so requires
-# checking the `sc_orient` metadata, not hard-coding gt IDs). The vignette
-# should explain why this is post-hoc rather than a read-time argument.
+# TODO(vignette): post-hoc beam/track filtering (power beams, strong/weak gt)
 
 #' Read satellite lidar data
 #'
@@ -286,7 +280,7 @@ check_bbox_within <- function(inner, outer, call = rlang::caller_env()) {
         "{.arg bbox} extends outside the search bbox.",
         "i" = "Search bbox: {format(outer)}",
         "x" = "Grab bbox:   {format(validate_bbox(inner))}",
-        "i" = "Re-run {.fun find_gedi} / {.fun find_icesat2} with a wider bbox to avoid silently missing data."
+        "i" = "Re-run {.fun sl_search} with a wider bbox to avoid silently missing data."
       ),
       call = call
     )
@@ -298,79 +292,77 @@ check_bbox_within <- function(inner, outer, call = rlang::caller_env()) {
 # Internal: shared product reader
 # ---------------------------------------------------------------------------
 
-#' Common implementation behind read_gedi() and read_icesat2().
+# ---------------------------------------------------------------------------
+# Internal: shared product reader (single-URL and multi-URL)
+# ---------------------------------------------------------------------------
+
+#' Validate inputs and resolve columns, credentials, and pool specs.
 #'
-#' Both functions follow the same workflow:
-#'   1. Validate bbox, resolve credentials
-#'   2. Call the appropriate Rust reader
-#'   3. Convert each group's raw byte columns into an R data frame
-#'   4. Attach geometry and group label, combine rows
-#'
-#' @param url,product,bbox,columns  Forwarded from the public wrapper.
-#' @param rust_fn  The Rust FFI function to call (`rust_read_gedi` or
-#'   `rust_read_icesat2`).
-#' @param lat_col,lon_col  Column names for latitude / longitude (used to
-#'   build the `geometry` column via `wk::xy()`).
-#' @param group_label  Name for the group identifier column (`"beam"` or
-#'   `"track"`).
-#' @param element_label  Human-readable name for a row, used in the log
-#'   message (`"footprint"` or `"element"`).
+#' Returns a list consumed by `read_product` / `read_product_multi`.
 #' @noRd
-read_product <- function(
-  url,
-  product,
-  bbox,
-  columns,
-  rust_fn,
-  lat_col,
-  lon_col,
-  group_label,
-  element_label
-) {
+prepare_read_params <- function(product, bbox, columns, lat_col, lon_col) {
   bbox <- validate_bbox(bbox)
   columns <- validate_columns(columns, product)
   columns <- ensure_lat_lon(columns, lat_col, lon_col)
   split <- split_pool_columns(columns, product)
   scalar_cols <- ensure_pool_indices(split$scalar, split$pool_short, product)
   pool_specs <- build_pool_specs(split$pool_short, split$pool_paths, product)
-  b <- unclass(bbox)
-  creds <- sl_earthdata_creds()
-
-  cli::cli_progress_step(
-    "Reading {product} from {.url {basename(url)}}"
+  list(
+    bbox = unclass(bbox),
+    scalar_cols = scalar_cols,
+    pool_specs = pool_specs,
+    pool_short = split$pool_short,
+    pool_idx_map = product_pool_index_map(product),
+    creds = sl_earthdata_creds()
   )
+}
 
-  # All beams (GEDI) / ground tracks (ICESat-2) are always read; users
-  # filter post-hoc on the `beam` / `track` column. The Rust functions
-  # still accept a group filter argument, which we always pass as NULL.
-  # Pool columns (GEDI L1B waveforms) are read in full and returned in
-  # a separate `pool_columns` slot of each group_data for R-side slicing.
-  raw_result <- rust_fn(
-    url,
+#' Call the Rust FFI reader with the prepared parameters.
+#'
+#' `target` is either a single URL (for `rust_read_gedi`) or a character
+#' vector of URLs (for `rust_read_gedi_multi`).
+#' @noRd
+call_rust_reader <- function(rust_fn, target, product, params) {
+  rust_fn(
+    target,
     product,
-    b[["xmin"]],
-    b[["ymin"]],
-    b[["xmax"]],
-    b[["ymax"]],
-    scalar_cols,
+    params$bbox[["xmin"]],
+    params$bbox[["ymin"]],
+    params$bbox[["xmax"]],
+    params$bbox[["ymax"]],
+    params$scalar_cols,
     NULL,
-    creds$username,
-    creds$password,
-    if (length(pool_specs) > 0L) pool_specs else NULL
+    params$creds$username,
+    params$creds$password,
+    if (length(params$pool_specs) > 0L) params$pool_specs else NULL
   )
+}
 
+#' Convert the Rust reader's raw output into a combined data frame.
+#'
+#' Processes each group (beam / track), builds a tibble with geometry
+#' and pool list columns, strips subgroup path prefixes, and row-binds.
+#' @noRd
+assemble_read_result <- function(
+  raw_result,
+  lat_col,
+  lon_col,
+  group_label,
+  element_label,
+  pool_short,
+  pool_idx_map
+) {
   if (length(raw_result) == 0L) {
     cli::cli_inform("No {element_label}s found within the bounding box.")
     return(vctrs::new_data_frame(list(), n = 0L))
   }
 
-  pool_idx_map <- product_pool_index_map(product)
   group_tbls <- purrr::map(raw_result, function(gd) {
     tbl <- build_tibble(
       gd,
       lat_col = lat_col,
       lon_col = lon_col,
-      pool_short = split$pool_short,
+      pool_short = pool_short,
       pool_index_map = pool_idx_map
     )
     tbl[[group_label]] <- gd$group_name
@@ -391,16 +383,32 @@ read_product <- function(
   result
 }
 
-# ---------------------------------------------------------------------------
-# Internal: multi-URL product reader (concurrent via Rust)
-# ---------------------------------------------------------------------------
+#' Read a single granule.
+#' @noRd
+read_product <- function(
+  url,
+  product,
+  bbox,
+  columns,
+  rust_fn,
+  lat_col,
+  lon_col,
+  group_label,
+  element_label
+) {
+  params <- prepare_read_params(product, bbox, columns, lat_col, lon_col)
+  cli::cli_progress_step("Reading {product} from {.url {basename(url)}}")
+  raw_result <- call_rust_reader(rust_fn, url, product, params)
+  assemble_read_result(
+    raw_result, lat_col, lon_col, group_label, element_label,
+    params$pool_short, params$pool_idx_map
+  )
+}
 
 #' Read multiple granules concurrently via Rust.
 #'
 #' All URLs are passed to a single Rust function that processes them in
-#' parallel within one async runtime.  This gives much higher throughput
-#' than sequential per-file reads.
-#'
+#' parallel within one async runtime.
 #' @noRd
 read_product_multi <- function(
   urls,
@@ -419,61 +427,13 @@ read_product_multi <- function(
     return(vctrs::new_data_frame(list(), n = 0L))
   }
 
-  bbox <- validate_bbox(bbox)
-  columns <- validate_columns(columns, product)
-  columns <- ensure_lat_lon(columns, lat_col, lon_col)
-  split <- split_pool_columns(columns, product)
-  scalar_cols <- ensure_pool_indices(split$scalar, split$pool_short, product)
-  pool_specs <- build_pool_specs(split$pool_short, split$pool_paths, product)
-  b <- unclass(bbox)
-  creds <- sl_earthdata_creds()
-
-  cli::cli_progress_step(
-    "Reading {product} from {length(urls)} granule{?s}"
+  params <- prepare_read_params(product, bbox, columns, lat_col, lon_col)
+  cli::cli_progress_step("Reading {product} from {length(urls)} granule{?s}")
+  raw_result <- call_rust_reader(rust_multi_fn, urls, product, params)
+  assemble_read_result(
+    raw_result, lat_col, lon_col, group_label, element_label,
+    params$pool_short, params$pool_idx_map
   )
-
-  raw_result <- rust_multi_fn(
-    urls,
-    product,
-    b[["xmin"]],
-    b[["ymin"]],
-    b[["xmax"]],
-    b[["ymax"]],
-    scalar_cols,
-    NULL,
-    creds$username,
-    creds$password,
-    if (length(pool_specs) > 0L) pool_specs else NULL
-  )
-
-  if (length(raw_result) == 0L) {
-    cli::cli_inform("No {element_label}s found within the bounding box.")
-    return(vctrs::new_data_frame(list(), n = 0L))
-  }
-
-  pool_idx_map <- product_pool_index_map(product)
-  group_tbls <- purrr::map(raw_result, function(gd) {
-    tbl <- build_tibble(
-      gd,
-      lat_col = lat_col,
-      lon_col = lon_col,
-      pool_short = split$pool_short,
-      pool_index_map = pool_idx_map
-    )
-    tbl[[group_label]] <- gd$group_name
-    names(tbl) <- sub(".*/", "", names(tbl))
-    tbl
-  })
-
-  result <- vctrs::vec_rbind(!!!group_tbls)
-
-  n <- nrow(result)
-  cli::cli_progress_done()
-  cli::cli_inform(c(
-    "v" = "Read {n} {element_label}{?s} from {length(group_tbls)} {group_label}{?s}."
-  ))
-
-  result
 }
 
 # ---------------------------------------------------------------------------

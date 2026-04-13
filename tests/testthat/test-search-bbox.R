@@ -32,7 +32,7 @@ test_that("find_*() result carries product and bbox attributes", {
 })
 
 test_that("numeric bbox passed to find_*() is coerced to sl_bbox on attr", {
-  # Mirrors what find_gedi() does internally: validate then attach.
+  # Mirrors what sl_search() does internally: validate then attach.
   bb_num <- c(-124.07, 41.36, -124.00, 41.44)
   bb <- spacelaser:::validate_bbox(bb_num)
   s <- fake_search(bbox = bb)

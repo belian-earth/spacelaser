@@ -101,6 +101,21 @@
   txwaveform                         = "txwaveform"
 )
 
+#' L2B pool columns — variable-length per-shot profile datasets.
+#'
+#' `pgap_theta_z` is stored as a flat 1D array of concatenated per-shot
+#' values (like L1B's rxwaveform), NOT as a 2D matrix like cover_z/pai_z.
+#' Each shot contributes a variable number of height bins. The index
+#' columns are the same as L1B waveforms: `rx_sample_start_index` and
+#' `rx_sample_count`.
+#' @noRd
+.gedi_l2b_pool_columns <- c("pgap_theta_z")
+
+#' @noRd
+.gedi_l2b_pool_index_map <- list(
+  pgap_theta_z = list(start = "rx_sample_start_index", count = "rx_sample_count")
+)
+
 #' L1B pool columns — opt-in waveform datasets.
 #'
 #' Short names of the L1B columns that live at the beam root as flat
@@ -570,6 +585,7 @@ product_pool_columns <- function(product) {
   switch(
     product,
     L1B = .gedi_l1b_pool_columns,
+    L2B = .gedi_l2b_pool_columns,
     character(0)
   )
 }
@@ -584,6 +600,7 @@ product_pool_index_map <- function(product) {
   switch(
     product,
     L1B = .gedi_l1b_pool_index_map,
+    L2B = .gedi_l2b_pool_index_map,
     list()
   )
 }

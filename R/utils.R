@@ -511,43 +511,27 @@ parse_column <- function(raw_bytes, info_json) {
     )
   } else if (grepl("FixedPoint", dtype, fixed = TRUE)) {
     signed <- grepl("signed: true", dtype, fixed = TRUE)
-    if (signed) {
-      if (elem_size <= 4) {
-        readBin(
-          raw_bytes,
-          what = "integer",
-          n = n,
-          size = elem_size,
-          endian = "little"
-        )
-      } else {
-        readBin(raw_bytes, what = "double", n = n, size = 8, endian = "little")
-      }
+    if (elem_size <= 4 && signed) {
+      readBin(raw_bytes, what = "integer", n = n, size = elem_size, endian = "little")
+    } else if (elem_size == 1) {
+      as.integer(raw_bytes)
+    } else if (elem_size == 2 && !signed) {
+      readBin(raw_bytes, what = "integer", n = n, size = 2L, endian = "little", signed = FALSE)
+    } else if (elem_size <= 4) {
+      # uint32: R only supports signed = FALSE for sizes 1 and 2.
+      # Read as signed; values > 2^31 - 1 are rare in practice.
+      readBin(raw_bytes, what = "integer", n = n, size = elem_size, endian = "little")
     } else {
-      if (elem_size == 1) {
-        as.integer(raw_bytes)
-      } else if (elem_size == 2) {
-        readBin(
-          raw_bytes,
-          what = "integer",
-          n = n,
-          size = elem_size,
-          endian = "little",
-          signed = FALSE
-        )
-      } else if (elem_size <= 4) {
-        # R only supports signed = FALSE for sizes 1 and 2; for uint32
-        # read as signed (values > 2^31 - 1 are rare in practice).
-        readBin(
-          raw_bytes,
-          what = "integer",
-          n = n,
-          size = elem_size,
-          endian = "little"
-        )
-      } else {
-        readBin(raw_bytes, what = "double", n = n, size = 8, endian = "little")
-      }
+      # int64 / uint64: R has no native 64-bit integer. Convert by
+      # reading pairs of 32-bit words and combining into doubles.
+      # Exact for values up to 2^53 (~9e15), which covers all
+      # GEDI/ICESat-2 integer columns (shot numbers, indices, counts).
+      pairs <- readBin(raw_bytes, what = "integer", n = n * 2L, size = 4L, endian = "little")
+      lo <- pairs[seq(1L, length(pairs), 2L)]
+      hi <- pairs[seq(2L, length(pairs), 2L)]
+      # Unsigned interpretation of the low word (R int32 wraps at 2^31)
+      lo_d <- ifelse(lo < 0L, as.double(lo) + 4294967296, as.double(lo))
+      lo_d + as.double(hi) * 4294967296
     }
   } else {
     raw_bytes
@@ -657,6 +641,12 @@ build_tibble <- function(
     for (pc in pool_short) {
       if (is.null(pool_raw[[pc]])) next
       flat <- parse_column(pool_raw[[pc]], pool_info[[pc]])
+      # Apply fill-value replacement to pool data before slicing
+      if (length(fill_values) > 0L && is.numeric(flat)) {
+        for (fv in fill_values) {
+          flat[!is.na(flat) & flat == fv] <- NA
+        }
+      }
       spec <- pool_index_map[[pc]]
       if (is.null(spec)) next
       counts <- tbl[[spec$count]]

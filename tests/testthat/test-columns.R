@@ -3,11 +3,14 @@
 # ---------------------------------------------------------------------------
 
 test_that("sl_columns() returns correct counts for GEDI products", {
-  # L1B: 77 scalar + 2 pool (rxwaveform, txwaveform) = 79
-  expect_length(sl_columns("L1B"), 79)
-  expect_length(sl_columns("L2A"), 44)
-  expect_length(sl_columns("L2B"), 77)
-  expect_length(sl_columns("L4A"), 37)
+  # L1B: 79 scalar + 2 pool (rxwaveform, txwaveform) + beam + surface_type = 81
+  expect_length(sl_columns("L1B"), 81)
+  # L2A: 44 + beam = 45
+  expect_length(sl_columns("L2A"), 45)
+  # L2B: 77 + beam - selected_mode - selected_mode_flag = 76
+  expect_length(sl_columns("L2B"), 76)
+  # L4A: 37 + beam + stale_return_flag = 39
+  expect_length(sl_columns("L4A"), 39)
 })
 
 test_that("sl_columns() returns correct counts for ICESat-2 products", {

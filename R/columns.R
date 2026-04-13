@@ -7,6 +7,7 @@
 .gedi_l1b_columns <- c(
   latitude_bin0                      = "geolocation/latitude_bin0",
   longitude_bin0                     = "geolocation/longitude_bin0",
+  beam                               = "beam",
   shot_number                        = "shot_number",
   channel                            = "channel",
   # delta_time is a soft link at the beam root pointing to
@@ -78,6 +79,7 @@
   range_bias_correction              = "geolocation/range_bias_correction",
   solar_azimuth                      = "geolocation/solar_azimuth",
   solar_elevation                    = "geolocation/solar_elevation",
+  surface_type                       = "geolocation/surface_type",
   # Geophysical corrections live under geophys_corr/, not geolocation/.
   dynamic_atmosphere_correction      = "geophys_corr/dynamic_atmosphere_correction",
   geoid                              = "geophys_corr/geoid",
@@ -125,6 +127,7 @@
 .gedi_l2a_columns <- c(
   lat_lowestmode                 = "lat_lowestmode",
   lon_lowestmode                 = "lon_lowestmode",
+  beam                           = "beam",
   shot_number                    = "shot_number",
   channel                        = "channel",
   delta_time                     = "delta_time",
@@ -172,6 +175,7 @@
 .gedi_l2b_columns <- c(
   lat_lowestmode                 = "geolocation/lat_lowestmode",
   lon_lowestmode                 = "geolocation/lon_lowestmode",
+  beam                           = "beam",
   shot_number                    = "shot_number",
   channel                        = "channel",
   # delta_time is a soft link at the beam root pointing to
@@ -209,8 +213,6 @@
   rx_sample_count                = "rx_sample_count",
   rx_sample_start_index          = "rx_sample_start_index",
   selected_l2a_algorithm         = "selected_l2a_algorithm",
-  selected_mode                  = "selected_mode",
-  selected_mode_flag             = "selected_mode_flag",
   selected_rg_algorithm          = "selected_rg_algorithm",
   degrade_flag                   = "geolocation/degrade_flag",
   digital_elevation_model        = "geolocation/digital_elevation_model",
@@ -255,11 +257,13 @@
 .gedi_l4a_columns <- c(
   lat_lowestmode                 = "lat_lowestmode",
   lon_lowestmode                 = "lon_lowestmode",
+  beam                           = "beam",
   shot_number                    = "shot_number",
   channel                        = "channel",
   delta_time                     = "delta_time",
   master_frac                    = "master_frac",
   master_int                     = "master_int",
+  stale_return_flag              = "stale_return_flag",
   algorithm_run_flag             = "algorithm_run_flag",
   degrade_flag                   = "degrade_flag",
   l2_quality_flag                = "l2_quality_flag",

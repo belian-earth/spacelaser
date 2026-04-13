@@ -75,9 +75,9 @@ product_search_spec <- function(product) {
     L2A   = list(sensor = "gedi",    concept_id = "C2142771958-LPCLOUD",  default_start = "2019-03-25", label = "GEDI L2A"),
     L2B   = list(sensor = "gedi",    concept_id = "C2142776747-LPCLOUD",  default_start = "2019-03-25", label = "GEDI L2B"),
     L4A   = list(sensor = "gedi",    concept_id = "C2237824918-ORNL_CLOUD", default_start = "2019-03-25", label = "GEDI L4A"),
-    ATL03 = list(sensor = "icesat2", concept_id = "C2596864127-NSIDC_CPRD", default_start = "2018-10-14", label = "ICESat-2 ATL03"),
-    ATL06 = list(sensor = "icesat2", concept_id = "C2670138092-NSIDC_CPRD", default_start = "2018-10-14", label = "ICESat-2 ATL06"),
-    ATL08 = list(sensor = "icesat2", concept_id = "C2613553260-NSIDC_CPRD", default_start = "2018-10-14", label = "ICESat-2 ATL08")
+    ATL03 = list(sensor = "icesat2", concept_id = "C3326974349-NSIDC_CPRD", default_start = "2018-10-14", label = "ICESat-2 ATL03"),
+    ATL06 = list(sensor = "icesat2", concept_id = "C3564876127-NSIDC_CPRD", default_start = "2018-10-14", label = "ICESat-2 ATL06"),
+    ATL08 = list(sensor = "icesat2", concept_id = "C3565574177-NSIDC_CPRD", default_start = "2018-10-14", label = "ICESat-2 ATL08")
   )
 }
 

@@ -41,12 +41,30 @@ test_bbox <- function() {
   sl_bbox(-124.04, 41.39, -124.01, 41.42)
 }
 
-#' Default test date range. Tight enough to keep granule counts manageable
-#' (typically a handful of granules across GEDI and ICESat-2). Picked
-#' inside the GEDI mission window so all GEDI products have data.
+#' Default test date range for GEDI. Tight enough to keep granule counts
+#' manageable (typically a handful of granules). Picked inside the GEDI
+#' mission window so all GEDI products have data.
 #' @noRd
 test_date_range <- function() {
   list(start = "2020-06-01", end = "2020-09-01")
+}
+
+#' Wider bbox for ICESat-2 tests. ICESat-2 ground tracks are ~3.3 km
+#' apart at mid-latitudes; the GEDI bbox (3 km) can miss all tracks for
+#' a full year. This bbox is ~10 km x 10 km, which guarantees several
+#' track crossings per year while still keeping reads fast (ICESat-2
+#' segment-rate products have small row counts per track).
+#' @noRd
+test_bbox_icesat2 <- function() {
+  sl_bbox(-124.10, 41.36, -124.00, 41.45)
+}
+
+#' Test date range for ICESat-2. Wider than GEDI because ICESat-2's
+#' narrow ground tracks (~14m footprint) revisit on a 91-day cycle, so
+#' a small bbox needs a longer window for guaranteed coverage.
+#' @noRd
+test_date_range_icesat2 <- function() {
+  list(start = "2020-01-01", end = "2021-01-01")
 }
 
 #' Search and skip the test gracefully if no granules are returned.
@@ -58,9 +76,9 @@ test_date_range <- function() {
 #' attributes are preserved.
 #'
 #' @noRd
-search_or_skip <- function(product, max_granules = 2L) {
-  bb <- test_bbox()
-  dr <- test_date_range()
+search_or_skip <- function(product, max_granules = 2L, date_range = NULL, bbox = NULL) {
+  bb <- bbox %||% test_bbox()
+  dr <- date_range %||% test_date_range()
   granules <- sl_search(
     bb,
     product = product,

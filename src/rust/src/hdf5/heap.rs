@@ -35,7 +35,8 @@ pub async fn read_fractal_heap_objects(
     let _version = header[4];
     let _heap_id_len = u16::from_le_bytes([header[5], header[6]]) as usize;
     let io_filter_len = u16::from_le_bytes([header[7], header[8]]) as usize;
-    let _flags = header[9];
+    let flags = header[9];
+    let checksum_direct_blocks = flags & 0x02 != 0;
 
     let mut pos = 10;
 
@@ -106,6 +107,7 @@ pub async fn read_fractal_heap_objects(
             starting_block_size,
             max_heap_size,
             offset_size,
+            checksum_direct_blocks,
         )
         .await?;
         return Ok(objects);
@@ -152,6 +154,7 @@ pub async fn read_fractal_heap_objects(
                 block_size,
                 max_heap_size,
                 offset_size,
+                checksum_direct_blocks,
             )
             .await?;
             all_objects.extend(objects);
@@ -168,23 +171,31 @@ async fn read_direct_block(
     block_size: usize,
     max_heap_size: u16,
     offset_size: u8,
+    checksum_direct_blocks: bool,
 ) -> Result<Vec<(u64, Vec<u8>)>, Hdf5Error> {
     let data = reader.read(address, block_size).await?;
 
-    // Direct block header: FHDB signature(4) + version(1) + heap_header_addr(offset_size) + block_offset(ceil(max_heap_size/8))
+    // Direct block header:
+    //   FHDB signature (4) + version (1) + heap_header_addr (offset_size)
+    //   + block_offset (ceil(max_heap_size / 8))
+    //   + [optional: 4-byte checksum if the heap flags say so]
     let block_offset_size = ((max_heap_size as usize) + 7) / 8;
-    let header_size = 4 + 1 + offset_size as usize + block_offset_size;
+    let mut header_size = 4 + 1 + offset_size as usize + block_offset_size;
+    if checksum_direct_blocks {
+        header_size += 4;
+    }
 
-    // Checksum at the end (4 bytes)
+    // Trailing checksum (4 bytes) at the end of the block
     let data_end = if data.len() >= 4 {
         data.len() - 4
     } else {
         data.len()
     };
 
-    // The remaining bytes after the header contain managed objects
-    // These are stored sequentially; each object's boundaries depend on
-    // the heap ID used to reference them
+    if header_size >= data_end {
+        return Ok(Vec::new());
+    }
+
     let objects = vec![(address, data[header_size..data_end].to_vec())];
     Ok(objects)
 }

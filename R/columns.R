@@ -263,7 +263,7 @@
   delta_time                     = "delta_time",
   master_frac                    = "master_frac",
   master_int                     = "master_int",
-  stale_return_flag              = "stale_return_flag",
+  stale_return_flag              = "geolocation/stale_return_flag",
   algorithm_run_flag             = "algorithm_run_flag",
   degrade_flag                   = "degrade_flag",
   l2_quality_flag                = "l2_quality_flag",
@@ -641,6 +641,53 @@ build_pool_specs <- function(pool_short, pool_paths, product) {
     if (is.null(spec)) return(NA_character_)
     paste(pool_paths[[i]], spec$start, spec$count, sep = ":")
   }, character(1))
+}
+
+# ---------------------------------------------------------------------------
+# Internal: fill values and scale factors
+# ---------------------------------------------------------------------------
+
+#' Known fill-value sentinels for each sensor family.
+#'
+#' GEDI uses -9999 (most columns) and -999999 (DEM columns). ICESat-2
+#' ATL08 uses HDF5 float max (3.4028235e+38). ATL06 uses IEEE NaN, which
+#' R already represents as NA. ATL03 photon-level data has no fill values.
+#'
+#' These are applied to all numeric/integer columns after parsing. The
+#' sentinel values are exact IEEE 754 representations, so equality
+#' comparison is correct.
+#' @noRd
+product_fill_values <- function(product) {
+  if (product %in% c("L1B", "L2A", "L2B", "L4A")) {
+    c(-9999.0, -999999.0)
+  } else if (product %in% c("ATL08")) {
+    c(3.4028235e+38)
+  } else {
+    numeric(0)
+  }
+}
+
+#' Per-column scale factors that convert raw HDF5 values to physical units.
+#'
+#' Only L2B currently needs this:
+#'   - `pgap_theta_z`: stored as DN (digital number), true value = DN / 10000
+#'   - `rh100`: stored in centimetres, convert to metres
+#'
+#' Keys are short column names (after subgroup prefix stripping). For 2D
+#' columns that expand to `{name}0`, `{name}1`, ..., the factor is applied
+#' to all expanded variants via prefix matching.
+#' @noRd
+product_scale_factors <- function(product) {
+  # L2B rh100 is stored in centimetres; convert to metres for consistency
+  # with L2A's rh (which is already in metres as FLOAT32).
+  # Note: pgap_theta_z was documented as "DN / 10000" in the dictionary
+  # but the HDF5 file stores it as a float already in the 0-1 range, so
+  # no conversion is needed despite the documentation.
+  switch(
+    product,
+    L2B = list(rh100 = 1 / 100),
+    list()
+  )
 }
 
 #' Split a resolved column list into scalar and pool components.

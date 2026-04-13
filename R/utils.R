@@ -313,6 +313,8 @@ prepare_read_params <- function(product, bbox, columns, lat_col, lon_col) {
     pool_specs = pool_specs,
     pool_short = split$pool_short,
     pool_idx_map = product_pool_index_map(product),
+    fill_values = product_fill_values(product),
+    scale_factors = product_scale_factors(product),
     creds = sl_earthdata_creds()
   )
 }
@@ -350,7 +352,9 @@ assemble_read_result <- function(
   group_label,
   element_label,
   pool_short,
-  pool_idx_map
+  pool_idx_map,
+  fill_values = numeric(0),
+  scale_factors = list()
 ) {
   if (length(raw_result) == 0L) {
     cli::cli_inform("No {element_label}s found within the bounding box.")
@@ -363,7 +367,9 @@ assemble_read_result <- function(
       lat_col = lat_col,
       lon_col = lon_col,
       pool_short = pool_short,
-      pool_index_map = pool_idx_map
+      pool_index_map = pool_idx_map,
+      fill_values = fill_values,
+      scale_factors = scale_factors
     )
     tbl[[group_label]] <- gd$group_name
     # Strip subgroup prefixes (e.g. "geolocation/lat_lowestmode" ->
@@ -401,7 +407,8 @@ read_product <- function(
   raw_result <- call_rust_reader(rust_fn, url, product, params)
   assemble_read_result(
     raw_result, lat_col, lon_col, group_label, element_label,
-    params$pool_short, params$pool_idx_map
+    params$pool_short, params$pool_idx_map,
+    params$fill_values, params$scale_factors
   )
 }
 
@@ -432,7 +439,8 @@ read_product_multi <- function(
   raw_result <- call_rust_reader(rust_multi_fn, urls, product, params)
   assemble_read_result(
     raw_result, lat_col, lon_col, group_label, element_label,
-    params$pool_short, params$pool_idx_map
+    params$pool_short, params$pool_idx_map,
+    params$fill_values, params$scale_factors
   )
 }
 
@@ -582,7 +590,9 @@ build_tibble <- function(
   lat_col,
   lon_col,
   pool_short = character(0),
-  pool_index_map = list()
+  pool_index_map = list(),
+  fill_values = numeric(0),
+  scale_factors = list()
 ) {
   col_names <- names(group_data$columns)
   col_info <- group_data$col_info
@@ -598,6 +608,35 @@ build_tibble <- function(
   }
 
   tbl <- vctrs::new_data_frame(cols, n = n)
+
+  # Replace known fill-value sentinels with NA.
+  if (length(fill_values) > 0L) {
+    for (nm in names(tbl)) {
+      v <- tbl[[nm]]
+      if (is.numeric(v) || is.integer(v)) {
+        for (fv in fill_values) {
+          v[!is.na(v) & v == fv] <- NA
+        }
+        tbl[[nm]] <- v
+      }
+    }
+  }
+
+  # Apply per-column scale factors. 2D-expanded columns (e.g.
+  # pgap_theta_z0, pgap_theta_z1, ...) match by prefix.
+  if (length(scale_factors) > 0L) {
+    tbl_names <- names(tbl)
+    for (base_name in names(scale_factors)) {
+      factor <- scale_factors[[base_name]]
+      pattern <- paste0("^", base_name, "\\d*$")
+      matching <- grep(pattern, tbl_names, value = TRUE)
+      for (nm in matching) {
+        if (is.numeric(tbl[[nm]])) {
+          tbl[[nm]] <- tbl[[nm]] * factor
+        }
+      }
+    }
+  }
 
   if (lat_col %in% col_names && lon_col %in% col_names) {
     tbl[["geometry"]] <- wk::xy(

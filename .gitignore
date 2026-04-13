@@ -16,3 +16,6 @@ src/spacelaser-win.def
 
 # OS
 .DS_Store
+
+# ansillary docs:
+tech-docs/

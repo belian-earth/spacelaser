@@ -79,7 +79,9 @@
   range_bias_correction              = "geolocation/range_bias_correction",
   solar_azimuth                      = "geolocation/solar_azimuth",
   solar_elevation                    = "geolocation/solar_elevation",
-  surface_type                       = "geolocation/surface_type",
+  # surface_type is 2D [5, N] with a transposed layout (surface types
+  # in dim 0, shots in dim 1). Our reader assumes dim 0 = rows, so it
+  # can't handle this dataset correctly. Available via sl_hdf5_read().
   # Geophysical corrections live under geophys_corr/, not geolocation/.
   dynamic_atmosphere_correction      = "geophys_corr/dynamic_atmosphere_correction",
   geoid                              = "geophys_corr/geoid",

@@ -85,8 +85,9 @@ impl Dataset {
                 element_size: elem_sz,
             } => {
                 let ndims = chunk_dims.len();
+                let chunk_row_dim = if ndims > 0 { chunk_dims[0] as u64 } else { 1 };
                 let chunks =
-                    btree::read_chunk_btree(reader, *btree_address, offset_size, ndims).await?;
+                    btree::read_chunk_btree(reader, *btree_address, offset_size, ndims, None, chunk_row_dim).await?;
 
                 // Read all chunks concurrently
                 let filters = &self.meta.filters;
@@ -189,8 +190,28 @@ impl Dataset {
                 element_size: elem_sz,
             } => {
                 let ndims = chunk_dims.len();
+                let chunk_row_dim = if ndims > 0 { chunk_dims[0] as u64 } else { 1 };
+                // Targeted B-tree navigation: only for 1D datasets where
+                // dim 0 IS the row dimension. For 2D datasets (e.g. rh
+                // [N,101], surface_type [5,N]), the first B-tree key
+                // dimension does not correspond to our row ranges and
+                // pruning would incorrectly exclude chunks. 2D datasets
+                // have small B-trees anyway so full scan is fine.
+                //
+                // Additionally, only apply when the dataset is large
+                // enough to benefit. Small datasets (< 1M elements) have
+                // B-trees that fit in a few nodes — full scan is fast
+                // and avoids edge cases in targeted navigation.
+                let total_elements = self.meta.dataspace.num_elements();
+                let row_bounds = if ndims == 1 && total_elements > 1_000_000 && !row_ranges.is_empty() {
+                    let min_row = row_ranges.iter().map(|(s, _)| *s).min().unwrap();
+                    let max_row = row_ranges.iter().map(|(_, e)| *e).max().unwrap();
+                    Some((min_row, max_row))
+                } else {
+                    None
+                };
                 let all_chunks =
-                    btree::read_chunk_btree(reader, *btree_address, offset_size, ndims).await?;
+                    btree::read_chunk_btree(reader, *btree_address, offset_size, ndims, row_bounds, chunk_row_dim).await?;
 
                 // Find only the chunks that overlap our row ranges
                 let needed_chunks =

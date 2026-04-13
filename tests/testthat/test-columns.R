@@ -3,7 +3,8 @@
 # ---------------------------------------------------------------------------
 
 test_that("sl_columns() returns correct counts for GEDI products", {
-  expect_length(sl_columns("L1B"), 81)
+  # surface_type removed (transposed 2D layout not supported)
+  expect_length(sl_columns("L1B"), 80)
   expect_length(sl_columns("L2A"), 45)
   expect_length(sl_columns("L2B"), 76)
   expect_length(sl_columns("L4A"), 39)

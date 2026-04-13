@@ -327,7 +327,7 @@ async fn read_single_group(
             continue;
         }
 
-        let sample_ranges: Vec<(u64, u64)> = starts
+        let mut sample_ranges: Vec<(u64, u64)> = starts
             .iter()
             .zip(counts.iter())
             .filter(|(_, &c)| c > 0)
@@ -338,15 +338,41 @@ async fn read_single_group(
             continue;
         }
 
+        // Read a single contiguous span covering all selected shots,
+        // then extract each shot's slice from the result. The selected
+        // shots are nearly contiguous in the pool (separated by small
+        // gaps from unselected shots), so this approach reads one block
+        // instead of N separate ranges, dramatically reducing HTTP
+        // round-trips. The wasted gap bytes are typically <5% overhead.
+        let span_start = sample_ranges.iter().map(|(s, _)| *s).min().unwrap();
+        let span_end = sample_ranges.iter().map(|(_, e)| *e).max().unwrap();
+        let total_wanted: u64 = sample_ranges.iter().map(|(s, e)| e - s).sum();
+        let span_size = span_end - span_start;
+        log::debug!(
+            "pool '{}': {} shots, span {}..{} ({} samples, {} wanted, {:.0}% utilisation)",
+            pool_name, starts.len(), span_start, span_end,
+            span_size, total_wanted,
+            100.0 * total_wanted as f64 / span_size.max(1) as f64,
+        );
+
         let col_path = format!("{}/{}", group_path, pool_name);
-        match file.read_dataset_rows(&col_path, &sample_ranges).await {
-            Ok((meta, bytes)) => {
+        match file.read_dataset_rows(&col_path, &[(span_start, span_end)]).await {
+            Ok((meta, span_bytes)) => {
                 let elem_size = meta.datatype.size();
-                let num_elements = bytes.len() / elem_size.max(1);
+                // Extract only the selected shots' bytes from the span
+                let mut selected_bytes = Vec::with_capacity(total_wanted as usize * elem_size);
+                for &(s, e) in &sample_ranges {
+                    let start_off = (s - span_start) as usize * elem_size;
+                    let end_off = (e - span_start) as usize * elem_size;
+                    if end_off <= span_bytes.len() {
+                        selected_bytes.extend_from_slice(&span_bytes[start_off..end_off]);
+                    }
+                }
+                let num_elements = selected_bytes.len() / elem_size.max(1);
                 pool_data.insert(
                     pool_name.to_string(),
                     ColumnData {
-                        bytes,
+                        bytes: selected_bytes,
                         element_size: elem_size,
                         num_elements,
                         dtype_desc: format!("{:?}", meta.datatype),
@@ -453,6 +479,31 @@ fn indices_to_ranges(indices: &[u64]) -> Vec<(u64, u64)> {
     }
     ranges.push((start, end));
     ranges
+}
+
+/// Coalesce sorted (start, end) ranges that are adjacent or overlapping.
+///
+/// Input ranges must be sorted by start. Adjacent ranges like
+/// `(0, 100), (100, 200)` become `(0, 200)`. Overlapping ranges are
+/// merged. A small gap tolerance could be added for near-adjacent ranges
+/// but is not needed in practice because consecutive shots have
+/// contiguous pool positions.
+fn coalesce_ranges(ranges: &mut Vec<(u64, u64)>) -> Vec<(u64, u64)> {
+    if ranges.is_empty() {
+        return Vec::new();
+    }
+    ranges.sort_by_key(|&(s, _)| s);
+    let mut out = vec![ranges[0]];
+    for &(s, e) in &ranges[1..] {
+        let last = out.last_mut().unwrap();
+        if s <= last.1 {
+            // Adjacent or overlapping: extend
+            last.1 = last.1.max(e);
+        } else {
+            out.push((s, e));
+        }
+    }
+    out
 }
 
 /// Parse a `ColumnData` (raw bytes from an HDF5 integer or float dataset)

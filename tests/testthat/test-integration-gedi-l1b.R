@@ -48,9 +48,10 @@ test_that("L1B: sl_read default columns produces a valid tibble", {
 
   expect_true(all(grepl("^BEAM\\d{4}$", unique(data$beam))))
 
-  # Default set must NOT include rxwaveform / txwaveform (those are
-  # opt-in pool columns). If they leaked in, this assertion catches it.
-  expect_false("rxwaveform" %in% names(data))
+  # rxwaveform is in the L1B default set (it's the core L1B data).
+  # txwaveform is opt-in only.
+  expect_true("rxwaveform" %in% names(data))
+  expect_true(is.list(data$rxwaveform))
   expect_false("txwaveform" %in% names(data))
 
   # Marquee metadata columns we'd want in any L1B read
@@ -123,14 +124,18 @@ test_that("L1B: rxwaveform and txwaveform are returned as list columns", {
 
   # The length of each rx waveform must match its rx_sample_count.
   # This is the critical correctness check: if the slicing offsets
-  # are wrong, lengths will mismatch.
+  # are wrong, lengths will mismatch. Filter to non-NA counts (fill
+  # values are replaced with NA by the reader).
+  rx_counts <- as.integer(data$rx_sample_count)
   rx_lengths <- vapply(data$rxwaveform, length, integer(1))
-  expect_equal(rx_lengths, as.integer(data$rx_sample_count))
+  valid_rx <- !is.na(rx_counts)
+  expect_equal(rx_lengths[valid_rx], rx_counts[valid_rx])
 
-  # Same for tx: GEDI L1B transmit waveforms are typically 128 samples
-  # per shot (fixed), but we check against tx_sample_count anyway.
+  # Same for tx
+  tx_counts <- as.integer(data$tx_sample_count)
   tx_lengths <- vapply(data$txwaveform, length, integer(1))
-  expect_equal(tx_lengths, as.integer(data$tx_sample_count))
+  valid_tx <- !is.na(tx_counts)
+  expect_equal(tx_lengths[valid_tx], tx_counts[valid_tx])
 
   # A well-formed waveform has at least some non-zero values (the laser
   # return). If slicing landed in the wrong region of the pool we'd see

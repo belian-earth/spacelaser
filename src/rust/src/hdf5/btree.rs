@@ -237,12 +237,21 @@ async fn read_symbol_table_node(
 
 /// Walk a B-tree v1 for raw data chunks and collect all chunk info.
 ///
-/// Used to find the location of every chunk in a chunked dataset.
+/// Read chunk info from a B-tree v1 for raw data chunks.
+///
+/// When `row_bounds` is `None`, reads all chunks (full tree scan). When
+/// `Some((start, end))`, only navigates to subtrees and collects chunks
+/// whose first-dimension offset overlaps `[start, end)`. This turns a
+/// full tree scan (hundreds of HTTP reads for large datasets) into a
+/// targeted lookup (3-5 reads). `chunk_row_dim` is the chunk size in
+/// the first dimension (needed at leaf level to compute chunk coverage).
 pub async fn read_chunk_btree(
     reader: &Reader,
     btree_address: u64,
     offset_size: u8,
     ndims: usize,
+    row_bounds: Option<(u64, u64)>,
+    chunk_row_dim: u64,
 ) -> Result<Vec<ChunkInfo>, Hdf5Error> {
     let header = reader.read(btree_address, 4096).await?;
 
@@ -265,33 +274,56 @@ pub async fn read_chunk_btree(
     }
 
     let keys_start = 8 + 2 * offset_size as usize;
-
-    // Each raw data chunk key contains:
-    //   chunk_size (4 bytes)
-    //   filter_mask (4 bytes)
-    //   offsets (ndims+1 values, each 8 bytes) -- last dim is always 0 (unused)
     let key_size = 4 + 4 + (ndims + 1) * 8;
 
+    // Helper: extract the first-dimension offset from a key at `kpos`.
+    let key_row_offset = |kpos: usize| -> u64 {
+        let off_pos = kpos + 4 + 4; // skip chunk_size + filter_mask
+        u64::from_le_bytes([
+            header[off_pos],
+            header[off_pos + 1],
+            header[off_pos + 2],
+            header[off_pos + 3],
+            header[off_pos + 4],
+            header[off_pos + 5],
+            header[off_pos + 6],
+            header[off_pos + 7],
+        ])
+    };
+
     if node_level > 0 {
-        // Internal node
-        let mut chunks = Vec::new();
+        // Internal node: parse all keys and child pointers first, then
+        // only recurse into children whose key range overlaps row_bounds.
+        let mut key_positions = Vec::with_capacity(entries_used + 1);
+        let mut child_addrs = Vec::with_capacity(entries_used);
         let mut pos = keys_start;
 
-        for i in 0..entries_used {
-            // skip key
+        for _i in 0..entries_used {
+            key_positions.push(pos);
             pos += key_size;
-            // child pointer
-            let child_addr = read_offset(&header, &mut pos, offset_size);
+            child_addrs.push(read_offset(&header, &mut pos, offset_size));
+        }
+        key_positions.push(pos); // trailing key
 
-            if i == entries_used - 1 {
-                pos += key_size; // trailing key
+        let mut chunks = Vec::new();
+        for i in 0..entries_used {
+            // Child[i] contains chunks with offsets in [key[i], key[i+1])
+            if let Some((range_start, range_end)) = row_bounds {
+                let child_min = key_row_offset(key_positions[i]);
+                let child_max = key_row_offset(key_positions[i + 1]);
+                // Skip if no overlap
+                if child_max <= range_start || child_min >= range_end {
+                    continue;
+                }
             }
 
             let child_chunks = Box::pin(read_chunk_btree(
                 reader,
-                child_addr,
+                child_addrs[i],
                 offset_size,
                 ndims,
+                row_bounds,
+                chunk_row_dim,
             ))
             .await?;
             chunks.extend(child_chunks);
@@ -299,12 +331,11 @@ pub async fn read_chunk_btree(
 
         Ok(chunks)
     } else {
-        // Leaf node: keys contain chunk metadata, child pointers are data addresses
+        // Leaf node: parse chunks and optionally filter by row_bounds.
         let mut chunks = Vec::new();
         let mut pos = keys_start;
 
         for i in 0..entries_used {
-            // Parse key
             let chunk_size = u32::from_le_bytes([
                 header[pos],
                 header[pos + 1],
@@ -322,7 +353,6 @@ pub async fn read_chunk_btree(
 
             let mut offsets = Vec::with_capacity(ndims);
             for _ in 0..=ndims {
-                // ndims + 1 values, last is unused
                 let off = u64::from_le_bytes([
                     header[pos],
                     header[pos + 1],
@@ -336,13 +366,21 @@ pub async fn read_chunk_btree(
                 offsets.push(off);
                 pos += 8;
             }
-            offsets.truncate(ndims); // remove the trailing zero dimension
+            offsets.truncate(ndims);
 
-            // Child pointer: chunk data address
             let address = read_offset(&header, &mut pos, offset_size);
 
             if i == entries_used - 1 {
                 pos += key_size; // trailing key
+            }
+
+            // Optionally filter by row bounds
+            if let Some((range_start, range_end)) = row_bounds {
+                let chunk_start = offsets[0];
+                let chunk_end = chunk_start + chunk_row_dim;
+                if chunk_end <= range_start || chunk_start >= range_end {
+                    continue;
+                }
             }
 
             chunks.push(ChunkInfo {

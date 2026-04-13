@@ -5,7 +5,7 @@
 \title{List available columns for a GEDI or ICESat-2 product}
 \usage{
 sl_columns(
-  product = c("L2A", "L2B", "L4A", "L1B", "ATL08", "ATL03", "ATL06"),
+  product = c("L2A", "L2B", "L4A", "L4C", "L1B", "ATL08", "ATL03", "ATL06"),
   set = c("all", "default")
 )
 }

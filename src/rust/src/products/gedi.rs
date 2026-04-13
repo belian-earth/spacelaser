@@ -74,6 +74,7 @@ pub enum GediProduct {
     L2A,
     L2B,
     L4A,
+    L4C,
 }
 
 impl SatelliteProduct for GediProduct {

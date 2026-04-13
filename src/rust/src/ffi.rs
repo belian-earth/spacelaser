@@ -175,6 +175,7 @@ fn rust_read_gedi(
         "L2A" | "l2a" => GediProduct::L2A,
         "L2B" | "l2b" => GediProduct::L2B,
         "L4A" | "l4a" => GediProduct::L4A,
+        "L4C" | "l4c" => GediProduct::L4C,
         _ => return Err(extendr_api::Error::Other(format!("Unknown GEDI product: {product}"))),
     };
 
@@ -330,6 +331,7 @@ fn rust_read_gedi_multi(
         "L2A" | "l2a" => GediProduct::L2A,
         "L2B" | "l2b" => GediProduct::L2B,
         "L4A" | "l4a" => GediProduct::L4A,
+        "L4C" | "l4c" => GediProduct::L4C,
         _ => return Err(extendr_api::Error::Other(format!("Unknown GEDI product: {product}"))),
     };
 

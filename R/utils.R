@@ -224,6 +224,8 @@ detect_sensor <- function(url, product = NULL) {
         "L2B"
       } else if (grepl("GEDI_L4A|GEDI04_A", bn)) {
         "L4A"
+      } else if (grepl("GEDI_L4C|GEDI04_C", bn)) {
+        "L4C"
       } else {
         rlang::abort(c(
           "Cannot detect GEDI product from filename.",
@@ -255,7 +257,7 @@ detect_sensor <- function(url, product = NULL) {
       ))
     }
     # Infer sensor from the product string
-    if (product %in% c("L1B", "L2A", "L2B", "L4A")) {
+    if (product %in% c("L1B", "L2A", "L2B", "L4A", "L4C")) {
       read_fn <- read_gedi
     } else if (product %in% c("ATL03", "ATL06", "ATL08")) {
       read_fn <- read_icesat2
@@ -522,6 +524,7 @@ gedi_lat_lon <- function(product) {
       lon = "geolocation/lon_lowestmode"
     ),
     "L4A" = list(lat = "lat_lowestmode", lon = "lon_lowestmode"),
+    "L4C" = list(lat = "lat_lowestmode", lon = "lon_lowestmode"),
     "L1B" = list(
       lat = "geolocation/latitude_bin0",
       lon = "geolocation/longitude_bin0"

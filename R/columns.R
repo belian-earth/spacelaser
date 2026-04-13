@@ -321,6 +321,50 @@
   urban_proportion               = "land_cover_data/urban_proportion"
 )
 # fmt: skip
+.gedi_l4c_columns <- c(
+  lat_lowestmode                 = "lat_lowestmode",
+  lon_lowestmode                 = "lon_lowestmode",
+  beam                           = "beam",
+  shot_number                    = "shot_number",
+  channel                        = "channel",
+  delta_time                     = "delta_time",
+  master_frac                    = "master_frac",
+  master_int                     = "master_int",
+  algorithm_run_flag             = "algorithm_run_flag",
+  degrade_flag                   = "degrade_flag",
+  l2_quality_flag                = "l2_quality_flag",
+  wsci_quality_flag              = "wsci_quality_flag",
+  sensitivity                    = "sensitivity",
+  solar_elevation                = "solar_elevation",
+  surface_flag                   = "surface_flag",
+  elev_lowestmode                = "elev_lowestmode",
+  elev_outlier_flag              = "elev_outlier_flag",
+  fhd_normal                     = "fhd_normal",
+  selected_algorithm             = "selected_algorithm",
+  wsci                           = "wsci",
+  wsci_pi_lower                  = "wsci_pi_lower",
+  wsci_pi_upper                  = "wsci_pi_upper",
+  wsci_xy                        = "wsci_xy",
+  wsci_xy_pi_lower               = "wsci_xy_pi_lower",
+  wsci_xy_pi_upper               = "wsci_xy_pi_upper",
+  wsci_z                         = "wsci_z",
+  wsci_z_pi_lower                = "wsci_z_pi_lower",
+  wsci_z_pi_upper                = "wsci_z_pi_upper",
+  stale_return_flag              = "geolocation/stale_return_flag",
+  landsat_treecover              = "land_cover_data/landsat_treecover",
+  landsat_water_persistence      = "land_cover_data/landsat_water_persistence",
+  leaf_off_doy                   = "land_cover_data/leaf_off_doy",
+  leaf_off_flag                  = "land_cover_data/leaf_off_flag",
+  leaf_on_cycle                  = "land_cover_data/leaf_on_cycle",
+  leaf_on_doy                    = "land_cover_data/leaf_on_doy",
+  pft_class                      = "land_cover_data/pft_class",
+  region_class                   = "land_cover_data/region_class",
+  urban_focal_window_size        = "land_cover_data/urban_focal_window_size",
+  urban_proportion               = "land_cover_data/urban_proportion",
+  worldcover_class               = "land_cover_data/worldcover_class"
+)
+
+# fmt: skip
 .icesat2_atl03_columns <- c(
   lat_ph             = "heights/lat_ph",
   lon_ph             = "heights/lon_ph",
@@ -470,7 +514,8 @@
   L1B = .gedi_l1b_columns,
   L2A = .gedi_l2a_columns,
   L2B = .gedi_l2b_columns,
-  L4A = .gedi_l4a_columns
+  L4A = .gedi_l4a_columns,
+  L4C = .gedi_l4c_columns
 )
 
 .icesat2_column_registry <- list(
@@ -527,6 +572,15 @@
   "landsat_treecover", "pft_class", "region_class"
 )
 # fmt: skip
+.gedi_l4c_default <- c(
+  "shot_number", "beam", "delta_time",
+  "wsci_quality_flag", "degrade_flag", "sensitivity",
+  "wsci", "wsci_pi_lower", "wsci_pi_upper",
+  "wsci_xy", "wsci_z", "fhd_normal",
+  "elev_lowestmode", "solar_elevation",
+  "landsat_treecover", "pft_class", "region_class"
+)
+# fmt: skip
 .icesat2_atl03_default <- c(
   "h_ph", "delta_time",
   "signal_conf_ph", "quality_ph", "signal_class_ph"
@@ -555,6 +609,7 @@
   L2A   = .gedi_l2a_default,
   L2B   = .gedi_l2b_default,
   L4A   = .gedi_l4a_default,
+  L4C   = .gedi_l4c_default,
   ATL03 = .icesat2_atl03_default,
   ATL06 = .icesat2_atl06_default,
   ATL08 = .icesat2_atl08_default
@@ -593,7 +648,7 @@ product_default_columns <- function(product) {
 #'
 #' @export
 sl_columns <- function(
-  product = c("L2A", "L2B", "L4A", "L1B", "ATL08", "ATL03", "ATL06"),
+  product = c("L2A", "L2B", "L4A", "L4C", "L1B", "ATL08", "ATL03", "ATL06"),
   set = c("all", "default")
 ) {
   product <- rlang::arg_match(product)
@@ -793,7 +848,7 @@ build_pool_specs <- function(pool_short, pool_paths, product) {
 #' comparison is correct.
 #' @noRd
 product_fill_values <- function(product) {
-  if (product %in% c("L1B", "L2A", "L2B", "L4A")) {
+  if (product %in% c("L1B", "L2A", "L2B", "L4A", "L4C")) {
     c(-9999.0, -999999.0)
   } else if (product %in% c("ATL08")) {
     c(3.4028235e+38)

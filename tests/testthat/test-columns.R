@@ -14,6 +14,8 @@ test_that("sl_columns() returns correct counts for ICESat-2 products", {
   expect_length(sl_columns("ATL03"), 14)
   expect_length(sl_columns("ATL06"), 43)
   expect_length(sl_columns("ATL08"), 69)
+  expect_length(sl_columns("ATL13"), 45)
+  expect_length(sl_columns("ATL24"), 19)
 })
 
 test_that("sl_columns() returns named character vector for GEDI", {

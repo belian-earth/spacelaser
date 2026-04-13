@@ -506,6 +506,90 @@
   terrain_slope         = "land_segments/terrain/terrain_slope"
 )
 
+# fmt: skip
+.icesat2_atl13_columns <- c(
+  # ATL13 datasets live directly under /gtx/ (no intermediate subgroup).
+  # anom_ssegs/ subgroup excluded: different row dimension.
+  # Core
+  segment_lat                    = "segment_lat",
+  segment_lon                    = "segment_lon",
+  delta_time                     = "delta_time",
+  ht_water_surf                  = "ht_water_surf",
+  ht_ortho                       = "ht_ortho",
+  stdev_water_surf               = "stdev_water_surf",
+  significant_wave_ht            = "significant_wave_ht",
+  water_depth                    = "water_depth",
+  err_ht_water_surf              = "err_ht_water_surf",
+  # Segment geometry
+  sseg_mean_lat                  = "sseg_mean_lat",
+  sseg_mean_lon                  = "sseg_mean_lon",
+  sseg_sig_ph_cnt                = "sseg_sig_ph_cnt",
+  # Water body ID
+  inland_water_body_id           = "inland_water_body_id",
+  inland_water_body_type         = "inland_water_body_type",
+  inland_water_body_size         = "inland_water_body_size",
+  inland_water_body_source       = "inland_water_body_source",
+  atl13refid                     = "atl13refid",
+  transect_id                    = "transect_id",
+  # Height corrections
+  segment_geoid                  = "segment_geoid",
+  segment_dem_ht                 = "segment_dem_ht",
+  segment_dac                    = "segment_dac",
+  segment_tide_ocean             = "segment_tide_ocean",
+  segment_bias_em                = "segment_bias_em",
+  segment_bias_fit               = "segment_bias_fit",
+  segment_fpb_correction         = "segment_fpb_correction",
+  # Metadata
+  segment_id_beg                 = "segment_id_beg",
+  segment_id_end                 = "segment_id_end",
+  segment_slope_trk_bdy          = "segment_slope_trk_bdy",
+  err_slope_trk                  = "err_slope_trk",
+  cycle_number                   = "cycle_number",
+  rgt                            = "rgt",
+  # Subsurface
+  subsurface_attenuation         = "subsurface_attenuation",
+  subsurface_backscat_ampltd     = "subsurface_backscat_ampltd",
+  bottom_lat                     = "bottom_lat",
+  bottom_lon                     = "bottom_lon",
+  # Quality flags
+  segment_quality                = "segment_quality",
+  qf_bckgrd                     = "qf_bckgrd",
+  qf_bias_em                    = "qf_bias_em",
+  qf_bias_fit                   = "qf_bias_fit",
+  qf_cloud                      = "qf_cloud",
+  qf_ice                        = "qf_ice",
+  qf_subsurf_anomaly            = "qf_subsurf_anomaly",
+  cloud_flag_asr_atl09           = "cloud_flag_asr_atl09",
+  ice_flag                       = "ice_flag",
+  # Meteorology
+  met_wind10_atl13               = "met_wind10_atl13"
+)
+
+# fmt: skip
+.icesat2_atl24_columns <- c(
+  # ATL24 datasets live directly under /gtx/ (no subgroups).
+  # All per-photon, 1D.
+  lat_ph                         = "lat_ph",
+  lon_ph                         = "lon_ph",
+  delta_time                     = "delta_time",
+  ortho_h                        = "ortho_h",
+  ellipse_h                      = "ellipse_h",
+  surface_h                      = "surface_h",
+  class_ph                       = "class_ph",
+  confidence                     = "confidence",
+  sigma_thu                      = "sigma_thu",
+  sigma_tvu                      = "sigma_tvu",
+  x_atc                          = "x_atc",
+  y_atc                          = "y_atc",
+  index_ph                       = "index_ph",
+  index_seg                      = "index_seg",
+  night_flag                     = "night_flag",
+  low_confidence_flag            = "low_confidence_flag",
+  invalid_kd                     = "invalid_kd",
+  invalid_wind_speed             = "invalid_wind_speed",
+  sensor_depth_exceeded          = "sensor_depth_exceeded"
+)
+
 # ---------------------------------------------------------------------------
 # Column lookup tables (product -> registry)
 # ---------------------------------------------------------------------------
@@ -521,7 +605,9 @@
 .icesat2_column_registry <- list(
   ATL03 = .icesat2_atl03_columns,
   ATL06 = .icesat2_atl06_columns,
-  ATL08 = .icesat2_atl08_columns
+  ATL08 = .icesat2_atl08_columns,
+  ATL13 = .icesat2_atl13_columns,
+  ATL24 = .icesat2_atl24_columns
 )
 
 # ---------------------------------------------------------------------------
@@ -604,6 +690,25 @@
   "segment_landcover", "solar_elevation"
 )
 
+# fmt: skip
+.icesat2_atl13_default <- c(
+  "delta_time", "ht_water_surf", "ht_ortho",
+  "stdev_water_surf", "significant_wave_ht", "water_depth",
+  "err_ht_water_surf",
+  "inland_water_body_id", "inland_water_body_type",
+  "sseg_sig_ph_cnt", "segment_geoid", "segment_dem_ht",
+  "segment_id_beg", "segment_slope_trk_bdy",
+  "qf_cloud", "qf_ice", "ice_flag"
+)
+# fmt: skip
+.icesat2_atl24_default <- c(
+  "delta_time", "ortho_h", "ellipse_h", "surface_h",
+  "class_ph", "confidence",
+  "sigma_thu", "sigma_tvu",
+  "night_flag", "low_confidence_flag",
+  "sensor_depth_exceeded"
+)
+
 .default_column_registry <- list(
   L1B   = .gedi_l1b_default,
   L2A   = .gedi_l2a_default,
@@ -612,7 +717,9 @@
   L4C   = .gedi_l4c_default,
   ATL03 = .icesat2_atl03_default,
   ATL06 = .icesat2_atl06_default,
-  ATL08 = .icesat2_atl08_default
+  ATL08 = .icesat2_atl08_default,
+  ATL13 = .icesat2_atl13_default,
+  ATL24 = .icesat2_atl24_default
 )
 
 #' Short names of the default column set for a product.
@@ -648,7 +755,7 @@ product_default_columns <- function(product) {
 #'
 #' @export
 sl_columns <- function(
-  product = c("L2A", "L2B", "L4A", "L4C", "L1B", "ATL08", "ATL03", "ATL06"),
+  product = c("L2A", "L2B", "L4A", "L4C", "L1B", "ATL08", "ATL03", "ATL06", "ATL13", "ATL24"),
   set = c("all", "default")
 ) {
   product <- rlang::arg_match(product)
@@ -850,7 +957,7 @@ build_pool_specs <- function(pool_short, pool_paths, product) {
 product_fill_values <- function(product) {
   if (product %in% c("L1B", "L2A", "L2B", "L4A", "L4C")) {
     c(-9999.0, -999999.0)
-  } else if (product %in% c("ATL08")) {
+  } else if (product %in% c("ATL08", "ATL13")) {
     c(3.4028235e+38)
   } else {
     numeric(0)

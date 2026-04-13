@@ -49,6 +49,8 @@ pub enum IceSat2Product {
     ATL03,
     ATL06,
     ATL08,
+    ATL13,
+    ATL24,
 }
 
 impl SatelliteProduct for IceSat2Product {
@@ -61,6 +63,8 @@ impl SatelliteProduct for IceSat2Product {
             IceSat2Product::ATL03 => "heights/lat_ph",
             IceSat2Product::ATL06 => "land_ice_segments/latitude",
             IceSat2Product::ATL08 => "land_segments/latitude",
+            IceSat2Product::ATL13 => "segment_lat",
+            IceSat2Product::ATL24 => "lat_ph",
         }
     }
 
@@ -69,6 +73,8 @@ impl SatelliteProduct for IceSat2Product {
             IceSat2Product::ATL03 => "heights/lon_ph",
             IceSat2Product::ATL06 => "land_ice_segments/longitude",
             IceSat2Product::ATL08 => "land_segments/longitude",
+            IceSat2Product::ATL13 => "segment_lon",
+            IceSat2Product::ATL24 => "lon_ph",
         }
     }
 }

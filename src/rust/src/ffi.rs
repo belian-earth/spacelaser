@@ -223,6 +223,8 @@ fn rust_read_icesat2(
         "ATL03" | "atl03" => IceSat2Product::ATL03,
         "ATL06" | "atl06" => IceSat2Product::ATL06,
         "ATL08" | "atl08" => IceSat2Product::ATL08,
+        "ATL13" | "atl13" => IceSat2Product::ATL13,
+        "ATL24" | "atl24" => IceSat2Product::ATL24,
         _ => return Err(extendr_api::Error::Other(format!("Unknown ICESat-2 product: {product}"))),
     };
 
@@ -408,6 +410,8 @@ fn rust_read_icesat2_multi(
         "ATL03" | "atl03" => IceSat2Product::ATL03,
         "ATL06" | "atl06" => IceSat2Product::ATL06,
         "ATL08" | "atl08" => IceSat2Product::ATL08,
+        "ATL13" | "atl13" => IceSat2Product::ATL13,
+        "ATL24" | "atl24" => IceSat2Product::ATL24,
         _ => return Err(extendr_api::Error::Other(format!("Unknown ICESat-2 product: {product}"))),
     };
 

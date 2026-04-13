@@ -40,7 +40,7 @@
 #' @export
 sl_search <- function(
   bbox,
-  product = c("L2A", "L2B", "L4A", "L4C", "L1B", "ATL08", "ATL03", "ATL06"),
+  product = c("L2A", "L2B", "L4A", "L4C", "L1B", "ATL08", "ATL03", "ATL06", "ATL13", "ATL24"),
   date_start = NULL,
   date_end = NULL
 ) {
@@ -78,7 +78,9 @@ product_search_spec <- function(product) {
     L4C   = list(sensor = "gedi",    concept_id = "C3049900163-ORNL_CLOUD", default_start = "2019-03-25", label = "GEDI L4C"),
     ATL03 = list(sensor = "icesat2", concept_id = "C3326974349-NSIDC_CPRD", default_start = "2018-10-14", label = "ICESat-2 ATL03"),
     ATL06 = list(sensor = "icesat2", concept_id = "C3564876127-NSIDC_CPRD", default_start = "2018-10-14", label = "ICESat-2 ATL06"),
-    ATL08 = list(sensor = "icesat2", concept_id = "C3565574177-NSIDC_CPRD", default_start = "2018-10-14", label = "ICESat-2 ATL08")
+    ATL08 = list(sensor = "icesat2", concept_id = "C3565574177-NSIDC_CPRD", default_start = "2018-10-14", label = "ICESat-2 ATL08"),
+    ATL13 = list(sensor = "icesat2", concept_id = "C3565574351-NSIDC_CPRD", default_start = "2018-10-14", label = "ICESat-2 ATL13"),
+    ATL24 = list(sensor = "icesat2", concept_id = "C3433822507-NSIDC_CPRD", default_start = "2018-10-14", label = "ICESat-2 ATL24")
   )
 }
 

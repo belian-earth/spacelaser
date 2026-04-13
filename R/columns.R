@@ -513,6 +513,7 @@
   "shot_number", "beam", "delta_time",
   "l2b_quality_flag", "l2a_quality_flag", "sensitivity",
   "cover", "fhd_normal", "pai", "rh100",
+  "cover_z", "pai_z", "pavd_z",
   "elev_lowestmode", "solar_elevation",
   "digital_elevation_model",
   "landsat_treecover", "modis_treecover"

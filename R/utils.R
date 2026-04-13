@@ -31,14 +31,78 @@
 #'   is an error to avoid silently missing data outside the original search.
 #' @param columns Character vector of column names to read (short names from
 #'   [sl_columns()]). Latitude and longitude are always included
-#'   automatically. `NULL` (default) reads the full column registry for the
-#'   product.
+#'   automatically. `NULL` (default) reads the curated default column set
+#'   for the product (see [sl_columns()] with `set = "default"`). Pass
+#'   `names(sl_columns(product))` to read all available columns.
 #' @param ... Reserved for method-specific arguments and forwarding.
 #'
 #' @returns A data frame with one row per footprint (GEDI) or
-#'   segment/photon (ICESat-2).
+#'   segment/photon (ICESat-2). Columns depend on the product and the
+#'   `columns` argument. Fill-value sentinels (-9999, 3.4e38, etc.) are
+#'   automatically replaced with `NA`.
 #'
-#' @seealso [sl_search()], [sl_columns()]
+#' @details
+#' ## Default columns
+#'
+#' When `columns = NULL`, a curated default set is returned for each
+#' product. Use `sl_columns(product, set = "default")` to see which
+#' columns are included. The defaults are designed to cover the primary
+#' science variables, key quality flags, and basic context without
+#' surprises. Use `sl_columns(product, set = "all")` to discover
+#' everything available.
+#'
+#' ## Product-specific notes
+#'
+#' **GEDI L1B**: The default set includes `rxwaveform`, which is a
+#' **list column** (one numeric vector per shot containing the received
+#' waveform). Use [sl_extract_waveforms()] to expand this into a
+#' long-form data frame with per-sample elevations. The transmitted
+#' waveform (`txwaveform`) is available via explicit request but not
+#' included in defaults. L1B reads are slower than other products
+#' because waveform data requires targeted chunk reads into the pool
+#' dataset.
+#'
+#' **GEDI L2A**: The `rh` column is a 2D dataset \[N, 101\] that
+#' expands into 101 columns (`rh0` through `rh100`), representing
+#' relative height percentiles in metres. This is included in the
+#' default set.
+#'
+#' **GEDI L2B**: The default set includes `cover_z`, `pai_z`, and
+#' `pavd_z`, which are 2D datasets \[N, 30\] representing canopy
+#' vertical profiles at 5 m height bins. Each expands to 30 columns
+#' (e.g. `cover_z0` through `cover_z29`), adding 90 columns to the
+#' output. `pgap_theta_z` is a variable-length list column (similar to
+#' L1B waveforms) and is not included in defaults; request it
+#' explicitly when needed.
+#'
+#' **GEDI L2B `rh100`**: Stored in centimetres in the HDF5 file;
+#' automatically converted to metres for consistency with L2A.
+#'
+#' **GEDI L4A**: The `agbd` column is above-ground biomass density in
+#' Mg/ha. Prediction intervals (`agbd_pi_lower`, `agbd_pi_upper`) and
+#' standard error (`agbd_se`) are included in defaults.
+#'
+#' **ICESat-2 ATL03**: Photon-level data. A single granule can produce
+#' millions of rows. Multi-granule reads may be slow or timeout due to
+#' the large lat/lon arrays that must be downloaded for spatial
+#' filtering. Use a small bounding box and few granules.
+#' `signal_conf_ph` is a 2D column \[N, 5\] (5 surface types: land,
+#' ocean, sea ice, land ice, inland water) that expands to 5 columns.
+#'
+#' **ICESat-2 ATL06**: Land ice elevation segments. The default set
+#' includes fit statistics (`n_fit_photons`, `h_robust_sprd`, `snr`)
+#' and reference DEM height (`dem_h`). Tidal and geophysical
+#' corrections are available via `sl_columns("ATL06")` but not in
+#' defaults.
+#'
+#' **ICESat-2 ATL08**: The default set includes `canopy_h_metrics`, a
+#' 2D dataset \[N, 18\] of canopy height percentiles (P10 through P95)
+#' that expands to 18 columns. Terrain slope, photon counts, and land
+#' cover are also included. The `*_20m` sub-segment columns and
+#' `*_abs` (absolute height) variants are available but not in
+#' defaults.
+#'
+#' @seealso [sl_search()], [sl_columns()], [sl_extract_waveforms()]
 #' @export
 sl_read <- function(x, bbox, ...) {
   UseMethod("sl_read")

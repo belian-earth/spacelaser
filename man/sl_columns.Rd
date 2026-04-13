@@ -4,7 +4,10 @@
 \alias{sl_columns}
 \title{List available columns for a GEDI or ICESat-2 product}
 \usage{
-sl_columns(product = c("L2A", "L2B", "L4A", "L1B", "ATL08", "ATL03", "ATL06"))
+sl_columns(
+  product = c("L2A", "L2B", "L4A", "L1B", "ATL08", "ATL03", "ATL06"),
+  set = c("all", "default")
+)
 }
 \arguments{
 \item{product}{Character. One of:
@@ -12,18 +15,26 @@ sl_columns(product = c("L2A", "L2B", "L4A", "L1B", "ATL08", "ATL03", "ATL06"))
 \item GEDI: \code{"L1B"}, \code{"L2A"}, \code{"L2B"}, \code{"L4A"}
 \item ICESat-2: \code{"ATL03"}, \code{"ATL06"}, \code{"ATL08"}
 }}
+
+\item{set}{Character. Which column set to return:
+\itemize{
+\item \code{"all"} (default): every column in the registry, including
+geophysical corrections, instrument details, and pool columns.
+\item \code{"default"}: a curated subset of commonly useful science
+variables, quality flags, and context columns. This is what
+\code{\link[=sl_read]{sl_read()}} returns when \code{columns} is not specified.
+}}
 }
 \value{
 A named character vector.
 }
 \description{
-Returns a named character vector of all available columns for the given
-product. Names are the short user-facing column names (used in the
-\code{columns} argument of \code{\link[=sl_read]{sl_read()}}). Values are the full HDF5 dataset
-paths.
+Returns a named character vector of columns for the given product.
+Names are the short user-facing column names (used in the \code{columns}
+argument of \code{\link[=sl_read]{sl_read()}}). Values are the full HDF5 dataset paths.
 }
 \examples{
 sl_columns("L2A")
-names(sl_columns("ATL08"))
+sl_columns("L2A", set = "default")
 
 }

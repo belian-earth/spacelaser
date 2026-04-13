@@ -480,31 +480,131 @@
 )
 
 # ---------------------------------------------------------------------------
+# Default column sets (curated subsets for "grab and go" reads)
+# ---------------------------------------------------------------------------
+# These define what sl_read() returns when columns = NULL. The full
+# registry is available via sl_columns(product) or
+# sl_columns(product, set = "all"). Default sets include the primary
+# science variables, key quality flags, and basic context. They exclude
+# geophysical corrections, instrument details, error/uncertainty
+# columns, pool/list columns, and niche QC flags.
+
+# fmt: skip
+.gedi_l1b_default <- c(
+  "shot_number", "beam", "channel", "delta_time",
+  "rx_energy", "stale_return_flag",
+  "elevation_bin0", "elevation_lastbin",
+  "rx_sample_count", "rx_sample_start_index",
+  "digital_elevation_model", "solar_elevation",
+  "rxwaveform"
+)
+# fmt: skip
+.gedi_l2a_default <- c(
+  "shot_number", "beam", "delta_time",
+  "quality_flag", "degrade_flag", "sensitivity",
+  "elev_lowestmode", "elev_highestreturn", "energy_total",
+  "num_detectedmodes", "rh", "selected_algorithm",
+  "solar_elevation", "digital_elevation_model",
+  "landsat_treecover", "modis_treecover",
+  "pft_class", "region_class"
+)
+# fmt: skip
+.gedi_l2b_default <- c(
+  "shot_number", "beam", "delta_time",
+  "l2b_quality_flag", "l2a_quality_flag", "sensitivity",
+  "cover", "fhd_normal", "pai", "rh100",
+  "elev_lowestmode", "solar_elevation",
+  "digital_elevation_model",
+  "landsat_treecover", "modis_treecover"
+)
+# fmt: skip
+.gedi_l4a_default <- c(
+  "shot_number", "beam", "delta_time",
+  "l4_quality_flag", "degrade_flag", "sensitivity",
+  "agbd", "agbd_se", "agbd_pi_lower", "agbd_pi_upper",
+  "elev_lowestmode", "solar_elevation",
+  "landsat_treecover", "pft_class", "region_class"
+)
+# fmt: skip
+.icesat2_atl03_default <- c(
+  "h_ph", "delta_time",
+  "signal_conf_ph", "quality_ph", "signal_class_ph"
+)
+# fmt: skip
+.icesat2_atl06_default <- c(
+  "h_li", "h_li_sigma", "atl06_quality_summary",
+  "delta_time", "segment_id",
+  "sigma_geo_h", "n_fit_photons", "h_robust_sprd", "snr",
+  "dem_h"
+)
+# fmt: skip
+.icesat2_atl08_default <- c(
+  "delta_time", "segment_id_beg", "night_flag",
+  "h_canopy", "h_canopy_uncertainty",
+  "h_max_canopy", "h_mean_canopy", "h_median_canopy",
+  "canopy_openness", "canopy_h_metrics",
+  "centroid_height", "n_ca_photons", "toc_roughness",
+  "h_te_best_fit", "h_te_uncertainty", "terrain_slope",
+  "n_te_photons", "snr", "dem_h",
+  "segment_landcover", "solar_elevation"
+)
+
+.default_column_registry <- list(
+  L1B   = .gedi_l1b_default,
+  L2A   = .gedi_l2a_default,
+  L2B   = .gedi_l2b_default,
+  L4A   = .gedi_l4a_default,
+  ATL03 = .icesat2_atl03_default,
+  ATL06 = .icesat2_atl06_default,
+  ATL08 = .icesat2_atl08_default
+)
+
+#' Short names of the default column set for a product.
+#' @noRd
+product_default_columns <- function(product) {
+  .default_column_registry[[product]] %||% character(0)
+}
+
+# ---------------------------------------------------------------------------
 # Exported: column discovery
 # ---------------------------------------------------------------------------
 
 #' List available columns for a GEDI or ICESat-2 product
 #'
-#' Returns a named character vector of all available columns for the given
-#' product. Names are the short user-facing column names (used in the
-#' `columns` argument of [sl_read()]). Values are the full HDF5 dataset
-#' paths.
+#' Returns a named character vector of columns for the given product.
+#' Names are the short user-facing column names (used in the `columns`
+#' argument of [sl_read()]). Values are the full HDF5 dataset paths.
 #'
 #' @param product Character. One of:
 #'   * GEDI: `"L1B"`, `"L2A"`, `"L2B"`, `"L4A"`
 #'   * ICESat-2: `"ATL03"`, `"ATL06"`, `"ATL08"`
+#' @param set Character. Which column set to return:
+#'   * `"all"` (default): every column in the registry, including
+#'     geophysical corrections, instrument details, and pool columns.
+#'   * `"default"`: a curated subset of commonly useful science
+#'     variables, quality flags, and context columns. This is what
+#'     [sl_read()] returns when `columns` is not specified.
 #' @returns A named character vector.
 #'
 #' @examples
 #' sl_columns("L2A")
-#' names(sl_columns("ATL08"))
+#' sl_columns("L2A", set = "default")
 #'
 #' @export
 sl_columns <- function(
-  product = c("L2A", "L2B", "L4A", "L1B", "ATL08", "ATL03", "ATL06")
+  product = c("L2A", "L2B", "L4A", "L1B", "ATL08", "ATL03", "ATL06"),
+  set = c("all", "default")
 ) {
   product <- rlang::arg_match(product)
-  .gedi_column_registry[[product]] %||% .icesat2_column_registry[[product]]
+  set <- rlang::arg_match(set)
+  registry <- .gedi_column_registry[[product]] %||%
+    .icesat2_column_registry[[product]]
+  if (set == "default") {
+    default_short <- product_default_columns(product)
+    registry[intersect(names(registry), default_short)]
+  } else {
+    registry
+  }
 }
 
 # ---------------------------------------------------------------------------
@@ -535,11 +635,15 @@ validate_columns <- function(columns, product) {
     cli::cli_abort("Unknown product {.val {product}}.")
   }
 
-  # NULL → all scalar defaults, with pool columns excluded
+  # NULL → curated default set for the product
   if (is.null(columns)) {
+    default_short <- product_default_columns(product)
+    if (length(default_short) > 0L) {
+      return(unique(unname(registry[intersect(names(registry), default_short)])))
+    }
+    # Fallback: all columns minus pool columns
     pool_short <- product_pool_columns(product)
-    default_short <- setdiff(names(registry), pool_short)
-    return(unique(unname(registry[default_short])))
+    return(unique(unname(registry[setdiff(names(registry), pool_short)])))
   }
 
   # Columns containing "/" are raw HDF5 paths — pass through unchanged

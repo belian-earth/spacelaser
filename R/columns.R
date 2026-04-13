@@ -460,7 +460,6 @@
   sigma_atlas_land      = "land_segments/sigma_atlas_land",
   sigma_h               = "land_segments/sigma_h",
   sigma_topo            = "land_segments/sigma_topo",
-  snr                   = "land_segments/snr",
   solar_azimuth         = "land_segments/solar_azimuth",
   solar_elevation       = "land_segments/solar_elevation",
   surf_type             = "land_segments/surf_type",
@@ -504,7 +503,6 @@
   h_te_uncertainty      = "land_segments/terrain/h_te_uncertainty",
   n_te_photons          = "land_segments/terrain/n_te_photons",
   photon_rate_te        = "land_segments/terrain/photon_rate_te",
-  te_quality_score      = "land_segments/terrain/te_quality_score",
   terrain_slope         = "land_segments/terrain/terrain_slope"
 )
 
@@ -770,7 +768,7 @@
   "canopy_openness", "canopy_h_metrics",
   "centroid_height", "n_ca_photons", "toc_roughness",
   "h_te_best_fit", "h_te_uncertainty", "terrain_slope",
-  "n_te_photons", "snr", "dem_h",
+  "n_te_photons", "dem_h",
   "segment_landcover", "solar_elevation"
 )
 

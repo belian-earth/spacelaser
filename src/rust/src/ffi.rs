@@ -73,46 +73,180 @@ fn make_source(url: &str, username: Nullable<&str>, password: Nullable<&str>) ->
     }
 }
 
-/// Convert a `GroupData` (beam or track) into an R list.
+/// Fill-value sentinels for each sensor family. Matching values are
+/// replaced with NA during byte-to-typed-vector conversion so the R
+/// side never sees raw sentinels.
+fn fill_values_for_product(product: &str) -> Vec<f64> {
+    match product {
+        "L1B" | "l1b" | "L2A" | "l2a" | "L2B" | "l2b" | "L4A" | "l4a" | "L4C" | "l4c" => {
+            vec![-9999.0, -999999.0]
+        }
+        "ATL08" | "atl08" | "ATL13" | "atl13" => {
+            vec![3.4028235e+38_f64]
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Convert a `GroupData` (beam or track) into an R list with typed
+/// vectors (not raw bytes). Fill-value sentinels are replaced with NA
+/// during conversion. Column name prefixes are stripped.
 ///
 /// Output structure (consumed by `build_tibble()` on the R side):
 /// ```text
 /// list(
 ///   group_name   = "BEAM0101",
 ///   n_elements   = 1234L,
-///   columns      = list(col1 = <raw>, col2 = <raw>, ...),
-///   col_info     = list(col1 = "<json>", col2 = "<json>", ...),
-///   pool_columns = list(rxwaveform = <raw>, txwaveform = <raw>),
-///   pool_col_info = list(rxwaveform = "<json>", txwaveform = "<json>"),
+///   columns      = list(col1 = <dbl/int>, col2 = <dbl/int>, ...),
+///   pool_columns = list(rxwaveform = <dbl>, ...),
+///   pool_col_info = list(rxwaveform = "<json>", ...),
 /// )
 /// ```
-/// `pool_columns` are datasets read in full (no row filter). The R side
-/// slices each pool column into a per-shot list column using the
-/// `{rx,tx}_sample_start_index` / `{rx,tx}_sample_count` vectors that
-/// are auto-added to the scalar column request.
-fn group_data_to_list(gd: GroupData) -> List {
+fn group_data_to_list(gd: GroupData, fill_values: &[f64]) -> List {
     let n_elements = gd.selected_indices.len() as i32;
     let group_name = gd.group_name;
 
-    let (columns, col_info) = columns_to_lists(gd.columns);
-    let (pool_columns, pool_col_info) = columns_to_lists(gd.pool_columns);
+    let columns = columns_to_typed_list(gd.columns, fill_values);
+    // Pool columns stay as raw bytes + JSON: the R side needs to
+    // slice them per-shot using count vectors, and the flat byte
+    // buffer is the right format for that (avoids double-conversion).
+    let (pool_columns, pool_col_info) = columns_to_raw_lists(gd.pool_columns);
 
-    // Use generic field names so the R side doesn't need to branch
-    // on GEDI vs ICESat-2.  The R wrapper renames `group_name` to
-    // `beam` or `track` as appropriate.
     list!(
         group_name = group_name,
         n_elements = n_elements,
         columns = columns,
-        col_info = col_info,
         pool_columns = pool_columns,
         pool_col_info = pool_col_info
     )
 }
 
+/// Convert a `HashMap<String, ColumnData>` into a named R list of
+/// typed vectors. Float columns become `Doubles` (with fill → NA),
+/// integer columns become `Integers` (with fill → NA_integer).
+/// Column name prefixes (e.g. "geolocation/") are stripped.
+fn columns_to_typed_list(
+    cols: std::collections::HashMap<String, crate::products::common::ColumnData>,
+    fill_values: &[f64],
+) -> List {
+    let mut names: Vec<String> = Vec::new();
+    let mut values: Vec<Robj> = Vec::new();
+
+    for (name, cdata) in cols {
+        // Strip subgroup prefix (e.g. "geolocation/solar_elevation" → "solar_elevation")
+        let short_name = match name.rfind('/') {
+            Some(pos) => name[pos + 1..].to_string(),
+            None => name,
+        };
+        let robj = column_data_to_robj(&cdata, fill_values);
+        names.push(short_name);
+        values.push(robj);
+    }
+
+    List::from_names_and_values(names.iter().map(|s| s.as_str()), values)
+        .unwrap_or_else(|_| List::new(0))
+}
+
+/// Convert raw HDF5 bytes + dtype into a typed R vector.
+///
+/// Float columns: f32→f64 widening, fill values → `NA_real_`.
+/// Integer columns (≤4 bytes): direct cast to i32, fill → `NA_integer_`.
+/// Integer columns (8 bytes): int64 → f64 arithmetic conversion.
+fn column_data_to_robj(
+    cdata: &crate::products::common::ColumnData,
+    fill_values: &[f64],
+) -> Robj {
+    let b = &cdata.bytes;
+    let s = cdata.element_size;
+    let n = cdata.num_elements;
+    let is_float = cdata.dtype_desc.contains("FloatingPoint");
+    let is_signed = cdata.dtype_desc.contains("signed: true");
+
+    if is_float {
+        let doubles: Vec<Rfloat> = if s == 4 {
+            b.chunks_exact(4)
+                .take(n)
+                .map(|chunk| {
+                    let val = f32::from_le_bytes(chunk.try_into().unwrap()) as f64;
+                    if fill_values.iter().any(|&fv| val == fv) {
+                        Rfloat::na()
+                    } else {
+                        Rfloat::from(val)
+                    }
+                })
+                .collect()
+        } else {
+            b.chunks_exact(8)
+                .take(n)
+                .map(|chunk| {
+                    let val = f64::from_le_bytes(chunk.try_into().unwrap());
+                    if val.is_nan() || fill_values.iter().any(|&fv| val == fv) {
+                        Rfloat::na()
+                    } else {
+                        Rfloat::from(val)
+                    }
+                })
+                .collect()
+        };
+        Doubles::from_values(doubles).into()
+    } else if s <= 4 {
+        // Integer (signed or unsigned, ≤ 32 bits)
+        let fill_ints: Vec<i32> = fill_values.iter().map(|&fv| fv as i32).collect();
+        let ints: Vec<Rint> = match s {
+            1 => {
+                if is_signed {
+                    b.iter().take(n).map(|&byte| {
+                        let val = byte as i8 as i32;
+                        if fill_ints.contains(&val) { Rint::na() } else { Rint::from(val) }
+                    }).collect()
+                } else {
+                    b.iter().take(n).map(|&byte| {
+                        let val = byte as i32;
+                        if fill_ints.contains(&val) { Rint::na() } else { Rint::from(val) }
+                    }).collect()
+                }
+            }
+            2 => {
+                b.chunks_exact(2).take(n).map(|chunk| {
+                    let val = if is_signed {
+                        i16::from_le_bytes(chunk.try_into().unwrap()) as i32
+                    } else {
+                        u16::from_le_bytes(chunk.try_into().unwrap()) as i32
+                    };
+                    if fill_ints.contains(&val) { Rint::na() } else { Rint::from(val) }
+                }).collect()
+            }
+            _ => {
+                // 3 or 4 bytes → i32
+                b.chunks_exact(s).take(n).map(|chunk| {
+                    let mut buf = [0u8; 4];
+                    buf[..s].copy_from_slice(chunk);
+                    let val = i32::from_le_bytes(buf);
+                    if fill_ints.contains(&val) { Rint::na() } else { Rint::from(val) }
+                }).collect()
+            }
+        };
+        Integers::from_values(ints).into()
+    } else {
+        // int64 / uint64: convert to f64 (exact for values ≤ 2^53)
+        let doubles: Vec<Rfloat> = b.chunks_exact(8).take(n).map(|chunk| {
+            let lo = u32::from_le_bytes(chunk[..4].try_into().unwrap()) as f64;
+            let hi = i32::from_le_bytes(chunk[4..8].try_into().unwrap()) as f64;
+            let val = lo + hi * 4294967296.0;
+            if fill_values.iter().any(|&fv| val == fv) {
+                Rfloat::na()
+            } else {
+                Rfloat::from(val)
+            }
+        }).collect();
+        Doubles::from_values(doubles).into()
+    }
+}
+
 /// Convert a `HashMap<String, ColumnData>` into two parallel R lists:
-/// one of raw byte vectors, one of JSON info strings.
-fn columns_to_lists(
+/// one of raw byte vectors, one of JSON info strings. Used for pool
+/// columns which the R side still needs to slice per-shot.
+fn columns_to_raw_lists(
     cols: std::collections::HashMap<String, crate::products::common::ColumnData>,
 ) -> (List, List) {
     let mut names: Vec<String> = Vec::new();
@@ -191,9 +325,10 @@ fn rust_read_gedi(
             .map_err(|e| e.to_string())
     });
 
+    let fill_vals = fill_values_for_product(product);
     match result {
         Ok(groups) => {
-            let lists: Vec<List> = groups.into_iter().map(group_data_to_list).collect();
+            let lists: Vec<List> = groups.into_iter().map(|gd| group_data_to_list(gd, &fill_vals)).collect();
             Ok(List::from_values(lists))
         }
         Err(e) => Err(extendr_api::Error::Other(e)),
@@ -242,9 +377,10 @@ fn rust_read_icesat2(
             .map_err(|e| e.to_string())
     });
 
+    let fill_vals = fill_values_for_product(product);
     match result {
         Ok(groups) => {
-            let lists: Vec<List> = groups.into_iter().map(group_data_to_list).collect();
+            let lists: Vec<List> = groups.into_iter().map(|gd| group_data_to_list(gd, &fill_vals)).collect();
             Ok(List::from_values(lists))
         }
         Err(e) => Err(extendr_api::Error::Other(e)),
@@ -386,7 +522,8 @@ fn rust_read_gedi_multi(
         all_groups
     });
 
-    let lists: Vec<List> = all_groups.into_iter().map(group_data_to_list).collect();
+    let fill_vals = fill_values_for_product(product);
+    let lists: Vec<List> = all_groups.into_iter().map(|gd| group_data_to_list(gd, &fill_vals)).collect();
     Ok(List::from_values(lists))
 }
 
@@ -462,7 +599,8 @@ fn rust_read_icesat2_multi(
         all_groups
     });
 
-    let lists: Vec<List> = all_groups.into_iter().map(group_data_to_list).collect();
+    let fill_vals = fill_values_for_product(product);
+    let lists: Vec<List> = all_groups.into_iter().map(|gd| group_data_to_list(gd, &fill_vals)).collect();
     Ok(List::from_values(lists))
 }
 

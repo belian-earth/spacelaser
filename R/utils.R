@@ -446,9 +446,6 @@ assemble_read_result <- function(
       scale_factors = scale_factors
     )
     tbl[[group_label]] <- gd$group_name
-    # Strip subgroup prefixes (e.g. "geolocation/lat_lowestmode" ->
-    # "lat_lowestmode") for cleaner column names, matching chewie output.
-    names(tbl) <- sub(".*/", "", names(tbl))
     tbl
   })
 
@@ -649,10 +646,11 @@ parse_column_info <- function(json_str) {
 
 #' Build a data frame from a Rust group data list.
 #'
-#' Converts raw byte columns to proper R types and attaches geometry via wk.
-#' If `pool_short` is non-empty, also slices each requested pool dataset
-#' (e.g. GEDI L1B `rxwaveform` / `txwaveform`) into a per-shot list column
-#' using the `start`/`count` index columns specified by `pool_index_map`.
+#' The Rust side returns pre-typed R vectors (doubles/integers) with
+#' fill values already replaced by NA and column names already stripped
+#' of HDF5 subgroup prefixes. This function just assembles them into
+#' a data frame, applies scale factors, attaches geometry, and slices
+#' pool columns into per-shot list columns.
 #' @noRd
 build_tibble <- function(
   group_data,
@@ -663,13 +661,10 @@ build_tibble <- function(
   fill_values = numeric(0),
   scale_factors = list()
 ) {
-  col_names <- names(group_data$columns)
-  col_info <- group_data$col_info
-
-  cols <- purrr::map(col_names, function(nm) {
-    parse_column(group_data$columns[[nm]], col_info[[nm]])
-  })
-  names(cols) <- col_names
+  # Columns are already typed R vectors (Doubles/Integers) from Rust,
+  # with fill values → NA and name prefixes stripped.
+  cols <- as.list(group_data$columns)
+  col_names <- names(cols)
 
   n <- group_data$n_elements %||% 0L
   if (n == 0L && length(cols) > 0L) {
@@ -678,21 +673,8 @@ build_tibble <- function(
 
   tbl <- vctrs::new_data_frame(cols, n = n)
 
-  # Replace known fill-value sentinels with NA.
-  if (length(fill_values) > 0L) {
-    for (nm in names(tbl)) {
-      v <- tbl[[nm]]
-      if (is.numeric(v) || is.integer(v)) {
-        for (fv in fill_values) {
-          v[!is.na(v) & v == fv] <- NA
-        }
-        tbl[[nm]] <- v
-      }
-    }
-  }
-
-  # Apply per-column scale factors. 2D-expanded columns (e.g.
-  # pgap_theta_z0, pgap_theta_z1, ...) match by prefix.
+  # Apply per-column scale factors (R-side only: product-specific,
+  # currently only L2B rh100 cm→m).
   if (length(scale_factors) > 0L) {
     tbl_names <- names(tbl)
     for (base_name in names(scale_factors)) {
@@ -707,26 +689,26 @@ build_tibble <- function(
     }
   }
 
-  if (lat_col %in% col_names && lon_col %in% col_names) {
+  # Strip subgroup prefix from lat/lon for geometry lookup
+  lat_short <- sub(".*/", "", lat_col)
+  lon_short <- sub(".*/", "", lon_col)
+  if (lat_short %in% col_names && lon_short %in% col_names) {
     tbl[["geometry"]] <- wk::xy(
-      x = tbl[[lon_col]],
-      y = tbl[[lat_col]],
+      x = tbl[[lon_short]],
+      y = tbl[[lat_short]],
       crs = wk::wk_crs_longlat()
     )
   }
 
-  # Pool columns (GEDI L1B waveforms): Rust returns only the requested
-  # samples, concatenated per-shot in the same order as the selected
-  # rows. We split the flat vector into per-shot list columns using
-  # the count values (the start_index is implicit: each shot's data
-  # follows the previous shot's in the concatenated buffer).
+  # Pool columns: Rust returns raw bytes (not typed) because the R
+  # side needs to slice per-shot. Parse, apply fill-value replacement,
+  # then slice using count vectors.
   if (length(pool_short) > 0L) {
     pool_raw <- group_data$pool_columns %||% list()
     pool_info <- group_data$pool_col_info %||% list()
     for (pc in pool_short) {
       if (is.null(pool_raw[[pc]])) next
       flat <- parse_column(pool_raw[[pc]], pool_info[[pc]])
-      # Apply fill-value replacement to pool data before slicing
       if (length(fill_values) > 0L && is.numeric(flat)) {
         for (fv in fill_values) {
           flat[!is.na(flat) & flat == fv] <- NA
@@ -737,8 +719,6 @@ build_tibble <- function(
       counts <- tbl[[spec$count]]
       if (is.null(counts)) next
 
-      # Sequential slicing: the Rust side returned only the bytes
-      # for the selected shots, concatenated in row order.
       slices <- vector("list", n)
       pos <- 1L
       for (i in seq_len(n)) {

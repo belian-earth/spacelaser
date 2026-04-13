@@ -134,8 +134,18 @@
 #' that describe where each shot's data lives inside the pool.
 #' @noRd
 .gedi_l1b_pool_index_map <- list(
-  rxwaveform = list(start = "rx_sample_start_index", count = "rx_sample_count"),
-  txwaveform = list(start = "tx_sample_start_index", count = "tx_sample_count")
+  rxwaveform = list(
+    start = "rx_sample_start_index",
+    count = "rx_sample_count",
+    # Additional columns auto-added when this pool column is requested.
+    # elevation_bin0/lastbin are needed by sl_extract_waveforms() to
+    # compute per-sample elevation profiles.
+    deps = c("elevation_bin0", "elevation_lastbin")
+  ),
+  txwaveform = list(
+    start = "tx_sample_start_index",
+    count = "tx_sample_count"
+  )
 )
 
 # fmt: skip
@@ -631,6 +641,9 @@ ensure_pool_indices <- function(columns, pool_short, product) {
     spec <- idx_map[[pc]]
     if (is.null(spec)) next
     required_short <- c(required_short, spec$start, spec$count)
+    if (!is.null(spec$deps)) {
+      required_short <- c(required_short, spec$deps)
+    }
   }
   required_paths <- unname(registry[unique(required_short)])
   c(setdiff(required_paths, columns), columns)

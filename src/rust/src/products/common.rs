@@ -327,11 +327,13 @@ async fn read_single_group(
             continue;
         }
 
+        // GEDI rx_sample_start_index is 1-based (Fortran/MATLAB heritage).
+        // Subtract 1 to convert to 0-based HDF5 element indices.
         let mut sample_ranges: Vec<(u64, u64)> = starts
             .iter()
             .zip(counts.iter())
             .filter(|(_, &c)| c > 0)
-            .map(|(&s, &c)| (s, s + c))
+            .map(|(&s, &c)| (s.saturating_sub(1), s.saturating_sub(1) + c))
             .collect();
 
         if sample_ranges.is_empty() {

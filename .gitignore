@@ -19,3 +19,9 @@ src/spacelaser-win.def
 
 # ansillary docs:
 tech-docs/
+
+# Claude Code workspace (local-only)
+.claude/
+
+# dev scratchpads
+dev.R

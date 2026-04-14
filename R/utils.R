@@ -390,6 +390,11 @@ prepare_read_params <- function(product, bbox, columns, lat_col, lon_col,
                                 needs_creds = TRUE) {
   bbox <- validate_bbox(bbox)
   columns <- validate_columns(columns, product)
+  # Capture the user's requested column set (after default-resolution
+  # but before lat/lon and pool-index augmentation) as short names, for
+  # downstream column reordering. Anything in the output that's NOT in
+  # this list was added implicitly by the reader.
+  user_columns <- sub(".*/", "", columns)
   columns <- ensure_lat_lon(columns, lat_col, lon_col)
   # Split into: transposed 2D columns, pool columns, and regular scalars
   trans_split <- split_transposed_columns(columns, product)
@@ -412,6 +417,7 @@ prepare_read_params <- function(product, bbox, columns, lat_col, lon_col,
     transposed_specs = transposed_specs,
     fill_values = product_fill_values(product),
     scale_factors = product_scale_factors(product),
+    user_columns = user_columns,
     creds = creds
   )
 }
@@ -476,6 +482,132 @@ convert_delta_time <- function(data) {
   data
 }
 
+#' Reorder output columns into a stable, predictable layout.
+#'
+#' Hash-based iteration order on the Rust side means raw column order
+#' is unstable across runs. This helper imposes a canonical layout so
+#' the same `sl_read()` call always returns columns in the same order,
+#' and the order matches the user's mental model:
+#'
+#' 1. Group identifier (`beam` / `track`)
+#' 2. Row identifier (`shot_number`)
+#' 3. Time (`time`, or `delta_time` when `convert_time = FALSE`)
+#' 4. Coordinates (lat/lon, with subgroup prefix stripped)
+#' 5. User-requested columns in their requested order, with 2D
+#'    expansions kept adjacent to their base column. 2D suffixes are
+#'    sorted numerically (rh0, rh1, ..., rh100). Transposed expansions
+#'    follow the registry's label order (land, ocean, sea_ice, ...).
+#' 6. Auto-added pool-related infrastructure (start / count indices like
+#'    `rx_sample_start_index`, plus any declared `deps` such as
+#'    `elevation_bin0` / `elevation_lastbin` for `rxwaveform`)
+#'    immediately before `geometry` — kept visible so the provenance
+#'    of pool list-columns can be audited, but pushed past the science
+#'    columns so they don't clutter the head of the frame. Any of
+#'    these that the user explicitly requested stays in their
+#'    requested position.
+#' 7. `geometry` last.
+#' @noRd
+reorder_output_columns <- function(data,
+                                    user_columns,
+                                    lat_col,
+                                    lon_col,
+                                    group_label,
+                                    pool_idx_map,
+                                    transposed_specs) {
+  if (!is.data.frame(data) || nrow(data) == 0L || ncol(data) == 0L) {
+    return(data)
+  }
+  out_names <- names(data)
+  user_columns <- as.character(user_columns)
+  lat_short <- sub(".*/", "", lat_col)
+  lon_short <- sub(".*/", "", lon_col)
+
+  # Marquee front matter: stable canonical order regardless of where
+  # the user listed these (or whether they listed them at all).
+  marquee_candidates <- c(
+    group_label, "shot_number",
+    "time", "delta_time",
+    lat_short, lon_short
+  )
+  marquee <- intersect(marquee_candidates, out_names)
+
+  # Pool-related infrastructure columns: the start / count indices used
+  # to slice each pool list-column, plus any extra `deps` declared in
+  # the pool index spec (e.g. L1B `rxwaveform` declares
+  # elevation_bin0 / elevation_lastbin so sl_extract_waveforms() can
+  # interpolate per-sample elevations). Treated as auto-added trailing
+  # infrastructure UNLESS the user explicitly requested them.
+  index_cols <- character(0)
+  if (length(pool_idx_map) > 0L) {
+    starts <- vapply(pool_idx_map, function(s) s$start, character(1))
+    counts <- vapply(pool_idx_map, function(s) s$count, character(1))
+    deps   <- unlist(
+      lapply(pool_idx_map, function(s) s$deps %||% character(0)),
+      use.names = FALSE
+    )
+    index_cols <- unique(c(starts, counts, deps))
+  }
+  auto_indices <- intersect(
+    setdiff(index_cols, user_columns),
+    out_names
+  )
+
+  # Trailing: auto-added indices, then geometry.
+  trailing <- intersect(c(auto_indices, "geometry"), out_names)
+
+  # Map base name -> ordered expansion column names, derived from the
+  # transposed_specs (encoded "path:label1,label2,..."). Used when a
+  # user-requested column wasn't found verbatim in the output but was
+  # expanded into per-category columns by the reader.
+  trans_lookup <- list()
+  for (spec in transposed_specs) {
+    parts <- strsplit(spec, ":", fixed = TRUE)[[1]]
+    if (length(parts) != 2L) next
+    base <- sub(".*/", "", parts[[1]])
+    labels <- strsplit(parts[[2]], ",", fixed = TRUE)[[1]]
+    trans_lookup[[base]] <- paste0(base, "_", labels)
+  }
+
+  # Middle: user-requested columns in user order, expansions adjacent.
+  taken <- c(marquee, trailing)
+  middle <- character(0)
+  for (nm in user_columns) {
+    if (nm %in% taken) next
+    if (nm %in% out_names) {
+      middle <- c(middle, nm)
+      taken <- c(taken, nm)
+      next
+    }
+    # Transposed expansion (registry-ordered)
+    if (nm %in% names(trans_lookup)) {
+      cols <- intersect(trans_lookup[[nm]], setdiff(out_names, taken))
+      if (length(cols) > 0L) {
+        middle <- c(middle, cols)
+        taken <- c(taken, cols)
+        next
+      }
+    }
+    # 2D numeric expansion (e.g. rh -> rh0..rh100, sorted by suffix)
+    pat <- paste0("^", nm, "\\d+$")
+    cols <- grep(pat, out_names, value = TRUE)
+    cols <- setdiff(cols, taken)
+    if (length(cols) > 0L) {
+      suffixes <- as.integer(sub(paste0("^", nm), "", cols))
+      cols <- cols[order(suffixes)]
+      middle <- c(middle, cols)
+      taken <- c(taken, cols)
+    }
+  }
+
+  # Defensive: any column not yet placed (shouldn't happen, but never
+  # silently drop) goes between the user middle and the trailing block.
+  remaining <- setdiff(out_names, c(marquee, middle, trailing))
+
+  final_order <- c(marquee, middle, remaining, trailing)
+  stopifnot(setequal(final_order, out_names))
+  data[, final_order, drop = FALSE]
+}
+
 #' Convert the Rust reader's raw output into a combined data frame.
 #'
 #' Processes each group (beam / track), builds a tibble with geometry
@@ -492,6 +624,8 @@ assemble_read_result <- function(
   pool_idx_map,
   fill_values = numeric(0),
   scale_factors = list(),
+  user_columns = character(0),
+  transposed_specs = character(0),
   convert_time = TRUE
 ) {
   if (length(raw_result) == 0L) {
@@ -538,6 +672,16 @@ assemble_read_result <- function(
     result <- convert_delta_time(result)
   }
 
+  result <- reorder_output_columns(
+    result,
+    user_columns = user_columns,
+    lat_col = lat_col,
+    lon_col = lon_col,
+    group_label = group_label,
+    pool_idx_map = pool_idx_map,
+    transposed_specs = transposed_specs
+  )
+
   n <- nrow(result)
   cli::cli_progress_done()
   cli::cli_inform(c(
@@ -569,6 +713,8 @@ read_product <- function(
     raw_result, bbox, lat_col, lon_col, group_label, element_label,
     params$pool_short, params$pool_idx_map,
     params$fill_values, params$scale_factors,
+    user_columns = params$user_columns,
+    transposed_specs = params$transposed_specs,
     convert_time = convert_time
   )
 }
@@ -604,6 +750,8 @@ read_product_multi <- function(
     raw_result, bbox, lat_col, lon_col, group_label, element_label,
     params$pool_short, params$pool_idx_map,
     params$fill_values, params$scale_factors,
+    user_columns = params$user_columns,
+    transposed_specs = params$transposed_specs,
     convert_time = convert_time
   )
 }

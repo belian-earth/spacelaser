@@ -1,0 +1,78 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "man/figures/README-",
+  out.width = "100%"
+)
+```
+
+# spacelaser
+
+<!-- badges: start -->
+[![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+<!-- badges: end -->
+
+Cloud-optimized partial reading of GEDI and ICESat-2 HDF5 data from R.
+Only the bytes needed for the requested spatial subset are fetched over
+HTTP, avoiding multi-gigabyte downloads.
+
+Supports GEDI L1B, L2A, L2B, L4A, L4C and ICESat-2 ATL03, ATL06, ATL07,
+ATL08, ATL10, ATL13, ATL24.
+
+## Installation
+
+Requires a [Rust toolchain](https://www.rust-lang.org/tools/install)
+(cargo + rustc).
+
+``` r
+# install.packages("pak")
+pak::pak("belian-earth/spacelaser")
+```
+
+## Authentication
+
+NASA Earthdata credentials are resolved from `EARTHDATA_USERNAME` /
+`EARTHDATA_PASSWORD` or a `~/.netrc` entry for `urs.earthdata.nasa.gov`.
+Register at <https://urs.earthdata.nasa.gov/> if you don't have an
+account. The simplest setup:
+
+```{r auth, eval = FALSE}
+earthdatalogin::edl_netrc()
+```
+
+## Example
+
+```{r example}
+library(spacelaser)
+
+bbox <- sl_bbox(-124.04, 41.39, -124.01, 41.42)
+
+# GEDI
+granules <- sl_search(
+  bbox, 
+  product = "L2A", 
+  date_start = "2022-01-01", 
+  date_end = "2023-01-01")
+gedi2a <- sl_read(granules)
+
+gedi2a
+
+# # ICESat-2 uses the same two verbs
+# granules <- sl_search(bbox, product = "ATL08")
+# icesat <- sl_read(granules)
+```
+
+Columns available for a product:
+
+```{r cols, eval = TRUE}
+sl_columns("L2A")
+```
+
+

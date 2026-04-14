@@ -362,7 +362,7 @@ async fn read_single_group(
 
         // GEDI rx_sample_start_index is 1-based (Fortran/MATLAB heritage).
         // Subtract 1 to convert to 0-based HDF5 element indices.
-        let mut sample_ranges: Vec<(u64, u64)> = starts
+        let sample_ranges: Vec<(u64, u64)> = starts
             .iter()
             .zip(counts.iter())
             .filter(|(_, &c)| c > 0)
@@ -628,31 +628,6 @@ fn indices_to_ranges(indices: &[u64]) -> Vec<(u64, u64)> {
     }
     ranges.push((start, end));
     ranges
-}
-
-/// Coalesce sorted (start, end) ranges that are adjacent or overlapping.
-///
-/// Input ranges must be sorted by start. Adjacent ranges like
-/// `(0, 100), (100, 200)` become `(0, 200)`. Overlapping ranges are
-/// merged. A small gap tolerance could be added for near-adjacent ranges
-/// but is not needed in practice because consecutive shots have
-/// contiguous pool positions.
-fn coalesce_ranges(ranges: &mut Vec<(u64, u64)>) -> Vec<(u64, u64)> {
-    if ranges.is_empty() {
-        return Vec::new();
-    }
-    ranges.sort_by_key(|&(s, _)| s);
-    let mut out = vec![ranges[0]];
-    for &(s, e) in &ranges[1..] {
-        let last = out.last_mut().unwrap();
-        if s <= last.1 {
-            // Adjacent or overlapping: extend
-            last.1 = last.1.max(e);
-        } else {
-            out.push((s, e));
-        }
-    }
-    out
 }
 
 /// Parse a `ColumnData` (raw bytes from an HDF5 integer or float dataset)

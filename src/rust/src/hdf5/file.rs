@@ -9,6 +9,10 @@ use crate::io::source::DataSource;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+/// Maximum recursion depth for soft-link resolution. Well-formed HDF5
+/// files shouldn't have cycles, but this guards against malformed files.
+const MAX_LINK_DEPTH: usize = 8;
+
 /// A high-level handle to a remote or local HDF5 file.
 ///
 /// This is the main entry point for reading HDF5 data. It lazily navigates
@@ -163,6 +167,22 @@ impl Hdf5File {
 
     /// Resolve a path to an object header address, navigating through groups.
     async fn resolve_path(&self, path: &str) -> Result<u64, Hdf5Error> {
+        self.resolve_path_with_depth(path, 0).await
+    }
+
+    /// Inner resolver that tracks recursion depth to prevent soft-link cycles.
+    async fn resolve_path_with_depth(
+        &self,
+        path: &str,
+        depth: usize,
+    ) -> Result<u64, Hdf5Error> {
+        if depth > MAX_LINK_DEPTH {
+            return Err(Hdf5Error::InvalidStructure(format!(
+                "Soft-link chain exceeds max depth {} at path {}",
+                MAX_LINK_DEPTH, path
+            )));
+        }
+
         {
             let cache = self.path_cache.lock().unwrap();
             if let Some(&addr) = cache.get(path) {
@@ -202,8 +222,15 @@ impl Hdf5File {
             )
             .await?;
 
-            // Look for the child by name
-            let child_addr = self.find_child(&oh, part).await?;
+            // Look for the child by name. The parent path is needed so
+            // soft links with relative targets can be resolved.
+            let parent_path = if i == 0 {
+                "/".to_string()
+            } else {
+                format!("/{}", parts[..i].join("/"))
+            };
+            let child_addr = Box::pin(self.find_child(&oh, part, &parent_path, depth))
+                .await?;
 
             {
                 let mut cache = self.path_cache.lock().unwrap();
@@ -220,7 +247,19 @@ impl Hdf5File {
     }
 
     /// Find a child object within a group by name.
-    async fn find_child(&self, oh: &ObjectHeader, name: &str) -> Result<u64, Hdf5Error> {
+    ///
+    /// Transparently resolves soft links (HDF5 cache_type 2) by looking
+    /// up the link target in the group's local heap and recursively
+    /// resolving that path. `parent_path` is the absolute path to the
+    /// group being searched; it's needed to resolve relative link
+    /// targets. `depth` is the current recursion depth (for cycle prevention).
+    async fn find_child(
+        &self,
+        oh: &ObjectHeader,
+        name: &str,
+        parent_path: &str,
+        depth: usize,
+    ) -> Result<u64, Hdf5Error> {
         // Try v1 symbol table first
         if let Some((btree_addr, heap_addr)) = oh.symbol_table() {
             let entries = btree::read_group_btree(
@@ -242,16 +281,45 @@ impl Hdf5File {
             for entry in &entries {
                 let entry_name = btree::heap_string(&heap_data, entry.name_offset);
                 if entry_name == name {
-                    // Cache type 2 means the entry is a soft (symbolic)
-                    // link. Per the HDF5 spec, `object_header_address` is
-                    // *undefined* for such entries (GEDI L2B files set it
-                    // to the all-ones sentinel), so we must not feed it to
-                    // `ObjectHeader::read` or the parser will panic on an
-                    // empty slice. Transparent soft-link resolution is a
-                    // TODO; for now, return a clean error telling the user
-                    // which path is affected and what to do about it.
                     if entry.cache_type == 2 {
-                        return Err(Hdf5Error::SoftLinkNotSupported(name.to_string()));
+                        // Soft link: the scratch pad holds an offset into
+                        // the group's local heap where the target path
+                        // string is stored. Read it and recursively
+                        // resolve.
+                        let link_off = entry
+                            .scratch_link_name_offset
+                            .ok_or_else(|| Hdf5Error::InvalidStructure(format!(
+                                "Soft link '{}' is missing scratch link name offset",
+                                name
+                            )))?;
+                        let target = btree::heap_string(&heap_data, link_off as u64);
+                        if target.is_empty() {
+                            return Err(Hdf5Error::InvalidStructure(format!(
+                                "Soft link '{}' has empty target",
+                                name
+                            )));
+                        }
+                        let resolved_path = if target.starts_with('/') {
+                            // Absolute path
+                            target
+                        } else {
+                            // Relative to the group containing the link
+                            if parent_path == "/" {
+                                format!("/{}", target)
+                            } else {
+                                format!("{}/{}", parent_path, target)
+                            }
+                        };
+                        log::debug!(
+                            "soft link '{}/{}' → '{}'",
+                            parent_path.trim_end_matches('/'),
+                            name,
+                            resolved_path,
+                        );
+                        return Box::pin(
+                            self.resolve_path_with_depth(&resolved_path, depth + 1),
+                        )
+                        .await;
                     }
                     return Ok(entry.object_header_address);
                 }

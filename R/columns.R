@@ -10,10 +10,7 @@
   beam                               = "beam",
   shot_number                        = "shot_number",
   channel                            = "channel",
-  # delta_time is a soft link at the beam root pointing to
-  # geolocation/delta_time. Use the direct path until transparent
-  # soft-link resolution is implemented in the Rust parser.
-  delta_time                         = "geolocation/delta_time",
+  delta_time                         = "delta_time",
   master_frac                        = "master_frac",
   master_int                         = "master_int",
   stale_return_flag                  = "stale_return_flag",
@@ -205,10 +202,7 @@
   beam                           = "beam",
   shot_number                    = "shot_number",
   channel                        = "channel",
-  # delta_time is a soft link at the beam root pointing to
-  # geolocation/delta_time. Use the direct path until transparent
-  # soft-link resolution is implemented in the Rust parser.
-  delta_time                     = "geolocation/delta_time",
+  delta_time                     = "delta_time",
   master_frac                    = "master_frac",
   master_int                     = "master_int",
   algorithmrun_flag              = "algorithmrun_flag",

@@ -22,13 +22,20 @@ pub struct SymbolTableEntry {
     /// Offset of the name in the local heap.
     pub name_offset: u64,
     /// Address of the object header.
+    ///
+    /// Undefined (all-ones sentinel) for cache_type 2 (soft link).
     pub object_header_address: u64,
-    /// Cache type (0 = none, 1 = group info in scratch pad).
+    /// Cache type: 0 = direct, 1 = group with cached scratch-pad,
+    /// 2 = soft (symbolic) link.
     pub cache_type: u32,
     /// For cache_type 1: B-tree address from scratch pad.
     pub scratch_btree_address: Option<u64>,
     /// For cache_type 1: Name heap address from scratch pad.
     pub scratch_heap_address: Option<u64>,
+    /// For cache_type 2: offset of the link target string in the
+    /// containing group's local heap. The string holds an HDF5 path
+    /// (absolute starting with `/` or relative to the containing group).
+    pub scratch_link_name_offset: Option<u32>,
 }
 
 /// Information about a single chunk's location, from a B-tree v1 raw data node.
@@ -185,14 +192,25 @@ async fn read_symbol_table_node(
                 extra[ct_off + 3],
             ]);
 
-            let (sbt, shp) = if cache_type == 1 {
-                let sp_off = ct_off + 8;
-                let mut sp_pos = sp_off;
-                let bt = read_offset(&extra, &mut sp_pos, offset_size);
-                let hp = read_offset(&extra, &mut sp_pos, offset_size);
-                (Some(bt), Some(hp))
-            } else {
-                (None, None)
+            let sp_off = ct_off + 8;
+            let (sbt, shp, link) = match cache_type {
+                1 => {
+                    let mut sp_pos = sp_off;
+                    let bt = read_offset(&extra, &mut sp_pos, offset_size);
+                    let hp = read_offset(&extra, &mut sp_pos, offset_size);
+                    (Some(bt), Some(hp), None)
+                }
+                2 => {
+                    // First 4 bytes of scratch pad = link name offset
+                    let link_off = u32::from_le_bytes([
+                        extra[sp_off],
+                        extra[sp_off + 1],
+                        extra[sp_off + 2],
+                        extra[sp_off + 3],
+                    ]);
+                    (None, None, Some(link_off))
+                }
+                _ => (None, None, None),
             };
 
             entries.push(SymbolTableEntry {
@@ -201,6 +219,7 @@ async fn read_symbol_table_node(
                 cache_type,
                 scratch_btree_address: sbt,
                 scratch_heap_address: shp,
+                scratch_link_name_offset: link,
             });
             pos += entry_size;
             continue;
@@ -213,13 +232,23 @@ async fn read_symbol_table_node(
         pos += 4; // reserved
 
         // Scratch pad space (16 bytes)
-        let (scratch_btree_address, scratch_heap_address) = if cache_type == 1 {
-            let mut sp_pos = pos;
-            let bt = read_offset(&data, &mut sp_pos, offset_size);
-            let hp = read_offset(&data, &mut sp_pos, offset_size);
-            (Some(bt), Some(hp))
-        } else {
-            (None, None)
+        let (scratch_btree_address, scratch_heap_address, scratch_link_name_offset) = match cache_type {
+            1 => {
+                let mut sp_pos = pos;
+                let bt = read_offset(&data, &mut sp_pos, offset_size);
+                let hp = read_offset(&data, &mut sp_pos, offset_size);
+                (Some(bt), Some(hp), None)
+            }
+            2 => {
+                let link_off = u32::from_le_bytes([
+                    data[pos],
+                    data[pos + 1],
+                    data[pos + 2],
+                    data[pos + 3],
+                ]);
+                (None, None, Some(link_off))
+            }
+            _ => (None, None, None),
         };
         pos += 16; // always skip 16 bytes of scratch pad
 
@@ -229,6 +258,7 @@ async fn read_symbol_table_node(
             cache_type,
             scratch_btree_address,
             scratch_heap_address,
+            scratch_link_name_offset,
         });
     }
 

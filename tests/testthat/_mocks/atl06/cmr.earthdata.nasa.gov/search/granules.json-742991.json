@@ -1,0 +1,528 @@
+{
+    "feed": {
+        "updated": "2026-04-14T17:48:32.721Z",
+        "id": "https://cmr.earthdata.nasa.gov:443/search/granules.json?page_size=2000&concept_id=C3564876127-NSIDC_CPRD&bounding_box=-124.04,41.39,-124.01,41.42&temporal=2020-06-01T00:00:00Z,2020-09-01T23:59:59Z&pageNum=1",
+        "title": "ECHO granule metadata",
+        "entry": [
+            {
+                "producer_granule_id": "ATL06_20200801161627_05700802_007_01.h5",
+                "time_start": "2020-08-01T16:19:27.063Z",
+                "updated": "2025-06-26T06:16:07.306Z",
+                "dataset_id": "ATLAS/ICESat-2 L3A Land Ice Height V007",
+                "data_center": "NSIDC_CPRD",
+                "title": "ATL06_20200801161627_05700802_007_01.h5",
+                "coordinate_system": "GEODETIC",
+                "time_end": "2020-08-01T16:24:57.445Z",
+                "id": "G3581982729-NSIDC_CPRD",
+                "original_format": "ISO-SMAP",
+                "granule_size": "80.0",
+                "browse_flag": true,
+                "polygons": [
+                    [
+                        "59.54719 -126.66063 59.53568 -126.88104 58.86113 -126.745 56.68287 -126.32699 54.85185 -126.00052 52.03512 -125.53274 49.76547 -125.18089 47.78437 -124.88879 44.98095 -124.49686 42.8333 -124.20831 39.37069 -123.76583 38.46619 -123.65407 38.47691 -123.51083 39.38153 -123.62086 42.84436 -124.05554 44.99195 -124.3385 47.7954 -124.72211 49.77651 -125.00751 52.04626 -125.35074 54.86318 -125.8061 56.69424 -126.12325 58.87279 -126.52866 59.54719 -126.66063"
+                    ]
+                ],
+                "collection_concept_id": "C3564876127-NSIDC_CPRD",
+                "online_access_flag": true,
+                "links": [
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/data#",
+                        "type": "application/x-hdf5",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-protected/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01.h5"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "type": "text/xml",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01.iso.xml"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.default.default1.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.default.default2.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt1l.atl06_quality_summary.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt1l.h_li.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt1l.h_li_sigma.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt1l.n_fit_photons.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt1l.signal_selection_source.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt1r.atl06_quality_summary.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt1r.h_li.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt1r.h_li_sigma.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt1r.n_fit_photons.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt1r.signal_selection_source.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt2l.atl06_quality_summary.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt2l.h_li.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt2l.h_li_sigma.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt2l.n_fit_photons.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt2l.signal_selection_source.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt2r.atl06_quality_summary.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt2r.h_li.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt2r.h_li_sigma.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt2r.n_fit_photons.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt2r.signal_selection_source.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt3l.atl06_quality_summary.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt3l.h_li.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt3l.h_li_sigma.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt3l.n_fit_photons.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt3l.signal_selection_source.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt3r.atl06_quality_summary.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt3r.h_li.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt3r.h_li_sigma.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt3r.n_fit_photons.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt3r.signal_selection_source.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/s3#",
+                        "type": "application/x-hdf5",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-protected/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01.h5"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "type": "text/xml",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01.iso.xml"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.default.default1.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.default.default2.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt1l.atl06_quality_summary.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt1l.h_li.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt1l.h_li_sigma.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt1l.n_fit_photons.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt1l.signal_selection_source.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt1r.atl06_quality_summary.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt1r.h_li.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt1r.h_li_sigma.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt1r.n_fit_photons.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt1r.signal_selection_source.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt2l.atl06_quality_summary.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt2l.h_li.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt2l.h_li_sigma.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt2l.n_fit_photons.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt2l.signal_selection_source.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt2r.atl06_quality_summary.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt2r.h_li.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt2r.h_li_sigma.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt2r.n_fit_photons.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt2r.signal_selection_source.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt3l.atl06_quality_summary.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt3l.h_li.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt3l.h_li_sigma.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt3l.n_fit_photons.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt3l.signal_selection_source.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt3r.atl06_quality_summary.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt3r.h_li.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt3r.h_li_sigma.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt3r.n_fit_photons.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "type": "image/jpeg",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL06/007/2020/08/01/ATL06_20200801161627_05700802_007_01_BRW.gt3r.signal_selection_source.jpg"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "hreflang": "en-US",
+                        "href": "https://opendap.earthdata.nasa.gov/collections/C3564876127-NSIDC_CPRD/granules/ATL06_20200801161627_05700802_007_01.h5"
+                    },
+                    {
+                        "inherited": true,
+                        "length": "0.0KB",
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/data#",
+                        "hreflang": "en-US",
+                        "href": "https://search.earthdata.nasa.gov/search/granules?p=C3564876127-NSIDC_CPRD"
+                    },
+                    {
+                        "inherited": true,
+                        "length": "0.0KB",
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/data#",
+                        "hreflang": "en-US",
+                        "href": "https://openaltimetry.earthdatacloud.nasa.gov/data/"
+                    },
+                    {
+                        "inherited": true,
+                        "length": "0.0KB",
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/data#",
+                        "hreflang": "en-US",
+                        "href": "https://nsidc.org/data/data-access-tool/ATL06/versions/7/"
+                    },
+                    {
+                        "inherited": true,
+                        "length": "0.0KB",
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/data#",
+                        "hreflang": "en-US",
+                        "href": "https://cmr.earthdata.nasa.gov/virtual-directory/collections/C3564876127-NSIDC_CPRD"
+                    },
+                    {
+                        "inherited": true,
+                        "length": "0.0KB",
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/data#",
+                        "hreflang": "en-US",
+                        "href": "https://earthaccess.readthedocs.io/en/stable/"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "hreflang": "en-US",
+                        "href": "https://doi.org/10.5067/ATLAS/ATL06.007"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://doi.org/10.5067/ATLAS/ATL06.007"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://nsidc.org/sites/default/files/documents/user-guide/atl06-v007-userguide.pdf"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://nsidc.org/sites/default/files/documents/technical-reference/icesat2_atl06_atbd_v007.pdf"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://nsidc.org/sites/default/files/documents/technical-reference/icesat2_atl06_known_issues_v007.pdf"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://nsidc.org/sites/default/files/documents/technical-reference/icesat2_atl06_data_dict_v007.pdf"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://nsidc.org/sites/default/files/documents/technical-reference/icesat-2-major-activities.xlsx"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://nsidc.org/sites/default/files/documents/technical-reference/icesat-2_data_gaps.xlsx"
+                    }
+                ]
+            }
+        ]
+    }
+}

@@ -1,0 +1,155 @@
+{
+    "feed": {
+        "updated": "2026-04-14T17:48:29.009Z",
+        "id": "https://cmr.earthdata.nasa.gov:443/search/granules.json?page_size=2000&concept_id=C2142749196-LPCLOUD&bounding_box=-124.04,41.39,-124.01,41.42&temporal=2020-06-01T00:00:00Z,2020-09-01T23:59:59Z&pageNum=1",
+        "title": "ECHO granule metadata",
+        "entry": [
+            {
+                "producer_granule_id": "GEDI01_B_2020201091035_O09069_03_T01674_02_005_01_V002",
+                "time_start": "2020-07-19T09:10:35.000Z",
+                "updated": "2021-09-16T13:46:07.005Z",
+                "orbit_calculated_spatial_domains": [
+                    {
+                        "start_orbit_number": "9069",
+                        "stop_orbit_number": "9069"
+                    }
+                ],
+                "dataset_id": "GEDI L1B Geolocated Waveform Data Global Footprint Level V002",
+                "data_center": "LPCLOUD",
+                "title": "GEDI01_B_2020201091035_O09069_03_T01674_02_005_01_V002",
+                "coordinate_system": "GEODETIC",
+                "day_night_flag": "UNSPECIFIED",
+                "time_end": "2020-07-19T10:43:27.000Z",
+                "id": "G2700181200-LPCLOUD",
+                "original_format": "ECHO10",
+                "granule_size": "4341.74",
+                "browse_flag": true,
+                "polygons": [
+                    [
+                        "51.775375 -167.7207974 51.5978576 -161.738066 51.0944913 -155.852227 50.2780916 -150.1423903 49.1639568 -144.6500036 47.7796608 -139.4465288 46.1511043 -134.5498008 44.3039767 -129.9664232 42.265019 -125.6908297 40.0586262 -121.7084681 37.7067245 -117.999621 35.2276419 -114.5367777 32.6475096 -111.3043446 29.9647528 -108.2598988 27.2069219 -105.3934349 24.3860839 -102.681457 21.5017025 -100.0940272 18.5778172 -97.622323 15.6058736 -95.2367732 12.6080127 -92.9300885 9.5862146 -90.6821987 6.5492038 -88.480281 3.4944022 -86.3048019 0.4359284 -84.1469985 -0.0626562 -83.7955912 -0.0336432 -83.7544259 0.4649273 -84.105822 3.523477 -86.263603 6.5784648 -88.4390212 9.6157562 -90.6408317 12.6379354 -92.8885763 15.6362853 -95.1950906 18.6088452 -97.5804699 21.5334334 -100.0519888 24.4186495 -102.6392721 27.2404234 -105.3511478 29.9993063 -108.2175999 32.6832463 -111.2621921 35.2646494 -114.494952 37.7451152 -117.9584099 40.0984942 -121.6682527 42.3064264 -125.6520808 44.3469608 -129.9297391 46.1956657 -134.5159151 47.8257365 -139.4162597 49.2114262 -144.6242652 50.3267545 -150.1220831 51.1440737 -155.8381642 51.6480211 -161.7308705 51.8257358 -167.720244 51.775375 -167.7207974"
+                    ]
+                ],
+                "collection_concept_id": "C2142749196-LPCLOUD",
+                "online_access_flag": true,
+                "links": [
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/data#",
+                        "title": "Download GEDI01_B_2020201091035_O09069_03_T01674_02_005_01_V002.h5",
+                        "hreflang": "en-US",
+                        "href": "https://data.lpdaac.earthdatacloud.nasa.gov/lp-prod-protected/GEDI01_B.002/GEDI01_B_2020201091035_O09069_03_T01674_02_005_01_V002/GEDI01_B_2020201091035_O09069_03_T01674_02_005_01_V002.h5"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/s3#",
+                        "title": "This link provides direct download access via S3 to the granule",
+                        "hreflang": "en-US",
+                        "href": "s3://lp-prod-protected/GEDI01_B.002/GEDI01_B_2020201091035_O09069_03_T01674_02_005_01_V002/GEDI01_B_2020201091035_O09069_03_T01674_02_005_01_V002.h5"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "type": "text/html",
+                        "title": "The Landing Page for this file may be accessed directly from this link (DOI)",
+                        "hreflang": "en-US",
+                        "href": "https://doi.org/10.5067/GEDI/GEDI01_B.002"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "title": "Download GEDI01_B_2020201091035_O09069_03_T01674_02_005_01_V002.cmr.xml (EXTENDED METADATA)",
+                        "hreflang": "en-US",
+                        "href": "https://data.lpdaac.earthdatacloud.nasa.gov/lp-prod-protected/GEDI01_B.002/GEDI01_B_2020201091035_O09069_03_T01674_02_005_01_V002/GEDI01_B_2020201091035_O09069_03_T01674_02_005_01_V002.cmr.xml"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "title": "This link provides direct download access via S3 to the granule (EXTENDED METADATA)",
+                        "hreflang": "en-US",
+                        "href": "s3://lp-prod-protected/GEDI01_B.002/GEDI01_B_2020201091035_O09069_03_T01674_02_005_01_V002/GEDI01_B_2020201091035_O09069_03_T01674_02_005_01_V002.cmr.xml"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "title": "api endpoint to retrieve temporary credentials valid for same-region direct s3 access (VIEW RELATED INFORMATION)",
+                        "hreflang": "en-US",
+                        "href": "https://data.lpdaac.earthdatacloud.nasa.gov/s3credentials"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "title": "Download GEDI01_B_2020201091035_O09069_03_T01674_02_005_01_V002.png",
+                        "hreflang": "en-US",
+                        "href": "https://data.lpdaac.earthdatacloud.nasa.gov/lp-prod-public/GEDI01_B.002/GEDI01_B_2020201091035_O09069_03_T01674_02_005_01_V002/GEDI01_B_2020201091035_O09069_03_T01674_02_005_01_V002.png"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/browse#",
+                        "title": "This link provides direct download access via S3 to the granule",
+                        "hreflang": "en-US",
+                        "href": "s3://lp-prod-public/GEDI01_B.002/GEDI01_B_2020201091035_O09069_03_T01674_02_005_01_V002/GEDI01_B_2020201091035_O09069_03_T01674_02_005_01_V002.png"
+                    },
+                    {
+                        "inherited": true,
+                        "length": "2013.1MB",
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/data#",
+                        "hreflang": "en-US",
+                        "href": "https://search.earthdata.nasa.gov/search/granules?p=C2142749196-LPCLOUD"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "hreflang": "en-US",
+                        "href": "https://www.earthdata.nasa.gov/centers/lp-daac"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "hreflang": "en-US",
+                        "href": "https://doi.org/10.5067/GEDI/GEDI01_B.002"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://lpdaac.usgs.gov/documents/981/gedi_l1b_dictionary_P003_v2.html"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://doi.org/10.5067/DOC/GEDI/GEDI_WF_ATBD.001"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://doi.org/10.5067/DOC/GEDI/GEDI_WFGEO_ATBD.001"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "hreflang": "en-US",
+                        "href": "https://gedi.umd.edu/"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://lpdaac.usgs.gov/documents/997/GEDI01B_User_Guide_V21.pdf"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://lpdaac.usgs.gov/resources/e-learning/accessing-and-analyzing-gedi-lidar-data-for-vegetation-studies/"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://lpdaac.usgs.gov/documents/989/GEDI_Quick_Guide_V2.pdf"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://github.com/nasa/GEDI-Data-Resources"
+                    }
+                ]
+            }
+        ]
+    }
+}

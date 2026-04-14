@@ -11,6 +11,7 @@ experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](h
 [![License:Apache](https://img.shields.io/github/license/belian-earth/a5R)](https://www.apache.org/licenses/LICENSE-2.0)
 [![Codecov test
 coverage](https://codecov.io/gh/belian-earth/spacelaser/graph/badge.svg)](https://app.codecov.io/gh/belian-earth/spacelaser)
+[![R-CMD-check](https://github.com/belian-earth/spacelaser/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/belian-earth/spacelaser/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
 Cloud-optimized partial reading of GEDI and ICESat-2 HDF5 data from R.

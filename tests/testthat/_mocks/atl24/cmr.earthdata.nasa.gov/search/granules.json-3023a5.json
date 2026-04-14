@@ -1,0 +1,137 @@
+{
+    "feed": {
+        "updated": "2026-04-14T17:48:35.044Z",
+        "id": "https://cmr.earthdata.nasa.gov:443/search/granules.json?page_size=2000&concept_id=C3433822507-NSIDC_CPRD&bounding_box=-124.04,41.39,-124.01,41.42&temporal=2020-06-01T00:00:00Z,2020-09-01T23:59:59Z&pageNum=1",
+        "title": "ECHO granule metadata",
+        "entry": [
+            {
+                "producer_granule_id": "ATL24_20200801161627_05700802_006_01_001_01.h5",
+                "time_start": "2020-08-01T16:19:27.000Z",
+                "updated": "2025-03-21T11:42:13.440Z",
+                "dataset_id": "ATLAS/ICESat-2 L3A Along Track Coastal and Nearshore Bathymetry V001",
+                "data_center": "NSIDC_CPRD",
+                "title": "ATL24_20200801161627_05700802_006_01_001_01.h5",
+                "coordinate_system": "GEODETIC",
+                "time_end": "2020-08-01T16:22:38.000Z",
+                "id": "G3458691006-NSIDC_CPRD",
+                "original_format": "ISO-SMAP",
+                "granule_size": "159.52326679229736",
+                "browse_flag": false,
+                "polygons": [
+                    [
+                        "59.547284 -126.66063 59.5357645 -126.8810647 58.8615821 -126.7451002 56.2679685 -126.2528083 53.026436 -125.6944535 49.7741842 -125.1834305 45.8571578 -124.6174378 41.3462227 -124.0163448 36.7713041 -123.4490636 34.8089061 -123.2179657 34.152236 -123.1647712 33.4964192 -123.0930483 27.6613907 -122.4336324 26.9539723 -122.3558847 26.9649548 -122.2300297 27.672438 -122.3070295 33.5076989 -122.9586502 34.1624856 -123.0292255 34.8164287 -123.0810954 36.7821577 -123.3091205 41.3573589 -123.8671 45.8683423 -124.4566089 49.7854024 -125.0100317 53.0377177 -125.5083104 56.2794586 -126.0512712 58.8732442 -126.5287352 59.547284 -126.66063"
+                    ]
+                ],
+                "collection_concept_id": "C3433822507-NSIDC_CPRD",
+                "online_access_flag": true,
+                "links": [
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/data#",
+                        "type": "application/x-hdf5",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-protected/ATLAS/ATL24/001/2020/08/01/ATL24_20200801161627_05700802_006_01_001_01.h5"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "type": "text/xml",
+                        "hreflang": "en-US",
+                        "href": "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-public/ATLAS/ATL24/001/2020/08/01/ATL24_20200801161627_05700802_006_01_001_01.iso.xml"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/s3#",
+                        "type": "application/x-hdf5",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-protected/ATLAS/ATL24/001/2020/08/01/ATL24_20200801161627_05700802_006_01_001_01.h5"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "type": "text/xml",
+                        "hreflang": "en-US",
+                        "href": "s3://nsidc-cumulus-prod-public/ATLAS/ATL24/001/2020/08/01/ATL24_20200801161627_05700802_006_01_001_01.iso.xml"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "hreflang": "en-US",
+                        "href": "https://opendap.earthdata.nasa.gov/collections/C3433822507-NSIDC_CPRD/granules/ATL24_20200801161627_05700802_006_01_001_01.h5"
+                    },
+                    {
+                        "inherited": true,
+                        "length": "0.0KB",
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/data#",
+                        "hreflang": "en-US",
+                        "href": "https://search.earthdata.nasa.gov/search/granules?p=C3433822507-NSIDC_CPRD"
+                    },
+                    {
+                        "inherited": true,
+                        "length": "0.0KB",
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/data#",
+                        "hreflang": "en-US",
+                        "href": "https://cmr.earthdata.nasa.gov/virtual-directory/collections/C3433822507-NSIDC_CPRD"
+                    },
+                    {
+                        "inherited": true,
+                        "length": "0.0KB",
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/data#",
+                        "hreflang": "en-US",
+                        "href": "https://nsidc.org/data/data-access-tool/ATL24/versions/1/"
+                    },
+                    {
+                        "inherited": true,
+                        "length": "0.0KB",
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/data#",
+                        "hreflang": "en-US",
+                        "href": "https://earthaccess.readthedocs.io/en/stable/"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "hreflang": "en-US",
+                        "href": "https://doi.org/10.5067/ATLAS/ATL24.001"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://doi.org/10.5067/ATLAS/ATL24.001"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://nsidc.org/sites/default/files/documents/user-guide/atl24-v001-userguide.pdf"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://nsidc.org/sites/default/files/documents/technical-reference/icesat2_atl24_known_issues_v001.pdf"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://nsidc.org/sites/default/files/documents/technical-reference/icesat2_atl24_atbd_v001.pdf"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://nsidc.org/sites/default/files/documents/technical-reference/icesat2_atl24_data_dict_v001.pdf"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://nsidc.org/sites/default/files/documents/technical-reference/icesat-2-major-activities.xlsx"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://nsidc.org/sites/default/files/documents/technical-reference/icesat-2_data_gaps.xlsx"
+                    }
+                ]
+            }
+        ]
+    }
+}

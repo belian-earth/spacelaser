@@ -187,7 +187,7 @@ read_urls <- function(urls, bbox, read_fn, product, ...) {
     return(tibble::tibble())
   }
 
-  results <- purrr::map(urls, function(u) {
+  results <- lapply(urls, function(u) {
     tryCatch(
       read_fn(url = u, product = product, bbox = bbox, ...),
       error = function(e) {
@@ -200,7 +200,7 @@ read_urls <- function(urls, bbox, read_fn, product, ...) {
     )
   })
 
-  results <- purrr::compact(results)
+  results <- Filter(Negate(is.null), results)
   if (length(results) == 0L) {
     return(tibble::tibble())
   }
@@ -436,7 +436,7 @@ assemble_read_result <- function(
     return(tibble::tibble())
   }
 
-  group_tbls <- purrr::map(raw_result, function(gd) {
+  group_tbls <- lapply(raw_result, function(gd) {
     tbl <- build_tibble(
       gd,
       lat_col = lat_col,

@@ -16,7 +16,6 @@ Config/rextendr/version: 0.4.2
 Imports:
     cli,
     httr2,
-    purrr,
     rlang (>= 1.1.0),
     tibble,
     vctrs,

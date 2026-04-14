@@ -14,6 +14,10 @@ src/spacelaser-win.def
 .RData
 .Rproj.user/
 
+# testthat artifacts from failing-test reporters
+tests/testthat/_problems/
+tests/testthat/testthat-problems.rds
+
 # OS
 .DS_Store
 

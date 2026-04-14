@@ -374,7 +374,8 @@ check_bbox_within <- function(inner, outer, call = rlang::caller_env()) {
 #'
 #' Returns a list consumed by `read_product` / `read_product_multi`.
 #' @noRd
-prepare_read_params <- function(product, bbox, columns, lat_col, lon_col) {
+prepare_read_params <- function(product, bbox, columns, lat_col, lon_col,
+                                needs_creds = TRUE) {
   bbox <- validate_bbox(bbox)
   columns <- validate_columns(columns, product)
   columns <- ensure_lat_lon(columns, lat_col, lon_col)
@@ -384,6 +385,12 @@ prepare_read_params <- function(product, bbox, columns, lat_col, lon_col) {
   scalar_cols <- ensure_pool_indices(pool_split$scalar, pool_split$pool_short, product)
   pool_specs <- build_pool_specs(pool_split$pool_short, pool_split$pool_paths, product)
   transposed_specs <- build_transposed_specs(trans_split$transposed)
+  # Only resolve Earthdata credentials when the reader is actually going
+  # to make authenticated HTTP calls. Local file:// or bare-path reads
+  # (used by the synthetic fixture tests, and by anyone with a local
+  # granule cache) route through DataSource::Local on the Rust side
+  # and don't need an NASA account.
+  creds <- if (needs_creds) sl_earthdata_creds() else NULL
   list(
     bbox = unclass(bbox),
     scalar_cols = scalar_cols,
@@ -393,8 +400,18 @@ prepare_read_params <- function(product, bbox, columns, lat_col, lon_col) {
     transposed_specs = transposed_specs,
     fill_values = product_fill_values(product),
     scale_factors = product_scale_factors(product),
-    creds = sl_earthdata_creds()
+    creds = creds
   )
+}
+
+#' Does this URL require NASA Earthdata credentials?
+#'
+#' TRUE for real HTTP(S) URLs — the reader will need to authenticate.
+#' FALSE for file:// URLs and bare filesystem paths — those route to
+#' DataSource::Local on the Rust side (see src/rust/src/ffi.rs:make_source).
+#' @noRd
+is_remote_url <- function(x) {
+  grepl("^https?://", x, ignore.case = TRUE)
 }
 
 #' Call the Rust FFI reader with the prepared parameters.
@@ -498,7 +515,8 @@ read_product <- function(
   group_label,
   element_label
 ) {
-  params <- prepare_read_params(product, bbox, columns, lat_col, lon_col)
+  params <- prepare_read_params(product, bbox, columns, lat_col, lon_col,
+                                needs_creds = is_remote_url(url))
   cli::cli_progress_step("Reading {product} from {.url {basename(url)}}")
   raw_result <- call_rust_reader(rust_fn, url, product, params)
   assemble_read_result(
@@ -530,7 +548,8 @@ read_product_multi <- function(
     return(tibble::tibble())
   }
 
-  params <- prepare_read_params(product, bbox, columns, lat_col, lon_col)
+  params <- prepare_read_params(product, bbox, columns, lat_col, lon_col,
+                                needs_creds = any(is_remote_url(urls)))
   cli::cli_progress_step("Reading {product} from {length(urls)} granule{?s}")
   raw_result <- call_rust_reader(rust_multi_fn, urls, product, params)
   assemble_read_result(

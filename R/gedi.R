@@ -1,58 +1,33 @@
-#' Read GEDI data with spatial subsetting
+#' Read a single GEDI granule.
 #'
-#' Reads GEDI satellite lidar data directly from a remote HDF5 file, fetching
-#' only the footprints that fall within the specified bounding box. No file
-#' download required.
+#' Internal helper used by [sl_read()] when given a character URL. Encapsulates
+#' GEDI-specific knowledge: lat/lon paths and the `beam` group label. Always
+#' reads all 8 beams; users filter post-hoc on the returned `beam` column.
 #'
 #' @param url Character. URL of the GEDI HDF5 file (HTTPS or S3).
-#' @param product Character. GEDI product level: `"L2A"`, `"L2B"`, `"L4A"`,
-#'   or `"L1B"`.
-#' @param bbox An `sl_bbox` object created by [sl_bbox()], or a numeric vector
-#'   `c(xmin, ymin, xmax, ymax)`.
-#' @param columns Character vector of column names to read, using short names
-#'   (e.g., `"quality_flag"`, `"rh"`, `"landsat_treecover"`). Use
-#'   [gedi_columns()] to list available columns for each product. Latitude and
-#'   longitude columns are always included automatically. If `NULL` (the
-#'   default), reads all default columns for the specified product. Full HDF5
-#'   paths (containing `/`) are passed through without validation.
-#' @param beams Character vector of beam names to read (e.g., `"BEAM0101"`).
-#'   If `NULL`, reads all 8 beams.
+#' @param product Character. GEDI product level: one of `"L1B"`, `"L2A"`,
+#'   `"L2B"`, `"L4A"`, or `"L4C"`.
+#' @param bbox An `sl_bbox` or numeric `c(xmin, ymin, xmax, ymax)`.
+#' @param columns Character vector of short column names, or `NULL` for the
+#'   product default registry.
 #'
-#' @returns A data frame (tibble-like) with one row per footprint. Columns
-#'   include the requested datasets plus a `beam` identifier and a `geometry`
-#'   column (`wk_xy`). If multiple beams contain data, rows are combined.
-#'
-#' @details
-#' The function uses HTTP Range requests to read only the metadata and data
-#' chunks needed for the spatial subset. For a typical bounding box query on a
-#' ~2 GB GEDI file, this requires ~10-30 small HTTP requests instead of
-#' downloading the entire file.
-#'
-#' ## Columns
-#'
-#' Default columns vary by product. Use `columns` to override. Column names
-#' correspond to HDF5 dataset names within each beam group (e.g.,
-#' `"lat_lowestmode"`, `"rh"`, `"quality_flag"`).
-#'
-#' @importFrom rlang check_required arg_match abort inform warn is_string
-#' @export
-grab_gedi <- function(url,
-                      product = c("L2A", "L2B", "L4A", "L1B"),
+#' @importFrom rlang check_required arg_match
+#' @noRd
+read_gedi <- function(url,
+                      product = c("L1B", "L2A", "L2B", "L4A", "L4C"),
                       bbox,
-                      columns = NULL,
-                      beams = NULL) {
+                      columns = NULL) {
   rlang::check_required(url)
   rlang::check_required(bbox)
   product <- rlang::arg_match(product)
 
   lat_lon <- gedi_lat_lon(product)
 
-  grab_product(
+  read_product(
     url = url,
     product = product,
     bbox = bbox,
     columns = columns,
-    groups = beams,
     rust_fn = rust_read_gedi,
     lat_col = lat_lon$lat,
     lon_col = lat_lon$lon,

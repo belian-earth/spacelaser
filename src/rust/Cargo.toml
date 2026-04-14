@@ -1,20 +1,19 @@
 [package]
-name = "spacelaser"
-version = "0.1.0"
-edition = "2021"
-description = "Cloud-optimized partial HDF5 reader for GEDI and ICESat-2 satellite data"
-license = "MIT"
+name = 'spacelaser'
+publish = false
+version = '0.1.0'
+edition = '2021'
+rust-version = '1.65'
 
 [lib]
-crate-type = ["staticlib", "lib"]
-
-[features]
-default = []
-r-ffi = ["extendr-api"]
+crate-type = [ 'staticlib' ]
+name = 'spacelaser'
 
 [dependencies]
+extendr-api = '*'
+
 # Async runtime
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+tokio = { version = "1", features = ["rt", "macros", "time"] }
 
 # HTTP client with range request support
 reqwest = { version = "0.12", features = ["rustls-tls", "cookies"], default-features = false }
@@ -37,15 +36,8 @@ lru = "0.12"
 # Logging
 log = "0.4"
 
-# R interop (only when building as R package)
-extendr-api = { version = "0.7", optional = true }
-
 # Serialization for FFI data transfer
-serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-
-[dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }
 
 [profile.release]
 lto = true

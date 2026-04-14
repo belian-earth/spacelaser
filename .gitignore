@@ -14,5 +14,21 @@ src/spacelaser-win.def
 .RData
 .Rproj.user/
 
+# testthat artifacts from failing-test reporters
+tests/testthat/_problems/
+tests/testthat/testthat-problems.rds
+
 # OS
 .DS_Store
+
+# ansillary docs:
+tech-docs/
+
+# Claude Code workspace (local-only)
+.claude/
+
+# dev scratchpads
+dev.R
+src/rust/vendor
+src/Makevars
+src/Makevars.win

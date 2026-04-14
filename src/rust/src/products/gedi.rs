@@ -74,6 +74,7 @@ pub enum GediProduct {
     L2A,
     L2B,
     L4A,
+    L4C,
 }
 
 impl SatelliteProduct for GediProduct {
@@ -101,13 +102,16 @@ impl SatelliteProduct for GediProduct {
 /// Read GEDI data with spatial subsetting.
 ///
 /// Thin wrapper around [`common::read_product_groups`] that supplies
-/// GEDI-specific product metadata.
+/// GEDI-specific product metadata. `pool_columns` is used for L1B
+/// variable-length waveforms (`rxwaveform`, `txwaveform`).
 pub async fn read_gedi(
     file: &Hdf5File,
     product: GediProduct,
     bbox: BBox,
     columns: Option<Vec<String>>,
     beams: Option<Vec<String>>,
+    pool_columns: Option<Vec<String>>,
+    transposed_columns: Option<Vec<String>>,
 ) -> Result<Vec<GroupData>, Hdf5Error> {
-    common::read_product_groups(file, &product, bbox, columns, beams).await
+    common::read_product_groups(file, &product, bbox, columns, beams, pool_columns, transposed_columns).await
 }

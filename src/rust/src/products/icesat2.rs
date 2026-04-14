@@ -30,7 +30,7 @@
 //! └── geolocation/
 //! ```
 
-use super::common::{self, BBox, GroupData, SatelliteProduct};
+use super::common::{self, BBox, GroupData, SatelliteProduct, SegmentIndex};
 use crate::hdf5::file::Hdf5File;
 use crate::hdf5::types::Hdf5Error;
 
@@ -48,7 +48,11 @@ pub const WEAK_BEAMS: [&str; 3] = ["gt1r", "gt2r", "gt3r"];
 pub enum IceSat2Product {
     ATL03,
     ATL06,
+    ATL07,
     ATL08,
+    ATL10,
+    ATL13,
+    ATL24,
 }
 
 impl SatelliteProduct for IceSat2Product {
@@ -61,6 +65,10 @@ impl SatelliteProduct for IceSat2Product {
             IceSat2Product::ATL03 => "heights/lat_ph",
             IceSat2Product::ATL06 => "land_ice_segments/latitude",
             IceSat2Product::ATL08 => "land_segments/latitude",
+            IceSat2Product::ATL07 => "sea_ice_segments/latitude",
+            IceSat2Product::ATL10 => "freeboard_segment/latitude",
+            IceSat2Product::ATL13 => "segment_lat",
+            IceSat2Product::ATL24 => "lat_ph",
         }
     }
 
@@ -69,6 +77,22 @@ impl SatelliteProduct for IceSat2Product {
             IceSat2Product::ATL03 => "heights/lon_ph",
             IceSat2Product::ATL06 => "land_ice_segments/longitude",
             IceSat2Product::ATL08 => "land_segments/longitude",
+            IceSat2Product::ATL07 => "sea_ice_segments/longitude",
+            IceSat2Product::ATL10 => "freeboard_segment/longitude",
+            IceSat2Product::ATL13 => "segment_lon",
+            IceSat2Product::ATL24 => "lon_ph",
+        }
+    }
+
+    fn segment_index(&self) -> Option<SegmentIndex> {
+        match self {
+            IceSat2Product::ATL03 => Some(SegmentIndex {
+                lat_dataset: "geolocation/reference_photon_lat",
+                lon_dataset: "geolocation/reference_photon_lon",
+                ph_index_beg: "geolocation/ph_index_beg",
+                segment_ph_cnt: "geolocation/segment_ph_cnt",
+            }),
+            _ => None,
         }
     }
 }
@@ -76,13 +100,18 @@ impl SatelliteProduct for IceSat2Product {
 /// Read ICESat-2 data with spatial subsetting.
 ///
 /// Thin wrapper around [`common::read_product_groups`] that supplies
-/// ICESat-2-specific product metadata.
+/// ICESat-2-specific product metadata. `pool_columns` is accepted for
+/// signature symmetry with GEDI but ICESat-2 has no pool datasets in
+/// the currently supported products (ATLAS is photon-counting, not
+/// analog-waveform), so it is typically `None`.
 pub async fn read_icesat2(
     file: &Hdf5File,
     product: IceSat2Product,
     bbox: BBox,
     columns: Option<Vec<String>>,
     tracks: Option<Vec<String>>,
+    pool_columns: Option<Vec<String>>,
+    transposed_columns: Option<Vec<String>>,
 ) -> Result<Vec<GroupData>, Hdf5Error> {
-    common::read_product_groups(file, &product, bbox, columns, tracks).await
+    common::read_product_groups(file, &product, bbox, columns, tracks, pool_columns, transposed_columns).await
 }

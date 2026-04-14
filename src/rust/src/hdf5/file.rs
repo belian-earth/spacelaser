@@ -1,12 +1,17 @@
 use crate::hdf5::btree;
 use crate::hdf5::dataset::Dataset;
+use crate::hdf5::heap;
 use crate::hdf5::object_header::{HeaderMessage, ObjectHeader};
-use crate::hdf5::superblock::Superblock;
+use crate::hdf5::superblock::{read_offset, Superblock};
 use crate::hdf5::types::*;
 use crate::io::reader::{Reader, ReaderConfig};
 use crate::io::source::DataSource;
 use std::collections::HashMap;
 use std::sync::Mutex;
+
+/// Maximum recursion depth for soft-link resolution. Well-formed HDF5
+/// files shouldn't have cycles, but this guards against malformed files.
+const MAX_LINK_DEPTH: usize = 8;
 
 /// A high-level handle to a remote or local HDF5 file.
 ///
@@ -74,6 +79,17 @@ impl Hdf5File {
             let btree_addr = self.superblock.root_btree_address.unwrap();
             let heap_addr = self.superblock.root_heap_address.unwrap();
             return self.list_group_v1(btree_addr, heap_addr).await;
+        }
+
+        // Check for v2 link info (fractal heap + B-tree v2)
+        for msg in &oh.messages {
+            if let HeaderMessage::LinkInfo {
+                heap_address: Some(heap_addr),
+                ..
+            } = msg
+            {
+                return self.read_links_from_fractal_heap(*heap_addr).await;
+            }
         }
 
         Ok(Vec::new())
@@ -151,6 +167,22 @@ impl Hdf5File {
 
     /// Resolve a path to an object header address, navigating through groups.
     async fn resolve_path(&self, path: &str) -> Result<u64, Hdf5Error> {
+        self.resolve_path_with_depth(path, 0).await
+    }
+
+    /// Inner resolver that tracks recursion depth to prevent soft-link cycles.
+    async fn resolve_path_with_depth(
+        &self,
+        path: &str,
+        depth: usize,
+    ) -> Result<u64, Hdf5Error> {
+        if depth > MAX_LINK_DEPTH {
+            return Err(Hdf5Error::InvalidStructure(format!(
+                "Soft-link chain exceeds max depth {} at path {}",
+                MAX_LINK_DEPTH, path
+            )));
+        }
+
         {
             let cache = self.path_cache.lock().unwrap();
             if let Some(&addr) = cache.get(path) {
@@ -190,8 +222,15 @@ impl Hdf5File {
             )
             .await?;
 
-            // Look for the child by name
-            let child_addr = self.find_child(&oh, part).await?;
+            // Look for the child by name. The parent path is needed so
+            // soft links with relative targets can be resolved.
+            let parent_path = if i == 0 {
+                "/".to_string()
+            } else {
+                format!("/{}", parts[..i].join("/"))
+            };
+            let child_addr = Box::pin(self.find_child(&oh, part, &parent_path, depth))
+                .await?;
 
             {
                 let mut cache = self.path_cache.lock().unwrap();
@@ -208,7 +247,19 @@ impl Hdf5File {
     }
 
     /// Find a child object within a group by name.
-    async fn find_child(&self, oh: &ObjectHeader, name: &str) -> Result<u64, Hdf5Error> {
+    ///
+    /// Transparently resolves soft links (HDF5 cache_type 2) by looking
+    /// up the link target in the group's local heap and recursively
+    /// resolving that path. `parent_path` is the absolute path to the
+    /// group being searched; it's needed to resolve relative link
+    /// targets. `depth` is the current recursion depth (for cycle prevention).
+    async fn find_child(
+        &self,
+        oh: &ObjectHeader,
+        name: &str,
+        parent_path: &str,
+        depth: usize,
+    ) -> Result<u64, Hdf5Error> {
         // Try v1 symbol table first
         if let Some((btree_addr, heap_addr)) = oh.symbol_table() {
             let entries = btree::read_group_btree(
@@ -230,12 +281,52 @@ impl Hdf5File {
             for entry in &entries {
                 let entry_name = btree::heap_string(&heap_data, entry.name_offset);
                 if entry_name == name {
+                    if entry.cache_type == 2 {
+                        // Soft link: the scratch pad holds an offset into
+                        // the group's local heap where the target path
+                        // string is stored. Read it and recursively
+                        // resolve.
+                        let link_off = entry
+                            .scratch_link_name_offset
+                            .ok_or_else(|| Hdf5Error::InvalidStructure(format!(
+                                "Soft link '{}' is missing scratch link name offset",
+                                name
+                            )))?;
+                        let target = btree::heap_string(&heap_data, link_off as u64);
+                        if target.is_empty() {
+                            return Err(Hdf5Error::InvalidStructure(format!(
+                                "Soft link '{}' has empty target",
+                                name
+                            )));
+                        }
+                        let resolved_path = if target.starts_with('/') {
+                            // Absolute path
+                            target
+                        } else {
+                            // Relative to the group containing the link
+                            if parent_path == "/" {
+                                format!("/{}", target)
+                            } else {
+                                format!("{}/{}", parent_path, target)
+                            }
+                        };
+                        log::debug!(
+                            "soft link '{}/{}' → '{}'",
+                            parent_path.trim_end_matches('/'),
+                            name,
+                            resolved_path,
+                        );
+                        return Box::pin(
+                            self.resolve_path_with_depth(&resolved_path, depth + 1),
+                        )
+                        .await;
+                    }
                     return Ok(entry.object_header_address);
                 }
             }
         }
 
-        // Try v2 link messages
+        // Try v2 link messages (inline)
         for msg in &oh.messages {
             if let HeaderMessage::Link {
                 name: link_name,
@@ -244,6 +335,22 @@ impl Hdf5File {
             {
                 if link_name == name {
                     return Ok(*target_address);
+                }
+            }
+        }
+
+        // Try v2 link info (fractal heap + B-tree v2)
+        for msg in &oh.messages {
+            if let HeaderMessage::LinkInfo {
+                heap_address: Some(heap_addr),
+                ..
+            } = msg
+            {
+                let links = self.read_links_from_fractal_heap(*heap_addr).await?;
+                for (link_name, link_addr) in &links {
+                    if link_name == name {
+                        return Ok(*link_addr);
+                    }
                 }
             }
         }
@@ -264,6 +371,50 @@ impl Hdf5File {
         Ok((addr, oh))
     }
 
+    /// Read link messages from a v2 group's fractal heap.
+    ///
+    /// Used by `find_child` and `list_group` when the group stores its
+    /// children via a `LinkInfo` message (common in ICESat-2 v007 files)
+    /// rather than a v1 symbol table or inline Link messages.
+    ///
+    /// Returns `(name, object_header_address)` pairs for hard links.
+    async fn read_links_from_fractal_heap(
+        &self,
+        heap_addr: u64,
+    ) -> Result<Vec<(String, u64)>, Hdf5Error> {
+        let blocks = heap::read_fractal_heap_objects(
+            &self.reader,
+            heap_addr,
+            self.superblock.offset_size,
+            self.superblock.length_size,
+        )
+        .await?;
+
+        let mut links = Vec::new();
+        for (block_addr, block_data) in &blocks {
+            log::debug!(
+                "  heap block at 0x{:x}: {} bytes, first 32: {:02x?}",
+                block_addr,
+                block_data.len(),
+                &block_data[..block_data.len().min(32)],
+            );
+            parse_links_from_heap_block(
+                block_data,
+                self.superblock.offset_size,
+                &mut links,
+            );
+        }
+
+        log::debug!(
+            "fractal heap at 0x{:x}: found {} links: {:?}",
+            heap_addr,
+            links.len(),
+            links.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+        );
+
+        Ok(links)
+    }
+
     /// Get a reference to the superblock.
     pub fn superblock(&self) -> &Superblock {
         &self.superblock
@@ -272,5 +423,129 @@ impl Hdf5File {
     /// Get a reference to the underlying reader.
     pub fn reader(&self) -> &Reader {
         &self.reader
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Fractal heap link parsing (outside impl block)
+// ---------------------------------------------------------------------------
+
+/// Parse link messages from the data portion of a fractal heap direct block.
+///
+/// In v2 groups, each managed object in the heap is a serialised link
+/// message (same format as header message type 0x0006). We parse them
+/// sequentially until the data is exhausted or we hit invalid data.
+fn parse_links_from_heap_block(
+    data: &[u8],
+    offset_size: u8,
+    out: &mut Vec<(String, u64)>,
+) {
+    let mut pos = 0;
+    while pos < data.len() {
+        // Zero byte signals end of object data (free space / padding).
+        if data[pos] == 0 {
+            break;
+        }
+        match parse_single_link(&data[pos..], offset_size) {
+            Some((name, addr, consumed)) => {
+                if !name.is_empty() {
+                    out.push((name, addr));
+                }
+                pos += consumed;
+            }
+            None => break,
+        }
+    }
+}
+
+/// Parse one link message from a byte slice, returning
+/// `(link_name, target_address, bytes_consumed)`.
+///
+/// Returns `None` if the bytes don't look like a valid link message.
+fn parse_single_link(data: &[u8], offset_size: u8) -> Option<(String, u64, usize)> {
+    if data.len() < 4 {
+        return None;
+    }
+
+    let version = data[0];
+    if version != 1 {
+        return None;
+    }
+
+    let flags = data[1];
+    let mut pos: usize = 2;
+
+    // Optional link type (bit 3)
+    let link_type = if flags & 0x08 != 0 {
+        let lt = *data.get(pos)?;
+        pos += 1;
+        lt
+    } else {
+        0 // hard link
+    };
+
+    // Optional creation order (bit 2)
+    if flags & 0x04 != 0 {
+        pos += 8;
+    }
+
+    // Optional character set (bit 4)
+    if flags & 0x10 != 0 {
+        pos += 1;
+    }
+
+    // Link name length (bits 0-1 determine encoding size)
+    let name_len = match flags & 0x03 {
+        0 => {
+            let v = *data.get(pos)? as usize;
+            pos += 1;
+            v
+        }
+        1 => {
+            let v = u16::from_le_bytes([*data.get(pos)?, *data.get(pos + 1)?]) as usize;
+            pos += 2;
+            v
+        }
+        2 => {
+            let v = u32::from_le_bytes([
+                *data.get(pos)?,
+                *data.get(pos + 1)?,
+                *data.get(pos + 2)?,
+                *data.get(pos + 3)?,
+            ]) as usize;
+            pos += 4;
+            v
+        }
+        _ => {
+            return None;
+        }
+    };
+
+    if pos + name_len > data.len() {
+        return None;
+    }
+    let name = String::from_utf8_lossy(&data[pos..pos + name_len]).to_string();
+    pos += name_len;
+
+    // Link value
+    if link_type == 0 {
+        // Hard link: object header address
+        if pos + offset_size as usize > data.len() {
+            return None;
+        }
+        let mut rpos = pos;
+        let addr = read_offset(data, &mut rpos, offset_size);
+        pos = rpos;
+        Some((name, addr, pos))
+    } else if link_type == 1 {
+        // Soft link: skip value-length (2 bytes) + value string
+        if pos + 2 > data.len() {
+            return None;
+        }
+        let val_len = u16::from_le_bytes([data[pos], data[pos + 1]]) as usize;
+        pos += 2 + val_len;
+        Some((name, u64::MAX, pos)) // soft link, undefined address
+    } else {
+        None // external or unknown link type
     }
 }

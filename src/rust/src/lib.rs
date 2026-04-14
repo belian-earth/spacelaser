@@ -8,7 +8,6 @@ pub mod hdf5;
 pub mod io;
 pub mod products;
 
-#[cfg(feature = "r-ffi")]
 mod ffi;
 
 pub use hdf5::file::Hdf5File;

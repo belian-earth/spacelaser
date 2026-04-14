@@ -35,6 +35,13 @@ pub enum Hdf5Error {
     #[error("Path not found: {0}")]
     PathNotFound(String),
 
+    #[error(
+        "Soft link encountered at '{0}' but transparent soft-link resolution \
+         is not yet implemented. Use the direct HDF5 path that the link \
+         points to (for GEDI L2B, `geolocation/<name>` instead of `<name>`)."
+    )]
+    SoftLinkNotSupported(String),
+
     #[error("Invalid HDF5 structure: {0}")]
     InvalidStructure(String),
 

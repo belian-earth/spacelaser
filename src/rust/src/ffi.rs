@@ -63,8 +63,23 @@ fn runtime() -> tokio::runtime::Runtime {
         .expect("Failed to create tokio runtime")
 }
 
-/// Build a `DataSource` from URL and optional Earthdata credentials.
+/// Build a `DataSource` from URL/path and optional Earthdata credentials.
+///
+/// Routing:
+///   - `http://` / `https://` → HTTP (authenticated if creds supplied)
+///   - `file://<path>` → Local (prefix stripped)
+///   - anything else → Local (treated as a filesystem path)
+///
+/// The Local route is for synthetic test fixtures and local HDF5 caches; it
+/// shares the full reader pipeline with the HTTP route, so parser correctness
+/// tests can exercise the real code paths without a network.
 fn make_source(url: &str, username: Nullable<&str>, password: Nullable<&str>) -> DataSource {
+    if let Some(path) = url.strip_prefix("file://") {
+        return DataSource::local(path);
+    }
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return DataSource::local(url);
+    }
     match (username, password) {
         (Nullable::NotNull(u), Nullable::NotNull(p)) => {
             DataSource::http_with_auth(url, u, p)
@@ -73,29 +88,190 @@ fn make_source(url: &str, username: Nullable<&str>, password: Nullable<&str>) ->
     }
 }
 
-/// Convert a `GroupData` (beam or track) into an R list.
+/// Fill-value sentinels for each sensor family. Matching values are
+/// replaced with NA during byte-to-typed-vector conversion so the R
+/// side never sees raw sentinels.
+fn fill_values_for_product(product: &str) -> Vec<f64> {
+    match product {
+        "L1B" | "l1b" | "L2A" | "l2a" | "L2B" | "l2b" | "L4A" | "l4a" | "L4C" | "l4c" => {
+            vec![-9999.0, -999999.0]
+        }
+        "ATL08" | "atl08" | "ATL13" | "atl13" => {
+            vec![3.4028235e+38_f64]
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Convert a `GroupData` (beam or track) into an R list with typed
+/// vectors (not raw bytes). Fill-value sentinels are replaced with NA
+/// during conversion. Column name prefixes are stripped.
 ///
 /// Output structure (consumed by `build_tibble()` on the R side):
 /// ```text
 /// list(
 ///   group_name   = "BEAM0101",
 ///   n_elements   = 1234L,
-///   columns      = list(col1 = <raw>, col2 = <raw>, ...),
-///   col_info     = list(col1 = "<json>", col2 = "<json>", ...)
+///   columns      = list(col1 = <dbl/int>, col2 = <dbl/int>, ...),
+///   pool_columns = list(rxwaveform = <dbl>, ...),
+///   pool_col_info = list(rxwaveform = "<json>", ...),
 /// )
 /// ```
-fn group_data_to_list(gd: GroupData) -> List {
+fn group_data_to_list(gd: GroupData, fill_values: &[f64]) -> List {
     let n_elements = gd.selected_indices.len() as i32;
     let group_name = gd.group_name;
 
-    let mut col_names: Vec<String> = Vec::new();
-    let mut col_bytes: Vec<Raw> = Vec::new();
-    let mut col_info_strs: Vec<String> = Vec::new();
+    let columns = columns_to_typed_list(gd.columns, fill_values);
+    // Pool columns stay as raw bytes + JSON: the R side needs to
+    // slice them per-shot using count vectors, and the flat byte
+    // buffer is the right format for that (avoids double-conversion).
+    let (pool_columns, pool_col_info) = columns_to_raw_lists(gd.pool_columns);
 
-    for (name, cdata) in gd.columns {
-        col_names.push(name);
-        col_bytes.push(Raw::from_bytes(&cdata.bytes));
-        col_info_strs.push(
+    list!(
+        group_name = group_name,
+        n_elements = n_elements,
+        columns = columns,
+        pool_columns = pool_columns,
+        pool_col_info = pool_col_info
+    )
+}
+
+/// Convert a `HashMap<String, ColumnData>` into a named R list of
+/// typed vectors. Float columns become `Doubles` (with fill → NA),
+/// integer columns become `Integers` (with fill → NA_integer).
+/// Column name prefixes (e.g. "geolocation/") are stripped.
+fn columns_to_typed_list(
+    cols: std::collections::HashMap<String, crate::products::common::ColumnData>,
+    fill_values: &[f64],
+) -> List {
+    let mut names: Vec<String> = Vec::new();
+    let mut values: Vec<Robj> = Vec::new();
+
+    for (name, cdata) in cols {
+        // Strip subgroup prefix (e.g. "geolocation/solar_elevation" → "solar_elevation")
+        let short_name = match name.rfind('/') {
+            Some(pos) => name[pos + 1..].to_string(),
+            None => name,
+        };
+        let robj = column_data_to_robj(&cdata, fill_values);
+        names.push(short_name);
+        values.push(robj);
+    }
+
+    List::from_names_and_values(names.iter().map(|s| s.as_str()), values)
+        .unwrap_or_else(|_| List::new(0))
+}
+
+/// Convert raw HDF5 bytes + dtype into a typed R vector.
+///
+/// Float columns: f32→f64 widening, fill values → `NA_real_`.
+/// Integer columns (≤4 bytes): direct cast to i32, fill → `NA_integer_`.
+/// Integer columns (8 bytes): int64 → f64 arithmetic conversion.
+fn column_data_to_robj(
+    cdata: &crate::products::common::ColumnData,
+    fill_values: &[f64],
+) -> Robj {
+    let b = &cdata.bytes;
+    let s = cdata.element_size;
+    let n = cdata.num_elements;
+    let is_float = cdata.dtype_desc.contains("FloatingPoint");
+    let is_signed = cdata.dtype_desc.contains("signed: true");
+
+    if is_float {
+        let doubles: Vec<Rfloat> = if s == 4 {
+            b.chunks_exact(4)
+                .take(n)
+                .map(|chunk| {
+                    let val = f32::from_le_bytes(chunk.try_into().unwrap()) as f64;
+                    if fill_values.iter().any(|&fv| val == fv) {
+                        Rfloat::na()
+                    } else {
+                        Rfloat::from(val)
+                    }
+                })
+                .collect()
+        } else {
+            b.chunks_exact(8)
+                .take(n)
+                .map(|chunk| {
+                    let val = f64::from_le_bytes(chunk.try_into().unwrap());
+                    if val.is_nan() || fill_values.iter().any(|&fv| val == fv) {
+                        Rfloat::na()
+                    } else {
+                        Rfloat::from(val)
+                    }
+                })
+                .collect()
+        };
+        Doubles::from_values(doubles).into()
+    } else if s <= 4 {
+        // Integer (signed or unsigned, ≤ 32 bits)
+        let fill_ints: Vec<i32> = fill_values.iter().map(|&fv| fv as i32).collect();
+        let ints: Vec<Rint> = match s {
+            1 => {
+                if is_signed {
+                    b.iter().take(n).map(|&byte| {
+                        let val = byte as i8 as i32;
+                        if fill_ints.contains(&val) { Rint::na() } else { Rint::from(val) }
+                    }).collect()
+                } else {
+                    b.iter().take(n).map(|&byte| {
+                        let val = byte as i32;
+                        if fill_ints.contains(&val) { Rint::na() } else { Rint::from(val) }
+                    }).collect()
+                }
+            }
+            2 => {
+                b.chunks_exact(2).take(n).map(|chunk| {
+                    let val = if is_signed {
+                        i16::from_le_bytes(chunk.try_into().unwrap()) as i32
+                    } else {
+                        u16::from_le_bytes(chunk.try_into().unwrap()) as i32
+                    };
+                    if fill_ints.contains(&val) { Rint::na() } else { Rint::from(val) }
+                }).collect()
+            }
+            _ => {
+                // 3 or 4 bytes → i32
+                b.chunks_exact(s).take(n).map(|chunk| {
+                    let mut buf = [0u8; 4];
+                    buf[..s].copy_from_slice(chunk);
+                    let val = i32::from_le_bytes(buf);
+                    if fill_ints.contains(&val) { Rint::na() } else { Rint::from(val) }
+                }).collect()
+            }
+        };
+        Integers::from_values(ints).into()
+    } else {
+        // int64 / uint64: convert to f64 (exact for values ≤ 2^53)
+        let doubles: Vec<Rfloat> = b.chunks_exact(8).take(n).map(|chunk| {
+            let lo = u32::from_le_bytes(chunk[..4].try_into().unwrap()) as f64;
+            let hi = i32::from_le_bytes(chunk[4..8].try_into().unwrap()) as f64;
+            let val = lo + hi * 4294967296.0;
+            if fill_values.iter().any(|&fv| val == fv) {
+                Rfloat::na()
+            } else {
+                Rfloat::from(val)
+            }
+        }).collect();
+        Doubles::from_values(doubles).into()
+    }
+}
+
+/// Convert a `HashMap<String, ColumnData>` into two parallel R lists:
+/// one of raw byte vectors, one of JSON info strings. Used for pool
+/// columns which the R side still needs to slice per-shot.
+fn columns_to_raw_lists(
+    cols: std::collections::HashMap<String, crate::products::common::ColumnData>,
+) -> (List, List) {
+    let mut names: Vec<String> = Vec::new();
+    let mut bytes: Vec<Raw> = Vec::new();
+    let mut info_strs: Vec<String> = Vec::new();
+
+    for (name, cdata) in cols {
+        names.push(name);
+        bytes.push(Raw::from_bytes(&cdata.bytes));
+        info_strs.push(
             serde_json::json!({
                 "element_size": cdata.element_size,
                 "num_elements": cdata.num_elements,
@@ -105,27 +281,19 @@ fn group_data_to_list(gd: GroupData) -> List {
         );
     }
 
-    let columns = List::from_names_and_values(
-        col_names.iter().map(|s| s.as_str()),
-        col_bytes,
+    let col_list = List::from_names_and_values(
+        names.iter().map(|s| s.as_str()),
+        bytes,
     )
     .unwrap_or_else(|_| List::new(0));
 
-    let col_info = List::from_names_and_values(
-        col_names.iter().map(|s| s.as_str()),
-        col_info_strs,
+    let info_list = List::from_names_and_values(
+        names.iter().map(|s| s.as_str()),
+        info_strs,
     )
     .unwrap_or_else(|_| List::new(0));
 
-    // Use generic field names so the R side doesn't need to branch
-    // on GEDI vs ICESat-2.  The R wrapper renames `group_name` to
-    // `beam` or `track` as appropriate.
-    list!(
-        group_name = group_name,
-        n_elements = n_elements,
-        columns = columns,
-        col_info = col_info
-    )
+    (col_list, info_list)
 }
 
 // ---------------------------------------------------------------------------
@@ -133,7 +301,7 @@ fn group_data_to_list(gd: GroupData) -> List {
 // ---------------------------------------------------------------------------
 
 /// Read GEDI data from a remote HDF5 file with spatial subsetting.
-/// @export
+/// @noRd
 #[extendr]
 fn rust_read_gedi(
     url: &str,
@@ -146,6 +314,8 @@ fn rust_read_gedi(
     beams: Nullable<Vec<String>>,
     username: Nullable<&str>,
     password: Nullable<&str>,
+    pool_columns: Nullable<Vec<String>>,
+    transposed_columns: Nullable<Vec<String>>,
 ) -> extendr_api::Result<List> {
     let rt = runtime();
     let source = make_source(url, username, password);
@@ -155,23 +325,27 @@ fn rust_read_gedi(
         "L2A" | "l2a" => GediProduct::L2A,
         "L2B" | "l2b" => GediProduct::L2B,
         "L4A" | "l4a" => GediProduct::L4A,
+        "L4C" | "l4c" => GediProduct::L4C,
         _ => return Err(extendr_api::Error::Other(format!("Unknown GEDI product: {product}"))),
     };
 
     let bbox = crate::BBox::new(xmin, ymin, xmax, ymax);
     let cols = match columns { Nullable::NotNull(c) => Some(c), Nullable::Null => None };
     let bms = match beams { Nullable::NotNull(b) => Some(b), Nullable::Null => None };
+    let pool = match pool_columns { Nullable::NotNull(p) => Some(p), Nullable::Null => None };
+    let trans = match transposed_columns { Nullable::NotNull(t) => Some(t), Nullable::Null => None };
 
     let result = rt.block_on(async {
         let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
-        gedi::read_gedi(&file, product_type, bbox, cols, bms)
+        gedi::read_gedi(&file, product_type, bbox, cols, bms, pool, trans)
             .await
             .map_err(|e| e.to_string())
     });
 
+    let fill_vals = fill_values_for_product(product);
     match result {
         Ok(groups) => {
-            let lists: Vec<List> = groups.into_iter().map(group_data_to_list).collect();
+            let lists: Vec<List> = groups.into_iter().map(|gd| group_data_to_list(gd, &fill_vals)).collect();
             Ok(List::from_values(lists))
         }
         Err(e) => Err(extendr_api::Error::Other(e)),
@@ -179,7 +353,7 @@ fn rust_read_gedi(
 }
 
 /// Read ICESat-2 data from a remote HDF5 file with spatial subsetting.
-/// @export
+/// @noRd
 #[extendr]
 fn rust_read_icesat2(
     url: &str,
@@ -192,6 +366,8 @@ fn rust_read_icesat2(
     tracks: Nullable<Vec<String>>,
     username: Nullable<&str>,
     password: Nullable<&str>,
+    pool_columns: Nullable<Vec<String>>,
+    transposed_columns: Nullable<Vec<String>>,
 ) -> extendr_api::Result<List> {
     let rt = runtime();
     let source = make_source(url, username, password);
@@ -199,24 +375,31 @@ fn rust_read_icesat2(
     let product_type = match product {
         "ATL03" | "atl03" => IceSat2Product::ATL03,
         "ATL06" | "atl06" => IceSat2Product::ATL06,
+        "ATL07" | "atl07" => IceSat2Product::ATL07,
         "ATL08" | "atl08" => IceSat2Product::ATL08,
+        "ATL10" | "atl10" => IceSat2Product::ATL10,
+        "ATL13" | "atl13" => IceSat2Product::ATL13,
+        "ATL24" | "atl24" => IceSat2Product::ATL24,
         _ => return Err(extendr_api::Error::Other(format!("Unknown ICESat-2 product: {product}"))),
     };
 
     let bbox = crate::BBox::new(xmin, ymin, xmax, ymax);
     let cols = match columns { Nullable::NotNull(c) => Some(c), Nullable::Null => None };
     let trks = match tracks { Nullable::NotNull(t) => Some(t), Nullable::Null => None };
+    let pool = match pool_columns { Nullable::NotNull(p) => Some(p), Nullable::Null => None };
+    let trans = match transposed_columns { Nullable::NotNull(t) => Some(t), Nullable::Null => None };
 
     let result = rt.block_on(async {
         let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
-        icesat2::read_icesat2(&file, product_type, bbox, cols, trks)
+        icesat2::read_icesat2(&file, product_type, bbox, cols, trks, pool, trans)
             .await
             .map_err(|e| e.to_string())
     });
 
+    let fill_vals = fill_values_for_product(product);
     match result {
         Ok(groups) => {
-            let lists: Vec<List> = groups.into_iter().map(group_data_to_list).collect();
+            let lists: Vec<List> = groups.into_iter().map(|gd| group_data_to_list(gd, &fill_vals)).collect();
             Ok(List::from_values(lists))
         }
         Err(e) => Err(extendr_api::Error::Other(e)),
@@ -224,7 +407,7 @@ fn rust_read_icesat2(
 }
 
 /// List available groups in an HDF5 file (for exploration).
-/// @export
+/// @noRd
 #[extendr]
 fn rust_hdf5_groups(
     url: &str,
@@ -247,7 +430,7 @@ fn rust_hdf5_groups(
 }
 
 /// Read a single dataset from an HDF5 file and return raw bytes + metadata.
-/// @export
+/// @noRd
 #[extendr]
 fn rust_hdf5_dataset(
     url: &str,
@@ -285,7 +468,7 @@ fn rust_hdf5_dataset(
 ///
 /// All files are processed in parallel within a single async runtime.
 /// Returns a list of per-file results (each is a list of beam data).
-/// @export
+/// @noRd
 #[extendr]
 fn rust_read_gedi_multi(
     urls: Vec<String>,
@@ -298,6 +481,8 @@ fn rust_read_gedi_multi(
     beams: Nullable<Vec<String>>,
     username: Nullable<&str>,
     password: Nullable<&str>,
+    pool_columns: Nullable<Vec<String>>,
+    transposed_columns: Nullable<Vec<String>>,
 ) -> extendr_api::Result<List> {
     let rt = runtime();
 
@@ -306,12 +491,15 @@ fn rust_read_gedi_multi(
         "L2A" | "l2a" => GediProduct::L2A,
         "L2B" | "l2b" => GediProduct::L2B,
         "L4A" | "l4a" => GediProduct::L4A,
+        "L4C" | "l4c" => GediProduct::L4C,
         _ => return Err(extendr_api::Error::Other(format!("Unknown GEDI product: {product}"))),
     };
 
     let bbox = crate::BBox::new(xmin, ymin, xmax, ymax);
     let cols = match columns { Nullable::NotNull(c) => Some(c), Nullable::Null => None };
     let bms = match beams { Nullable::NotNull(b) => Some(b), Nullable::Null => None };
+    let pool = match pool_columns { Nullable::NotNull(p) => Some(p), Nullable::Null => None };
+    let trans = match transposed_columns { Nullable::NotNull(t) => Some(t), Nullable::Null => None };
 
     // Extract auth strings so they can be shared across closures.
     let user = match username { Nullable::NotNull(u) => Some(u.to_string()), Nullable::Null => None };
@@ -331,9 +519,11 @@ fn rust_read_gedi_multi(
                 };
                 let cols = cols.clone();
                 let bms = bms.clone();
+                let pool = pool.clone();
+                let trans = trans.clone();
                 async move {
                     let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
-                    gedi::read_gedi(&file, product_type, bbox, cols, bms)
+                    gedi::read_gedi(&file, product_type, bbox, cols, bms, pool, trans)
                         .await
                         .map_err(|e| e.to_string())
                 }
@@ -354,12 +544,13 @@ fn rust_read_gedi_multi(
         all_groups
     });
 
-    let lists: Vec<List> = all_groups.into_iter().map(group_data_to_list).collect();
+    let fill_vals = fill_values_for_product(product);
+    let lists: Vec<List> = all_groups.into_iter().map(|gd| group_data_to_list(gd, &fill_vals)).collect();
     Ok(List::from_values(lists))
 }
 
 /// Read ICESat-2 data from multiple remote HDF5 files concurrently.
-/// @export
+/// @noRd
 #[extendr]
 fn rust_read_icesat2_multi(
     urls: Vec<String>,
@@ -372,19 +563,27 @@ fn rust_read_icesat2_multi(
     tracks: Nullable<Vec<String>>,
     username: Nullable<&str>,
     password: Nullable<&str>,
+    pool_columns: Nullable<Vec<String>>,
+    transposed_columns: Nullable<Vec<String>>,
 ) -> extendr_api::Result<List> {
     let rt = runtime();
 
     let product_type = match product {
         "ATL03" | "atl03" => IceSat2Product::ATL03,
         "ATL06" | "atl06" => IceSat2Product::ATL06,
+        "ATL07" | "atl07" => IceSat2Product::ATL07,
         "ATL08" | "atl08" => IceSat2Product::ATL08,
+        "ATL10" | "atl10" => IceSat2Product::ATL10,
+        "ATL13" | "atl13" => IceSat2Product::ATL13,
+        "ATL24" | "atl24" => IceSat2Product::ATL24,
         _ => return Err(extendr_api::Error::Other(format!("Unknown ICESat-2 product: {product}"))),
     };
 
     let bbox = crate::BBox::new(xmin, ymin, xmax, ymax);
     let cols = match columns { Nullable::NotNull(c) => Some(c), Nullable::Null => None };
     let trks = match tracks { Nullable::NotNull(t) => Some(t), Nullable::Null => None };
+    let pool = match pool_columns { Nullable::NotNull(p) => Some(p), Nullable::Null => None };
+    let trans = match transposed_columns { Nullable::NotNull(t) => Some(t), Nullable::Null => None };
 
     let user = match username { Nullable::NotNull(u) => Some(u.to_string()), Nullable::Null => None };
     let pass = match password { Nullable::NotNull(p) => Some(p.to_string()), Nullable::Null => None };
@@ -400,9 +599,11 @@ fn rust_read_icesat2_multi(
                 };
                 let cols = cols.clone();
                 let trks = trks.clone();
+                let pool = pool.clone();
+                let trans = trans.clone();
                 async move {
                     let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
-                    icesat2::read_icesat2(&file, product_type, bbox, cols, trks)
+                    icesat2::read_icesat2(&file, product_type, bbox, cols, trks, pool, trans)
                         .await
                         .map_err(|e| e.to_string())
                 }
@@ -423,7 +624,8 @@ fn rust_read_icesat2_multi(
         all_groups
     });
 
-    let lists: Vec<List> = all_groups.into_iter().map(group_data_to_list).collect();
+    let fill_vals = fill_values_for_product(product);
+    let lists: Vec<List> = all_groups.into_iter().map(|gd| group_data_to_list(gd, &fill_vals)).collect();
     Ok(List::from_values(lists))
 }
 

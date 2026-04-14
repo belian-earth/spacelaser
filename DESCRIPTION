@@ -1,29 +1,32 @@
 Package: spacelaser
 Title: Cloud-Optimized Partial Reading of GEDI and ICESat-2 HDF5 Data
 Version: 0.0.0.9000
-Authors@R: person("Belian Earth", role = c("aut", "cre"),
-    email = "dev@belian.earth")
+Authors@R: c(
+    person("Hugh", "Graham", role = c("aut", "cre"),
+           email = "hugh@belian.earth"),
+    person("belian.earth", role = "cph")
+    )
 Description: Read GEDI and ICESat-2 satellite lidar data directly from NASA
     Earthdata cloud storage using HTTP range requests. Only fetches the bytes
     needed for the requested spatial subset, avoiding multi-gigabyte file
     downloads. Powered by a pure-Rust h5coro-style HDF5 partial reader.
-License: MIT + file LICENSE
+License: Apache License (>= 2)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 SystemRequirements: Cargo (Rust's package manager), rustc
 Config/rextendr/version: 0.4.2
 Imports:
-    arrow,
     cli,
-    jsonlite,
-    purrr,
+    httr2,
     rlang (>= 1.1.0),
+    tibble,
     vctrs,
     wk
 Suggests:
     earthdatalogin,
-    gdalraster,
-    mirai,
+    httptest2,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
+Depends: 
+    R (>= 4.2)

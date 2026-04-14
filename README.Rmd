@@ -1,0 +1,113 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "man/figures/README-",
+  out.width = "100%"
+)
+```
+
+# spacelaser
+
+<!-- badges: start -->
+[![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+[![extendr](https://img.shields.io/badge/extendr-*-276DC2)](https://extendr.github.io/extendr/extendr_api/)
+[![License:Apache](https://img.shields.io/github/license/belian-earth/a5R)](https://www.apache.org/licenses/LICENSE-2.0)
+[![Codecov test coverage](https://codecov.io/gh/belian-earth/spacelaser/graph/badge.svg)](https://app.codecov.io/gh/belian-earth/spacelaser)
+<!-- badges: end -->
+
+Cloud-optimized partial reading of GEDI and ICESat-2 HDF5 data from R.
+Only the bytes needed for the requested spatial subset are fetched over
+HTTP, avoiding multi-gigabyte downloads.
+
+## Supported products
+
+### GEDI
+
+| Product | Description                                   |
+|:--------|:----------------------------------------------|
+| L1B     | Geolocated received and transmitted waveforms |
+| L2A     | Elevation and canopy relative height metrics  |
+| L2B     | Canopy cover fraction and vertical profile    |
+| L4A     | Footprint-level aboveground biomass density   |
+| L4C     | Waveform structural complexity index          |
+
+### ICESat-2
+
+| Product | Description                          |
+|:--------|:-------------------------------------|
+| ATL03   | Geolocated photon heights            |
+| ATL06   | Land ice surface elevation           |
+| ATL07   | Sea ice surface elevation            |
+| ATL08   | Land and vegetation height segments  |
+| ATL10   | Sea ice freeboard                    |
+| ATL13   | Inland water surface heights         |
+| ATL24   | Near-shore bathymetric photons       |
+
+## Installation
+
+Requires a [Rust toolchain](https://www.rust-lang.org/tools/install)
+(cargo + rustc).
+
+``` r
+# install.packages("pak")
+pak::pak("belian-earth/spacelaser")
+```
+
+## Authentication
+
+All reads go through NASA Earthdata, which requires a free account.
+Register at <https://urs.earthdata.nasa.gov/>.
+
+Credentials can be supplied in any of the following ways:
+
+- **Environment variables** — set `EARTHDATA_USERNAME` and
+  `EARTHDATA_PASSWORD`. Convenient for CI and shell sessions.
+- **A `.netrc` file** — add an entry for `urs.earthdata.nasa.gov` to
+  `~/.netrc` (or `_netrc` on Windows). spacelaser will read it directly.
+- [**`earthdatalogin`**](https://boettiger-lab.github.io/earthdatalogin/) — the simplest option if you don't already have a
+  netrc set up:
+
+```{r auth, eval = FALSE}
+# install.packages("earthdatalogin")
+earthdatalogin::edl_netrc()
+```
+
+This writes a netrc for you and is interoperable with other R
+Earthdata tools.
+
+## Example
+
+```{r example, eval=FALSE}
+library(spacelaser)
+
+bbox <- sl_bbox(-124.04, 41.39, -124.01, 41.42)
+
+# GEDI
+granules <- sl_search(
+  bbox, 
+  product = "L2A", 
+  date_start = "2022-01-01", 
+  date_end = "2023-01-01")
+gedi2a <- sl_read(granules)
+
+gedi2a
+
+# # ICESat-2 uses the same two verbs
+# granules <- sl_search(bbox, product = "ATL08")
+# icesat <- sl_read(granules)
+```
+
+Columns available for a product:
+
+```{r cols, eval = FALSE}
+sl_columns("L2A")
+```
+
+

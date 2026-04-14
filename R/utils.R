@@ -421,6 +421,7 @@ call_rust_reader <- function(rust_fn, target, product, params) {
 #' @noRd
 assemble_read_result <- function(
   raw_result,
+  bbox,
   lat_col,
   lon_col,
   group_label,
@@ -451,6 +452,25 @@ assemble_read_result <- function(
 
   result <- vctrs::vec_rbind(!!!group_tbls)
 
+  # Post-filter: ensure all rows are within the bbox. This is a no-op
+  # for products with direct lat/lon scanning (every row already
+  # passes), but matters for ATL03 which uses segment-level spatial
+  # filtering (~20m resolution). Edge segments may include a few
+  # photons slightly outside the bbox.
+  lat_short <- sub(".*/", "", lat_col)
+  lon_short <- sub(".*/", "", lon_col)
+  if (lat_short %in% names(result) && lon_short %in% names(result) && nrow(result) > 0) {
+    b <- unclass(bbox)
+    lat <- result[[lat_short]]
+    lon <- result[[lon_short]]
+    keep <- !is.na(lat) & !is.na(lon) &
+      lat >= b[["ymin"]] & lat <= b[["ymax"]] &
+      lon >= b[["xmin"]] & lon <= b[["xmax"]]
+    if (!all(keep)) {
+      result <- result[keep, ]
+    }
+  }
+
   n <- nrow(result)
   cli::cli_progress_done()
   cli::cli_inform(c(
@@ -477,7 +497,7 @@ read_product <- function(
   cli::cli_progress_step("Reading {product} from {.url {basename(url)}}")
   raw_result <- call_rust_reader(rust_fn, url, product, params)
   assemble_read_result(
-    raw_result, lat_col, lon_col, group_label, element_label,
+    raw_result, bbox, lat_col, lon_col, group_label, element_label,
     params$pool_short, params$pool_idx_map,
     params$fill_values, params$scale_factors
   )
@@ -509,7 +529,7 @@ read_product_multi <- function(
   cli::cli_progress_step("Reading {product} from {length(urls)} granule{?s}")
   raw_result <- call_rust_reader(rust_multi_fn, urls, product, params)
   assemble_read_result(
-    raw_result, lat_col, lon_col, group_label, element_label,
+    raw_result, bbox, lat_col, lon_col, group_label, element_label,
     params$pool_short, params$pool_idx_map,
     params$fill_values, params$scale_factors
   )

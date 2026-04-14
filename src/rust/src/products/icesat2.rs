@@ -30,7 +30,7 @@
 //! └── geolocation/
 //! ```
 
-use super::common::{self, BBox, GroupData, SatelliteProduct};
+use super::common::{self, BBox, GroupData, SatelliteProduct, SegmentIndex};
 use crate::hdf5::file::Hdf5File;
 use crate::hdf5::types::Hdf5Error;
 
@@ -81,6 +81,18 @@ impl SatelliteProduct for IceSat2Product {
             IceSat2Product::ATL10 => "freeboard_segment/longitude",
             IceSat2Product::ATL13 => "segment_lon",
             IceSat2Product::ATL24 => "lon_ph",
+        }
+    }
+
+    fn segment_index(&self) -> Option<SegmentIndex> {
+        match self {
+            IceSat2Product::ATL03 => Some(SegmentIndex {
+                lat_dataset: "geolocation/reference_photon_lat",
+                lon_dataset: "geolocation/reference_photon_lon",
+                ph_index_beg: "geolocation/ph_index_beg",
+                segment_ph_cnt: "geolocation/segment_ph_cnt",
+            }),
+            _ => None,
         }
     }
 }

@@ -134,8 +134,17 @@ impl Reader {
             DataSource::Local { path } => {
                 use std::io::{Read, Seek, SeekFrom};
                 let mut file = std::fs::File::open(path)?;
+                let file_len = file.metadata()?.len();
+                if offset >= file_len {
+                    return Ok(Vec::new());
+                }
+                // Clamp read length to EOF so speculative oversized reads
+                // (common during HDF5 navigation) succeed the same way they
+                // do for HTTP — the HDF5 parser handles short reads itself.
+                let available = (file_len - offset) as usize;
+                let read_len = length.min(available);
                 file.seek(SeekFrom::Start(offset))?;
-                let mut buf = vec![0u8; length];
+                let mut buf = vec![0u8; read_len];
                 file.read_exact(&mut buf)?;
                 Ok(buf)
             }

@@ -63,8 +63,23 @@ fn runtime() -> tokio::runtime::Runtime {
         .expect("Failed to create tokio runtime")
 }
 
-/// Build a `DataSource` from URL and optional Earthdata credentials.
+/// Build a `DataSource` from URL/path and optional Earthdata credentials.
+///
+/// Routing:
+///   - `http://` / `https://` → HTTP (authenticated if creds supplied)
+///   - `file://<path>` → Local (prefix stripped)
+///   - anything else → Local (treated as a filesystem path)
+///
+/// The Local route is for synthetic test fixtures and local HDF5 caches; it
+/// shares the full reader pipeline with the HTTP route, so parser correctness
+/// tests can exercise the real code paths without a network.
 fn make_source(url: &str, username: Nullable<&str>, password: Nullable<&str>) -> DataSource {
+    if let Some(path) = url.strip_prefix("file://") {
+        return DataSource::local(path);
+    }
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return DataSource::local(url);
+    }
     match (username, password) {
         (Nullable::NotNull(u), Nullable::NotNull(p)) => {
             DataSource::http_with_auth(url, u, p)

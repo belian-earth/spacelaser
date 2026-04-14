@@ -700,3 +700,72 @@ test_that("ATL03 fixture: empty bbox (no segments inside) returns empty frame", 
   expect_s3_class(data, "data.frame")
   expect_equal(nrow(data), 0L)
 })
+
+# ---------------------------------------------------------------------------
+# ICESat-2 ATL06 / ATL07 / ATL10 / ATL13 / ATL24
+# ---------------------------------------------------------------------------
+#
+# These five share the same reader shape: direct lat/lon scan against a
+# product-specific lat/lon path (the SatelliteProduct::lat_dataset /
+# lon_dataset variants). No 2D, no pool, no transposed. A light smoke
+# test per product — shape, track set, spatial-filter correctness,
+# registry round-trip — catches misalignments between the R-side
+# registry, the Rust trait, and the fixture generator.
+
+icesat2_smoke_spec <- list(
+  list(product = "ATL06", lat = "latitude",    lon = "longitude"),
+  list(product = "ATL07", lat = "latitude",    lon = "longitude"),
+  list(product = "ATL10", lat = "latitude",    lon = "longitude"),
+  list(product = "ATL13", lat = "segment_lat", lon = "segment_lon"),
+  list(product = "ATL24", lat = "lat_ph",      lon = "lon_ph")
+)
+
+for (.spec in icesat2_smoke_spec) {
+  local({
+    spec <- .spec
+    prod <- spec$product
+    lat_col <- spec$lat
+    lon_col <- spec$lon
+    fixture_file <- sprintf("icesat2-%s.h5", tolower(prod))
+
+    test_that(sprintf("%s fixture: shape, tracks, spatial filter", prod), {
+      skip_if_not(file.exists(fixture_path(fixture_file)),
+                  sprintf("%s fixture not built", prod))
+
+      bb <- fixture_bbox(); b <- unclass(bb)
+      data <- sl_read(fixture_path(fixture_file),
+                      product = prod, bbox = bb)
+
+      expect_s3_class(data, "data.frame")
+      expect_equal(nrow(data), 500L)
+      expect_setequal(unique(data$track), c("gt1l", "gt2r"))
+      expect_true(all(c(lat_col, lon_col, "track", "geometry") %in%
+                        names(data)))
+
+      # Spatial filter correctness against product-specific lat/lon path
+      expect_true(all(data[[lon_col]] >= b[["xmin"]] &
+                        data[[lon_col]] <= b[["xmax"]]))
+      expect_true(all(data[[lat_col]] >= b[["ymin"]] &
+                        data[[lat_col]] <= b[["ymax"]]))
+    })
+
+    test_that(sprintf("%s fixture: every registry column round-trips", prod), {
+      skip_if_not(file.exists(fixture_path(fixture_file)))
+
+      data <- sl_read(fixture_path(fixture_file),
+                      product = prod, bbox = fixture_bbox(),
+                      columns = names(sl_columns(prod)))
+
+      registry_names <- names(sl_columns(prod))
+      out_names <- names(data)
+      missing <- character(0)
+      for (nm in registry_names) {
+        if (nm %in% out_names) next
+        if (any(grepl(paste0("^", nm, "\\d+$"), out_names))) next
+        if (any(grepl(paste0("^", nm, "_[a-z_]+$"), out_names))) next
+        missing <- c(missing, nm)
+      }
+      expect_equal(missing, character(0))
+    })
+  })
+}

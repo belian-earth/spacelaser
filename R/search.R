@@ -8,12 +8,21 @@
 #' @param bbox An `sl_bbox` object created by [sl_bbox()], or a numeric vector
 #'   `c(xmin, ymin, xmax, ymax)`.
 #' @param product Character. One of:
-#'   * GEDI: `"L1B"`, `"L2A"`, `"L2B"`, `"L4A"`
-#'   * ICESat-2: `"ATL03"`, `"ATL06"`, `"ATL08"`
-#' @param date_start Character or POSIXct. Start of date range. Defaults to
-#'   the start of the relevant mission (2019-03-25 for GEDI, 2018-10-14 for
-#'   ICESat-2).
-#' @param date_end Character or POSIXct. End of date range (default: today).
+#'   * GEDI: `"L1B"`, `"L2A"`, `"L2B"`, `"L4A"`, `"L4C"`
+#'   * ICESat-2: `"ATL03"`, `"ATL06"`, `"ATL07"`, `"ATL08"`, `"ATL10"`,
+#'     `"ATL13"`, `"ATL24"`
+#' @param date_start,date_end Either a `Date` object or a character string in
+#'   strict `"YYYY-MM-DD"` format (e.g. `"2020-06-01"`). Other character
+#'   forms (e.g. `"01/06/2020"`, `"June 1 2020"`, `"2020-06"`) are rejected
+#'   with an informative error to avoid ambiguity. `POSIXct` inputs are
+#'   not accepted — format them explicitly with `format(x, "%Y-%m-%d")`.
+#'
+#'   Bounds are treated as UTC and inclusive of the end date: a range of
+#'   `"2020-06-01"` to `"2020-06-30"` covers every granule whose start time
+#'   falls on any of those 30 days.
+#'
+#'   `date_start` defaults to the mission start (2019-03-25 for GEDI,
+#'   2018-10-14 for ICESat-2). `date_end` defaults to today.
 #'
 #' @returns A classed data frame (`sl_gedi_search` or `sl_icesat2_search`)
 #'   with columns:
@@ -185,8 +194,19 @@ search_cmr <- function(bbox, concept_id, date_start, date_end, product_label) {
     bbox_str
   )
 
-  start_iso <- format_iso8601(date_start)
-  end_iso <- format_iso8601(date_end %||% Sys.Date())
+  start_date <- parse_search_date(date_start, arg = "date_start")
+  end_date <- parse_search_date(date_end %||% Sys.Date(), arg = "date_end")
+  if (end_date < start_date) {
+    cli::cli_abort(c(
+      "{.arg date_end} ({.val {format(end_date)}}) must be on or after \\
+       {.arg date_start} ({.val {format(start_date)}}).",
+      "i" = "Check the order of your date arguments."
+    ))
+  }
+  # Inclusive-end semantics: use start-of-day for date_start and end-of-day
+  # for date_end so `date_end = \"2020-06-30\"` actually includes June 30.
+  start_iso <- format(start_date, "%Y-%m-%dT00:00:00Z")
+  end_iso   <- format(end_date,   "%Y-%m-%dT23:59:59Z")
   base_url <- paste0(base_url, "&temporal=", start_iso, ",", end_iso)
 
   cli::cli_progress_step("Searching CMR for {product_label} granules")
@@ -321,25 +341,54 @@ cmr_polygon_to_wkt <- function(coord_string) {
   sprintf("POLYGON ((%s))", ring)
 }
 
-#' Format a date as ISO 8601 for CMR temporal queries.
+#' Parse a search date argument into a `Date`.
+#'
+#' Accepts strict `YYYY-MM-DD` character strings or `Date` objects. Rejects
+#' `POSIXct` (sub-day precision isn't useful for granule search and the
+#' time-zone handling is a foot-gun) and malformed strings, with clear
+#' errors in each case so user typos get caught at the call site rather
+#' than producing an empty result silently.
 #' @noRd
-format_iso8601 <- function(x) {
-  if (inherits(x, "POSIXt")) {
-    return(format(x, "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"))
-  }
+parse_search_date <- function(x, arg) {
   if (inherits(x, "Date")) {
-    return(format(as.POSIXct(x, tz = "UTC"), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"))
+    if (length(x) != 1L || is.na(x)) {
+      cli::cli_abort("{.arg {arg}} must be a single non-NA date, got {.val {x}}.")
+    }
+    return(x)
   }
   if (is.character(x)) {
-    dt <- as.POSIXct(x, tz = "UTC")
-    if (is.na(dt)) {
-      cli::cli_abort("Cannot parse date: {.val {x}}")
+    if (length(x) != 1L) {
+      cli::cli_abort(
+        "{.arg {arg}} must be length 1, got length {length(x)}."
+      )
     }
-    return(format(dt, "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"))
+    if (!grepl("^\\d{4}-\\d{2}-\\d{2}$", x)) {
+      cli::cli_abort(c(
+        "{.arg {arg}} must be a date string in {.val YYYY-MM-DD} format.",
+        "x" = "Got {.val {x}}.",
+        "i" = "Example: {.val 2020-06-01}"
+      ))
+    }
+    d <- tryCatch(as.Date(x, format = "%Y-%m-%d"), error = function(e) NA)
+    if (is.na(d)) {
+      cli::cli_abort(c(
+        "{.arg {arg}} does not name a real calendar date.",
+        "x" = "Got {.val {x}}."
+      ))
+    }
+    return(d)
   }
-  cli::cli_abort(
-    "Date must be character, Date, or POSIXt, not {.cls {class(x)}}."
-  )
+  if (inherits(x, "POSIXt")) {
+    cli::cli_abort(c(
+      "{.arg {arg}} must be a {.cls Date} or a {.val YYYY-MM-DD} string.",
+      "x" = "Got a {.cls POSIXct} value.",
+      "i" = "Pass {.code format(x, \"%Y-%m-%d\")} instead."
+    ))
+  }
+  cli::cli_abort(c(
+    "{.arg {arg}} must be a {.cls Date} or a {.val YYYY-MM-DD} string.",
+    "x" = "Got {.cls {class(x)}}."
+  ))
 }
 
 #' Empty result for zero-match searches.

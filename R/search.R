@@ -152,14 +152,23 @@ search_cmr <- function(bbox, concept_id, date_start, date_end, product_label) {
 # Internal: HTTP + JSON
 # ---------------------------------------------------------------------------
 
-#' Fetch JSON from a CMR URL.
+#' Fetch JSON from a CMR URL with retry and timeout.
+#'
+#' Uses httr2 for connection reuse across pagination, exponential backoff
+#' on transient failures (CMR occasionally returns 5xx during peak hours),
+#' and structured HTTP error handling.
 #' @noRd
 fetch_cmr_json <- function(request_url) {
-  con <- url(request_url)
-  on.exit(try(close(con), silent = TRUE), add = TRUE)
+  req <- httr2::request(request_url) |>
+    httr2::req_timeout(30) |>
+    httr2::req_retry(
+      max_tries = 3,
+      backoff = function(i) 2^i
+    ) |>
+    httr2::req_user_agent("spacelaser (github.com/belian-earth/spacelaser)")
 
-  lines <- tryCatch(
-    readLines(con, warn = FALSE),
+  resp <- tryCatch(
+    httr2::req_perform(req),
     error = function(e) {
       cli::cli_abort(c(
         "Failed to query NASA CMR.",
@@ -168,7 +177,7 @@ fetch_cmr_json <- function(request_url) {
     }
   )
 
-  jsonlite::fromJSON(paste(lines, collapse = ""), simplifyVector = FALSE)
+  httr2::resp_body_json(resp, simplifyVector = FALSE)
 }
 
 # ---------------------------------------------------------------------------

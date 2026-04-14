@@ -15,7 +15,7 @@ SystemRequirements: Cargo (Rust's package manager), rustc
 Config/rextendr/version: 0.4.2
 Imports:
     cli,
-    jsonlite,
+    httr2,
     purrr,
     rlang (>= 1.1.0),
     tibble,

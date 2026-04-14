@@ -9,7 +9,12 @@
 Read GEDI and ICESat-2 satellite lidar data directly from NASA Earthdata cloud storage using HTTP range requests. Only fetches the bytes needed for the requested spatial subset, avoiding multi-gigabyte file downloads. Powered by a pure-Rust h5coro-style HDF5 partial reader.
 }
 \author{
-\strong{Maintainer}: Belian Earth \email{dev@belian.earth}
+\strong{Maintainer}: Hugh Graham \email{hugh@belian.earth}
+
+Other contributors:
+\itemize{
+  \item belian.earth [copyright holder]
+}
 
 }
 \keyword{internal}

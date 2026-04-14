@@ -142,8 +142,10 @@ expect_registry_roundtrip <- function(data, product) {
   missing <- character(0)
   for (nm in registry_names) {
     if (nm %in% out_names) next
-    pattern <- paste0("^", nm, "\\d+$")
-    if (any(grepl(pattern, out_names))) next
+    # 2D expansion: rh -> rh0, rh1, ...
+    if (any(grepl(paste0("^", nm, "\\d+$"), out_names))) next
+    # Transposed 2D expansion: surface_type -> surface_type_land, ...
+    if (any(grepl(paste0("^", nm, "_[a-z_]+$"), out_names))) next
     missing <- c(missing, nm)
   }
   testthat::expect_equal(

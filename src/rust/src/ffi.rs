@@ -300,6 +300,7 @@ fn rust_read_gedi(
     username: Nullable<&str>,
     password: Nullable<&str>,
     pool_columns: Nullable<Vec<String>>,
+    transposed_columns: Nullable<Vec<String>>,
 ) -> extendr_api::Result<List> {
     let rt = runtime();
     let source = make_source(url, username, password);
@@ -317,10 +318,11 @@ fn rust_read_gedi(
     let cols = match columns { Nullable::NotNull(c) => Some(c), Nullable::Null => None };
     let bms = match beams { Nullable::NotNull(b) => Some(b), Nullable::Null => None };
     let pool = match pool_columns { Nullable::NotNull(p) => Some(p), Nullable::Null => None };
+    let trans = match transposed_columns { Nullable::NotNull(t) => Some(t), Nullable::Null => None };
 
     let result = rt.block_on(async {
         let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
-        gedi::read_gedi(&file, product_type, bbox, cols, bms, pool)
+        gedi::read_gedi(&file, product_type, bbox, cols, bms, pool, trans)
             .await
             .map_err(|e| e.to_string())
     });
@@ -350,6 +352,7 @@ fn rust_read_icesat2(
     username: Nullable<&str>,
     password: Nullable<&str>,
     pool_columns: Nullable<Vec<String>>,
+    transposed_columns: Nullable<Vec<String>>,
 ) -> extendr_api::Result<List> {
     let rt = runtime();
     let source = make_source(url, username, password);
@@ -369,10 +372,11 @@ fn rust_read_icesat2(
     let cols = match columns { Nullable::NotNull(c) => Some(c), Nullable::Null => None };
     let trks = match tracks { Nullable::NotNull(t) => Some(t), Nullable::Null => None };
     let pool = match pool_columns { Nullable::NotNull(p) => Some(p), Nullable::Null => None };
+    let trans = match transposed_columns { Nullable::NotNull(t) => Some(t), Nullable::Null => None };
 
     let result = rt.block_on(async {
         let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
-        icesat2::read_icesat2(&file, product_type, bbox, cols, trks, pool)
+        icesat2::read_icesat2(&file, product_type, bbox, cols, trks, pool, trans)
             .await
             .map_err(|e| e.to_string())
     });
@@ -463,6 +467,7 @@ fn rust_read_gedi_multi(
     username: Nullable<&str>,
     password: Nullable<&str>,
     pool_columns: Nullable<Vec<String>>,
+    transposed_columns: Nullable<Vec<String>>,
 ) -> extendr_api::Result<List> {
     let rt = runtime();
 
@@ -479,6 +484,7 @@ fn rust_read_gedi_multi(
     let cols = match columns { Nullable::NotNull(c) => Some(c), Nullable::Null => None };
     let bms = match beams { Nullable::NotNull(b) => Some(b), Nullable::Null => None };
     let pool = match pool_columns { Nullable::NotNull(p) => Some(p), Nullable::Null => None };
+    let trans = match transposed_columns { Nullable::NotNull(t) => Some(t), Nullable::Null => None };
 
     // Extract auth strings so they can be shared across closures.
     let user = match username { Nullable::NotNull(u) => Some(u.to_string()), Nullable::Null => None };
@@ -499,9 +505,10 @@ fn rust_read_gedi_multi(
                 let cols = cols.clone();
                 let bms = bms.clone();
                 let pool = pool.clone();
+                let trans = trans.clone();
                 async move {
                     let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
-                    gedi::read_gedi(&file, product_type, bbox, cols, bms, pool)
+                    gedi::read_gedi(&file, product_type, bbox, cols, bms, pool, trans)
                         .await
                         .map_err(|e| e.to_string())
                 }
@@ -542,6 +549,7 @@ fn rust_read_icesat2_multi(
     username: Nullable<&str>,
     password: Nullable<&str>,
     pool_columns: Nullable<Vec<String>>,
+    transposed_columns: Nullable<Vec<String>>,
 ) -> extendr_api::Result<List> {
     let rt = runtime();
 
@@ -560,6 +568,7 @@ fn rust_read_icesat2_multi(
     let cols = match columns { Nullable::NotNull(c) => Some(c), Nullable::Null => None };
     let trks = match tracks { Nullable::NotNull(t) => Some(t), Nullable::Null => None };
     let pool = match pool_columns { Nullable::NotNull(p) => Some(p), Nullable::Null => None };
+    let trans = match transposed_columns { Nullable::NotNull(t) => Some(t), Nullable::Null => None };
 
     let user = match username { Nullable::NotNull(u) => Some(u.to_string()), Nullable::Null => None };
     let pass = match password { Nullable::NotNull(p) => Some(p.to_string()), Nullable::Null => None };
@@ -576,9 +585,10 @@ fn rust_read_icesat2_multi(
                 let cols = cols.clone();
                 let trks = trks.clone();
                 let pool = pool.clone();
+                let trans = trans.clone();
                 async move {
                     let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
-                    icesat2::read_icesat2(&file, product_type, bbox, cols, trks, pool)
+                    icesat2::read_icesat2(&file, product_type, bbox, cols, trks, pool, trans)
                         .await
                         .map_err(|e| e.to_string())
                 }

@@ -90,6 +90,57 @@ test_that("ATL08: column subset returns requested plus required columns", {
   expect_true(all(must_have %in% names(data)))
 })
 
+test_that("ATL08: land-surface flags round-trip with sensible geography", {
+  # ATL08's closest equivalent to L1B `surface_type` is a set of
+  # per-segment classification scalars: `segment_landcover` (MODIS IGBP
+  # class code), `urban_flag` (0/1), and `segment_watermask` (0/1).
+  # This test exercises the read path for these together and checks
+  # their values are physically meaningful for the PNW forest bbox.
+  skip_unless_integration()
+  granules <- search_or_skip(
+    "ATL08",
+    max_granules = 7L,
+    date_range = test_date_range_icesat2(),
+    bbox = test_bbox_icesat2()
+  )
+
+  data <- sl_read(
+    granules,
+    columns = c("segment_landcover", "urban_flag", "segment_watermask")
+  )
+  expect_gt(nrow(data), 0)
+  expect_true(all(
+    c("segment_landcover", "urban_flag", "segment_watermask") %in% names(data)
+  ))
+
+  # `segment_landcover` uses Copernicus Global Land Cover codes: 0
+  # (unknown), 20, 30, 40, 50, 60, 70, 80, 90, 100, 111-116 (closed
+  # forest types), 121-126 (open forest types), 200 (ocean). Valid
+  # values are within 0-200, and for a PNW coast bbox we expect a mix
+  # of forest codes (111-116) and ocean (200).
+  lc <- data$segment_landcover[!is.na(data$segment_landcover)]
+  if (length(lc) > 0) {
+    expect_true(all(lc >= 0L & lc <= 200L))
+    expect_true(any(lc %in% 111:116))  # forest segments present
+  }
+
+  # PNW coast forest: expect no urban segments. Allow a small tolerance
+  # because ICESat-2 segments are 100m and the 10 km bbox brushes the
+  # coast, but urban_flag should be overwhelmingly zero.
+  uf <- data$urban_flag[!is.na(data$urban_flag)]
+  if (length(uf) > 0) {
+    expect_true(all(uf %in% c(0L, 1L)))
+    expect_lt(mean(uf == 1L), 0.05)
+  }
+
+  # segment_watermask is 0/1. This bbox spans coast and inland forest,
+  # so both values are plausible.
+  wm <- data$segment_watermask[!is.na(data$segment_watermask)]
+  if (length(wm) > 0) {
+    expect_true(all(wm %in% c(0L, 1L)))
+  }
+})
+
 test_that("ATL08: every column in the registry round-trips", {
   skip_unless_integration()
   granules <- search_or_skip("ATL08", max_granules = 7L, date_range = test_date_range_icesat2(), bbox = test_bbox_icesat2())

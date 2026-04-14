@@ -85,11 +85,50 @@ test_that("L1B: every scalar column in the registry round-trips", {
   missing <- character(0)
   for (nm in registry_names) {
     if (nm %in% out_names) next
-    pattern <- paste0("^", nm, "\\d+$")
-    if (any(grepl(pattern, out_names))) next
+    # 2D expansion: rh -> rh0, rh1, ...
+    if (any(grepl(paste0("^", nm, "\\d+$"), out_names))) next
+    # Transposed 2D expansion: surface_type -> surface_type_land, ...
+    if (any(grepl(paste0("^", nm, "_[a-z_]+$"), out_names))) next
     missing <- c(missing, nm)
   }
   expect_equal(missing, character(0))
+})
+
+test_that("L1B: surface_type expands into 5 boolean columns with sensible geography", {
+  # surface_type is stored as a transposed `[5, N]` dataset in L1B (the
+  # only such layout across all supported products). The Rust reader
+  # reads the full matrix and emits one column per category. This test
+  # exercises that pipeline end-to-end and sanity-checks the values:
+  #   - column names match .gedi_l1b_transposed_columns labels
+  #   - each column is integer 0/1
+  #   - for the PNW forest bbox, `surface_type_land` should be set for
+  #     essentially every shot, and `sea_ice` / `land_ice` should be
+  #     zero everywhere (coastal CA has no ice).
+  skip_unless_integration()
+  granules <- search_or_skip("L1B", max_granules = 1L)
+
+  data <- sl_read(granules, columns = c("shot_number", "surface_type"))
+  expect_gt(nrow(data), 0)
+
+  expected <- c(
+    "surface_type_land", "surface_type_ocean",
+    "surface_type_sea_ice", "surface_type_land_ice",
+    "surface_type_inland_water"
+  )
+  expect_true(all(expected %in% names(data)))
+
+  # All five columns should be integer 0/1
+  for (nm in expected) {
+    vals <- data[[nm]]
+    expect_true(is.integer(vals) || is.numeric(vals))
+    expect_true(all(vals %in% c(0L, 1L)))
+  }
+
+  # Geography: PNW forest bbox should be ~100% land, and contain
+  # zero sea_ice / land_ice shots.
+  expect_gt(mean(data$surface_type_land == 1L), 0.95)
+  expect_equal(sum(data$surface_type_sea_ice), 0L)
+  expect_equal(sum(data$surface_type_land_ice), 0L)
 })
 
 test_that("L1B: rxwaveform and txwaveform are returned as list columns", {

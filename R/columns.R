@@ -76,9 +76,10 @@
   range_bias_correction              = "geolocation/range_bias_correction",
   solar_azimuth                      = "geolocation/solar_azimuth",
   solar_elevation                    = "geolocation/solar_elevation",
-  # surface_type is 2D [5, N] with a transposed layout (surface types
-  # in dim 0, shots in dim 1). Our reader assumes dim 0 = rows, so it
-  # can't handle this dataset correctly. Available via sl_hdf5_read().
+  # surface_type is transposed 2D [5, N]. It expands into 5 boolean
+  # columns named surface_type_{land,ocean,sea_ice,land_ice,inland_water}
+  # via the transposed-columns machinery in product_transposed_columns().
+  surface_type                       = "geolocation/surface_type",
   # Geophysical corrections live under geophys_corr/, not geolocation/.
   dynamic_atmosphere_correction      = "geophys_corr/dynamic_atmosphere_correction",
   geoid                              = "geophys_corr/geoid",
@@ -125,6 +126,28 @@
 #' does not silently download tens of megabytes per beam.
 #' @noRd
 .gedi_l1b_pool_columns <- c("rxwaveform", "txwaveform")
+
+#' L1B transposed 2D datasets.
+#'
+#' These are datasets stored as `[K, N]` in HDF5 (K categories × N shots)
+#' rather than the usual `[N, K]` (shots × bins). They can't be handled
+#' by the standard 2D expansion (which assumes dim 0 is the shot
+#' dimension). Instead, the Rust reader reads the full dataset and
+#' emits K separate columns named `{base}_{label1}`, `{base}_{label2}`,
+#' etc. using the labels here.
+#'
+#' surface_type with shape `(5, N)` is the only known transposed dataset across all
+#' currently supported products. The other candidates from the data
+#' dictionaries (ATL03 signal_conf_ph, ATL08 canopy_h_metrics, etc.)
+#' are stored `[N, K]` in the actual files despite being described
+#' `(K, :)` in the docs, and use the standard 2D expansion.
+#' @noRd
+.gedi_l1b_transposed_columns <- list(
+  surface_type = list(
+    path = "geolocation/surface_type",
+    labels = c("land", "ocean", "sea_ice", "land_ice", "inland_water")
+  )
+)
 
 #' Index columns needed to slice each pool column into per-shot vectors.
 #'
@@ -964,6 +987,59 @@ product_pool_columns <- function(product) {
     L2B = .gedi_l2b_pool_columns,
     character(0)
   )
+}
+
+#' Transposed-column registry for a given product.
+#'
+#' Returns a named list where each entry describes a transposed 2D
+#' dataset: `list(path = "hdf5/path", labels = c("cat1", "cat2", ...))`.
+#' Only GEDI L1B has transposed datasets in the current registry
+#' (surface_type). Other products return an empty list.
+#' @noRd
+product_transposed_columns <- function(product) {
+  switch(
+    product,
+    L1B = .gedi_l1b_transposed_columns,
+    list()
+  )
+}
+
+#' Split a resolved column list into scalar and transposed components.
+#'
+#' Transposed columns are identified by their HDF5 path matching an entry
+#' in the product's transposed registry.
+#' @noRd
+split_transposed_columns <- function(columns, product) {
+  trans_map <- product_transposed_columns(product)
+  if (length(trans_map) == 0L) {
+    return(list(scalar = columns, transposed = list()))
+  }
+  trans_paths <- vapply(trans_map, function(e) e$path, character(1))
+  is_trans <- columns %in% trans_paths
+  # Build a list of (path, labels) entries for the matched columns
+  matched <- lapply(columns[is_trans], function(p) {
+    idx <- match(p, trans_paths)
+    list(path = p, labels = trans_map[[idx]]$labels)
+  })
+  list(
+    scalar = columns[!is_trans],
+    transposed = matched
+  )
+}
+
+#' Build colon-delimited transposed column specs for the Rust FFI.
+#'
+#' Each spec is `"path:label1,label2,label3,..."`. The Rust side parses
+#' these, reads the full transposed dataset per beam, and emits one
+#' column per label with values extracted for the selected shots.
+#' @noRd
+build_transposed_specs <- function(transposed_entries) {
+  if (length(transposed_entries) == 0L) {
+    return(character(0))
+  }
+  vapply(transposed_entries, function(e) {
+    paste(e$path, paste(e$labels, collapse = ","), sep = ":")
+  }, character(1))
 }
 
 #' Index-column map for pool columns in a given product.

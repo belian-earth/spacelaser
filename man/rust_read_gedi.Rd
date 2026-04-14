@@ -15,7 +15,8 @@ rust_read_gedi(
   beams,
   username,
   password,
-  pool_columns
+  pool_columns,
+  transposed_columns
 )
 }
 \description{

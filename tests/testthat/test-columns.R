@@ -3,8 +3,9 @@
 # ---------------------------------------------------------------------------
 
 test_that("sl_columns() returns correct counts for GEDI products", {
-  # surface_type removed (transposed 2D layout not supported)
-  expect_length(sl_columns("L1B"), 80)
+  # surface_type re-added: handled via transposed-column machinery,
+  # expands to 5 boolean columns (land/ocean/sea_ice/land_ice/inland_water)
+  expect_length(sl_columns("L1B"), 81)
   expect_length(sl_columns("L2A"), 45)
   expect_length(sl_columns("L2B"), 76)
   expect_length(sl_columns("L4A"), 39)

@@ -144,10 +144,12 @@ pub async fn read_product_groups(
     columns: Option<Vec<String>>,
     groups: Option<Vec<String>>,
     pool_columns: Option<Vec<String>>,
+    transposed_columns: Option<Vec<String>>,
 ) -> Result<Vec<GroupData>, Hdf5Error> {
     // R always resolves defaults; empty vec is a no-op safety net.
     let columns: Vec<String> = columns.unwrap_or_default();
     let pool_columns: Vec<String> = pool_columns.unwrap_or_default();
+    let transposed_columns: Vec<String> = transposed_columns.unwrap_or_default();
 
     let group_list: Vec<String> = groups.unwrap_or_else(|| {
         product.group_names().into_iter().map(String::from).collect()
@@ -157,9 +159,10 @@ pub async fn read_product_groups(
     let beam_futures: Vec<_> = group_list.iter().map(|group_name| {
         let columns = &columns;
         let pool_columns = &pool_columns;
+        let transposed_columns = &transposed_columns;
         let group_name = group_name.clone();
         async move {
-            read_single_group(file, &group_name, product, bbox, columns, pool_columns).await
+            read_single_group(file, &group_name, product, bbox, columns, pool_columns, transposed_columns).await
         }
     }).collect();
 
@@ -185,6 +188,7 @@ async fn read_single_group(
     bbox: BBox,
     columns: &[String],
     pool_columns: &[String],
+    transposed_columns: &[String],
 ) -> Result<Option<GroupData>, Hdf5Error> {
     let group_path = format!("/{}", group_name);
 
@@ -418,6 +422,85 @@ async fn read_single_group(
             Err(e) => {
                 log::warn!("Failed to read pool column '{}': {}", pool_name, e);
             }
+        }
+    }
+
+    // 6. Transposed 2D columns: read full `[K, N]` dataset (small),
+    //    then emit K separate columns named `{base}_{label}` with values
+    //    extracted for the selected shots.
+    //
+    //    Each spec is formatted "path:label1,label2,...,labelK". The
+    //    dataset's first dim is K (categories); the second dim is N
+    //    (total shots in the group). Byte layout is row-major:
+    //    element (i, j) is at offset (i * N + j) * elem_size.
+    for spec in transposed_columns.iter() {
+        let (path_part, labels_part) = match spec.split_once(':') {
+            Some(p) => p,
+            None => {
+                log::warn!("Invalid transposed spec (expected path:labels): {}", spec);
+                continue;
+            }
+        };
+        let labels: Vec<&str> = labels_part.split(',').collect();
+        let k = labels.len();
+        if k == 0 {
+            continue;
+        }
+
+        let col_path = format!("{}/{}", group_path, path_part);
+        let (meta, bytes) = match file.read_dataset(&col_path).await {
+            Ok(v) => v,
+            Err(Hdf5Error::PathNotFound(_)) => continue,
+            Err(e) => {
+                log::warn!("Failed to read transposed column '{}': {}", path_part, e);
+                continue;
+            }
+        };
+
+        let elem_size = meta.datatype.size();
+        let dims = &meta.dataspace.dims;
+        if dims.len() < 2 {
+            log::warn!("Transposed column '{}' is not 2D (dims: {:?})", path_part, dims);
+            continue;
+        }
+        let n_total = dims[1] as usize;
+        if dims[0] as usize != k {
+            log::warn!(
+                "Transposed column '{}' dim 0 ({}) does not match label count ({})",
+                path_part, dims[0], k
+            );
+            continue;
+        }
+
+        // Extract a short base name (strip subgroup prefix, like "geolocation/")
+        let base_name = match path_part.rfind('/') {
+            Some(pos) => &path_part[pos + 1..],
+            None => path_part,
+        };
+
+        // For each category i: extract the selected shots' values from
+        // the i-th row of the [K, N] matrix. Row i starts at offset
+        // (i * N) * elem_size in the byte buffer.
+        for (i, label) in labels.iter().enumerate() {
+            let row_start = i * n_total * elem_size;
+            let mut cat_bytes = Vec::with_capacity(selected_indices.len() * elem_size);
+            for &shot_idx in &selected_indices {
+                let byte_off = row_start + (shot_idx as usize) * elem_size;
+                let byte_end = byte_off + elem_size;
+                if byte_end <= bytes.len() {
+                    cat_bytes.extend_from_slice(&bytes[byte_off..byte_end]);
+                }
+            }
+            let col_name = format!("{}_{}", base_name, label);
+            col_data.insert(
+                col_name,
+                ColumnData {
+                    bytes: cat_bytes,
+                    element_size: elem_size,
+                    num_elements: selected_indices.len(),
+                    dtype_desc: format!("{:?}", meta.datatype),
+                },
+            );
         }
     }
 

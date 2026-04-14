@@ -98,28 +98,61 @@ impl Dataset {
                 }).collect();
                 let all_data = try_join_all(chunk_futs).await?;
 
-                // Sort by offset and concatenate
-                let mut all_data_sorted = all_data;
-                all_data_sorted.sort_by_key(|(ci, _)| ci.offsets.first().copied().unwrap_or(0));
-
+                let dataset_dims = &self.meta.dataspace.dims;
                 let total_elements = self.meta.dataspace.num_elements() as usize;
                 let total_bytes = total_elements * element_size;
                 let mut result = vec![0u8; total_bytes];
 
-                let row_size = if ndims > 1 {
-                    chunk_dims[1..].iter().map(|d| *d as usize).product::<usize>()
-                        * (*elem_sz as usize)
+                if ndims <= 1 {
+                    // 1D path: each chunk's data occupies a contiguous slice
+                    // starting at element offset = offsets[0].
+                    for (ci, data) in &all_data {
+                        let start = ci.offsets.first().copied().unwrap_or(0) as usize;
+                        let dst_offset = start * element_size;
+                        let copy_len = data.len().min(result.len().saturating_sub(dst_offset));
+                        if copy_len > 0 {
+                            result[dst_offset..dst_offset + copy_len]
+                                .copy_from_slice(&data[..copy_len]);
+                        }
+                    }
                 } else {
-                    element_size
-                };
+                    // 2D path: each chunk covers a tile [r0..r0+rh, c0..c0+ch].
+                    // Iterate chunk rows and copy each row to its proper
+                    // (i, j) position in the flat row-major output buffer.
+                    // Required because chunks of `[K, N]` datasets (e.g.
+                    // L1B surface_type [5, N]) all share offsets[0] = 0
+                    // and differ only in offsets[1] — naive placement
+                    // would have them overwrite each other at offset 0.
+                    let dim0 = dataset_dims[0] as usize;
+                    let dim1 = dataset_dims[1] as usize;
+                    let chunk_rh = chunk_dims[0] as usize;
+                    let chunk_ch = chunk_dims[1] as usize;
+                    let chunk_row_bytes = chunk_ch * element_size;
+                    let dst_row_bytes = dim1 * element_size;
 
-                for (ci, data) in &all_data_sorted {
-                    let start_row = ci.offsets.first().copied().unwrap_or(0) as usize;
-                    let dst_offset = start_row * row_size;
-                    let copy_len = data.len().min(result.len().saturating_sub(dst_offset));
-                    if copy_len > 0 {
-                        result[dst_offset..dst_offset + copy_len]
-                            .copy_from_slice(&data[..copy_len]);
+                    for (ci, data) in &all_data {
+                        let r0 = ci.offsets.first().copied().unwrap_or(0) as usize;
+                        let c0 = ci.offsets.get(1).copied().unwrap_or(0) as usize;
+                        if r0 >= dim0 || c0 >= dim1 {
+                            continue;
+                        }
+                        let rows_in_chunk = chunk_rh.min(dim0 - r0);
+                        let cols_in_chunk = chunk_ch.min(dim1 - c0);
+                        let copy_row_bytes = cols_in_chunk * element_size;
+
+                        for j in 0..rows_in_chunk {
+                            let src_off = j * chunk_row_bytes;
+                            let src_end = src_off + copy_row_bytes;
+                            if src_end > data.len() {
+                                break;
+                            }
+                            let dst_off = (r0 + j) * dst_row_bytes + c0 * element_size;
+                            let dst_end = dst_off + copy_row_bytes;
+                            if dst_end <= result.len() {
+                                result[dst_off..dst_end]
+                                    .copy_from_slice(&data[src_off..src_end]);
+                            }
+                        }
                     }
                 }
 

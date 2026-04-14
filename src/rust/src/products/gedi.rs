@@ -111,6 +111,7 @@ pub async fn read_gedi(
     columns: Option<Vec<String>>,
     beams: Option<Vec<String>>,
     pool_columns: Option<Vec<String>>,
+    transposed_columns: Option<Vec<String>>,
 ) -> Result<Vec<GroupData>, Hdf5Error> {
-    common::read_product_groups(file, &product, bbox, columns, beams, pool_columns).await
+    common::read_product_groups(file, &product, bbox, columns, beams, pool_columns, transposed_columns).await
 }

@@ -378,15 +378,19 @@ prepare_read_params <- function(product, bbox, columns, lat_col, lon_col) {
   bbox <- validate_bbox(bbox)
   columns <- validate_columns(columns, product)
   columns <- ensure_lat_lon(columns, lat_col, lon_col)
-  split <- split_pool_columns(columns, product)
-  scalar_cols <- ensure_pool_indices(split$scalar, split$pool_short, product)
-  pool_specs <- build_pool_specs(split$pool_short, split$pool_paths, product)
+  # Split into: transposed 2D columns, pool columns, and regular scalars
+  trans_split <- split_transposed_columns(columns, product)
+  pool_split <- split_pool_columns(trans_split$scalar, product)
+  scalar_cols <- ensure_pool_indices(pool_split$scalar, pool_split$pool_short, product)
+  pool_specs <- build_pool_specs(pool_split$pool_short, pool_split$pool_paths, product)
+  transposed_specs <- build_transposed_specs(trans_split$transposed)
   list(
     bbox = unclass(bbox),
     scalar_cols = scalar_cols,
     pool_specs = pool_specs,
-    pool_short = split$pool_short,
+    pool_short = pool_split$pool_short,
     pool_idx_map = product_pool_index_map(product),
+    transposed_specs = transposed_specs,
     fill_values = product_fill_values(product),
     scale_factors = product_scale_factors(product),
     creds = sl_earthdata_creds()
@@ -410,7 +414,8 @@ call_rust_reader <- function(rust_fn, target, product, params) {
     NULL,
     params$creds$username,
     params$creds$password,
-    if (length(params$pool_specs) > 0L) params$pool_specs else NULL
+    if (length(params$pool_specs) > 0L) params$pool_specs else NULL,
+    if (length(params$transposed_specs) > 0L) params$transposed_specs else NULL
   )
 }
 

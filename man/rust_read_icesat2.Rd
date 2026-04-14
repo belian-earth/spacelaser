@@ -15,7 +15,8 @@ rust_read_icesat2(
   tracks,
   username,
   password,
-  pool_columns
+  pool_columns,
+  transposed_columns
 )
 }
 \description{

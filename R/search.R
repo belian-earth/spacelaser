@@ -40,7 +40,20 @@
 #' @export
 sl_search <- function(
   bbox,
-  product = c("L2A", "L2B", "L4A", "L4C", "L1B", "ATL03", "ATL06", "ATL07", "ATL08", "ATL10", "ATL13", "ATL24"),
+  product = c(
+    "L2A",
+    "L2B",
+    "L4A",
+    "L4C",
+    "L1B",
+    "ATL03",
+    "ATL06",
+    "ATL07",
+    "ATL08",
+    "ATL10",
+    "ATL13",
+    "ATL24"
+  ),
   date_start = NULL,
   date_end = NULL
 ) {
@@ -71,18 +84,78 @@ sl_search <- function(
 product_search_spec <- function(product) {
   switch(
     product,
-    L1B   = list(sensor = "gedi",    concept_id = "C2142749196-LPCLOUD",  default_start = "2019-03-25", label = "GEDI L1B"),
-    L2A   = list(sensor = "gedi",    concept_id = "C2142771958-LPCLOUD",  default_start = "2019-03-25", label = "GEDI L2A"),
-    L2B   = list(sensor = "gedi",    concept_id = "C2142776747-LPCLOUD",  default_start = "2019-03-25", label = "GEDI L2B"),
-    L4A   = list(sensor = "gedi",    concept_id = "C2237824918-ORNL_CLOUD", default_start = "2019-03-25", label = "GEDI L4A"),
-    L4C   = list(sensor = "gedi",    concept_id = "C3049900163-ORNL_CLOUD", default_start = "2019-03-25", label = "GEDI L4C"),
-    ATL03 = list(sensor = "icesat2", concept_id = "C3326974349-NSIDC_CPRD", default_start = "2018-10-14", label = "ICESat-2 ATL03"),
-    ATL06 = list(sensor = "icesat2", concept_id = "C3564876127-NSIDC_CPRD", default_start = "2018-10-14", label = "ICESat-2 ATL06"),
-    ATL07 = list(sensor = "icesat2", concept_id = "C3564876395-NSIDC_CPRD", default_start = "2018-10-14", label = "ICESat-2 ATL07"),
-    ATL08 = list(sensor = "icesat2", concept_id = "C3565574177-NSIDC_CPRD", default_start = "2018-10-14", label = "ICESat-2 ATL08"),
-    ATL10 = list(sensor = "icesat2", concept_id = "C3565574246-NSIDC_CPRD", default_start = "2018-10-14", label = "ICESat-2 ATL10"),
-    ATL13 = list(sensor = "icesat2", concept_id = "C3565574351-NSIDC_CPRD", default_start = "2018-10-14", label = "ICESat-2 ATL13"),
-    ATL24 = list(sensor = "icesat2", concept_id = "C3433822507-NSIDC_CPRD", default_start = "2018-10-14", label = "ICESat-2 ATL24")
+    L1B = list(
+      sensor = "gedi",
+      concept_id = "C2142749196-LPCLOUD",
+      default_start = "2019-03-25",
+      label = "GEDI L1B"
+    ),
+    L2A = list(
+      sensor = "gedi",
+      concept_id = "C2142771958-LPCLOUD",
+      default_start = "2019-03-25",
+      label = "GEDI L2A"
+    ),
+    L2B = list(
+      sensor = "gedi",
+      concept_id = "C2142776747-LPCLOUD",
+      default_start = "2019-03-25",
+      label = "GEDI L2B"
+    ),
+    L4A = list(
+      sensor = "gedi",
+      concept_id = "C2237824918-ORNL_CLOUD",
+      default_start = "2019-03-25",
+      label = "GEDI L4A"
+    ),
+    L4C = list(
+      sensor = "gedi",
+      concept_id = "C3049900163-ORNL_CLOUD",
+      default_start = "2019-03-25",
+      label = "GEDI L4C"
+    ),
+    ATL03 = list(
+      sensor = "icesat2",
+      concept_id = "C3326974349-NSIDC_CPRD",
+      default_start = "2018-10-14",
+      label = "ICESat-2 ATL03"
+    ),
+    ATL06 = list(
+      sensor = "icesat2",
+      concept_id = "C3564876127-NSIDC_CPRD",
+      default_start = "2018-10-14",
+      label = "ICESat-2 ATL06"
+    ),
+    ATL07 = list(
+      sensor = "icesat2",
+      concept_id = "C3564876395-NSIDC_CPRD",
+      default_start = "2018-10-14",
+      label = "ICESat-2 ATL07"
+    ),
+    ATL08 = list(
+      sensor = "icesat2",
+      concept_id = "C3565574177-NSIDC_CPRD",
+      default_start = "2018-10-14",
+      label = "ICESat-2 ATL08"
+    ),
+    ATL10 = list(
+      sensor = "icesat2",
+      concept_id = "C3565574246-NSIDC_CPRD",
+      default_start = "2018-10-14",
+      label = "ICESat-2 ATL10"
+    ),
+    ATL13 = list(
+      sensor = "icesat2",
+      concept_id = "C3565574351-NSIDC_CPRD",
+      default_start = "2018-10-14",
+      label = "ICESat-2 ATL13"
+    ),
+    ATL24 = list(
+      sensor = "icesat2",
+      concept_id = "C3433822507-NSIDC_CPRD",
+      default_start = "2018-10-14",
+      label = "ICESat-2 ATL24"
+    )
   )
 }
 
@@ -140,8 +213,9 @@ search_cmr <- function(bbox, concept_id, date_start, date_end, product_label) {
   }
 
   result <- build_find_result(entries)
+  rl <- nrow(result)
   cli::cli_inform(c(
-    "v" = "Found {nrow(result)} {product_label} granule{?s}."
+    "v" = "Found {rl} {product_label} {cli::qty(rl)} granule{?s}."
   ))
 
   # Attach class and product metadata for S3 dispatch in grab()

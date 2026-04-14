@@ -14,3 +14,4 @@
 ^src/Makevars$
 ^src/Makevars\.win$
 ^data-raw$
+^codecov\.yml$

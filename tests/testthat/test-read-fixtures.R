@@ -151,3 +151,111 @@ test_that("L2A fixture: geometry column is wk_wkt with longlat CRS", {
   crs <- attr(data$geometry, "crs") %||% wk::wk_crs(data$geometry)
   expect_false(is.null(crs))
 })
+
+# ---------------------------------------------------------------------------
+# GEDI L2B
+# ---------------------------------------------------------------------------
+
+test_that("L2B fixture: sl_read returns a tibble with expected shape", {
+  skip_if_not(file.exists(fixture_path("gedi-l2b.h5")),
+              "L2B fixture not built")
+
+  data <- sl_read(fixture_path("gedi-l2b.h5"),
+                  product = "L2B", bbox = fixture_bbox())
+
+  expect_s3_class(data, "data.frame")
+  expect_equal(nrow(data), 500L)
+  expect_setequal(unique(data$beam), c("BEAM0000", "BEAM0101"))
+  # L2B-specific: lat/lon come from geolocation/ subgroup. After prefix
+  # stripping only the short name appears — same as L2A's user-facing
+  # convention.
+  expect_true(all(c("lat_lowestmode", "lon_lowestmode") %in% names(data)))
+  expect_false(any(grepl("^geolocation/", names(data))))
+})
+
+test_that("L2B fixture: spatial filter respects geolocation/ lat/lon path", {
+  skip_if_not(file.exists(fixture_path("gedi-l2b.h5")))
+  bb <- fixture_bbox(); b <- unclass(bb)
+
+  data <- sl_read(fixture_path("gedi-l2b.h5"), product = "L2B", bbox = bb)
+
+  expect_true(all(data$lon_lowestmode >= b[["xmin"]] &
+                    data$lon_lowestmode <= b[["xmax"]]))
+  expect_true(all(data$lat_lowestmode >= b[["ymin"]] &
+                    data$lat_lowestmode <= b[["ymax"]]))
+})
+
+test_that("L2B fixture: cover_z, pai_z, pavd_z each expand into 30 columns", {
+  skip_if_not(file.exists(fixture_path("gedi-l2b.h5")))
+
+  data <- sl_read(fixture_path("gedi-l2b.h5"),
+                  product = "L2B", bbox = fixture_bbox(),
+                  columns = c("cover_z", "pai_z", "pavd_z"))
+
+  for (base in c("cover_z", "pai_z", "pavd_z")) {
+    pat <- paste0("^", base, "\\d+$")
+    cols <- grep(pat, names(data), value = TRUE)
+    expect_equal(length(cols), 30L,
+                 info = sprintf("%s should produce 30 expanded columns", base))
+    # Generator uses max = 10, values should land in that range
+    expect_true(all(is.finite(data[[cols[1]]])))
+    expect_true(all(data[[cols[1]]] >= 0 & data[[cols[1]]] <= 10))
+  }
+})
+
+test_that("L2B fixture: pgap_theta_z pool column returns per-shot list", {
+  skip_if_not(file.exists(fixture_path("gedi-l2b.h5")))
+
+  data <- sl_read(fixture_path("gedi-l2b.h5"),
+                  product = "L2B", bbox = fixture_bbox(),
+                  columns = c("shot_number", "pgap_theta_z"))
+
+  expect_true("pgap_theta_z" %in% names(data))
+  expect_type(data$pgap_theta_z, "list")
+  # Every shot should have the same sample count in this fixture (30),
+  # and every element should be a finite numeric vector of that length.
+  lengths_ok <- vapply(data$pgap_theta_z, length, integer(1))
+  expect_true(all(lengths_ok == 30L))
+  sample_vec <- data$pgap_theta_z[[1L]]
+  expect_type(sample_vec, "double")
+  expect_true(all(is.finite(sample_vec)))
+  # Non-trivial content: shouldn't be all zeros (that would signal
+  # wrong index arithmetic — the 1-based → 0-based conversion bug
+  # we fixed before).
+  expect_true(any(sample_vec != 0))
+})
+
+test_that("L2B fixture: pool read auto-adds required index columns", {
+  skip_if_not(file.exists(fixture_path("gedi-l2b.h5")))
+
+  # User didn't ask for rx_sample_start_index / rx_sample_count, but
+  # the reader must include them in order to slice the pool. They
+  # should either appear in the output OR be silently consumed.
+  data <- sl_read(fixture_path("gedi-l2b.h5"),
+                  product = "L2B", bbox = fixture_bbox(),
+                  columns = c("pgap_theta_z"))
+
+  expect_true("pgap_theta_z" %in% names(data))
+  # And the shot count is still right, confirming the index columns
+  # were resolved and used correctly.
+  expect_equal(nrow(data), 500L)
+})
+
+test_that("L2B fixture: every registry column round-trips when requested", {
+  skip_if_not(file.exists(fixture_path("gedi-l2b.h5")))
+
+  data <- sl_read(fixture_path("gedi-l2b.h5"),
+                  product = "L2B", bbox = fixture_bbox(),
+                  columns = names(sl_columns("L2B")))
+
+  registry_names <- names(sl_columns("L2B"))
+  out_names <- names(data)
+  missing <- character(0)
+  for (nm in registry_names) {
+    if (nm %in% out_names) next
+    if (any(grepl(paste0("^", nm, "\\d+$"), out_names))) next
+    if (any(grepl(paste0("^", nm, "_[a-z_]+$"), out_names))) next
+    missing <- c(missing, nm)
+  }
+  expect_equal(missing, character(0))
+})

@@ -1,0 +1,194 @@
+{
+    "feed": {
+        "updated": "2026-04-14T13:17:26.804Z",
+        "id": "https://cmr.earthdata.nasa.gov:443/search/granules.json?page_size=2000&concept_id=C2237824918-ORNL_CLOUD&bounding_box=-124.04,41.39,-124.01,41.42&temporal=2020-06-01T00:00:00Z,2020-09-01T00:00:00Z&pageNum=1",
+        "title": "ECHO granule metadata",
+        "entry": [
+            {
+                "time_start": "2020-07-19T09:56:39.000Z",
+                "updated": "2025-09-25T19:27:06.000Z",
+                "dataset_id": "GEDI L4A Footprint Level Aboveground Biomass Density, Version 2.1",
+                "data_center": "ORNL_CLOUD",
+                "title": "GEDI_L4A_AGB_Density_V2_1.GEDI04_A_2020201091035_O09069_03_T01674_02_002_02_V002.h5",
+                "coordinate_system": "GEODETIC",
+                "day_night_flag": "BOTH",
+                "time_end": "2020-07-19T10:19:49.000Z",
+                "id": "G2613766851-ORNL_CLOUD",
+                "original_format": "ECHO10",
+                "granule_size": "312.458073",
+                "browse_flag": false,
+                "polygons": [
+                    [
+                        "51.7753754 -167.720932 51.5978661 -161.738205 51.0945015 -155.8523102 50.2781067 -150.1424713 49.16399 -144.6501312 47.7796898 -139.4466095 46.1511574 -134.5499268 44.3040352 -129.9665375 42.2650642 -125.6909103 40.0586281 -121.7084732 37.7067299 -117.9996262 35.2276497 -114.5367813 32.6475639 -111.3043976 29.9647579 -108.259903 27.2069283 -105.3934402 24.3861561 -102.6815109 21.5017109 -100.0940323 18.5779095 -97.6223831 15.6059198 -95.2368011 12.6080198 -92.9300919 9.5862217 -90.6822052 6.5492821 -88.4803238 3.4944489 -86.3048248 0.435935 -84.1470032 -0.062578 -83.7956314 -0.033564 -83.7544708 0.464934 -84.1058273 3.523524 -86.2636261 6.5785432 -88.439064 9.6157627 -90.6408386 12.6379423 -92.8885803 15.6363306 -95.1951218 18.6089363 -97.5805283 21.5334415 -100.0519943 24.4187222 -102.639328 27.2404308 -105.3511505 29.9993114 -108.2176056 32.6833 -111.2622452 35.2646561 -114.494957 37.745121 -117.9584198 40.0984955 -121.6682587 42.3064728 -125.6521606 44.3470192 -129.9298553 46.1957207 -134.516037 47.8257637 -139.4163361 49.2114601 -144.6243896 50.3267708 -150.1221619 51.1440849 -155.8382416 51.6480293 -161.7310181 51.825737 -167.7203827 51.7753754 -167.720932"
+                    ]
+                ],
+                "collection_concept_id": "C2237824918-ORNL_CLOUD",
+                "online_access_flag": true,
+                "links": [
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/data#",
+                        "title": "Download GEDI04_A_2020201091035_O09069_03_T01674_02_002_02_V002.h5",
+                        "hreflang": "en-US",
+                        "href": "https://data.ornldaac.earthdata.nasa.gov/protected/gedi/GEDI_L4A_AGB_Density_V2_1/data/GEDI04_A_2020201091035_O09069_03_T01674_02_002_02_V002.h5"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/s3#",
+                        "title": "This link provides direct download access via S3 to the granule",
+                        "hreflang": "en-US",
+                        "href": "s3://ornl-cumulus-prod-protected/gedi/GEDI_L4A_AGB_Density_V2_1/data/GEDI04_A_2020201091035_O09069_03_T01674_02_002_02_V002.h5"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "title": "ORNL DAAC Data Set Documentation (USER'S GUIDE)",
+                        "hreflang": "en-US",
+                        "href": "https://daac.ornl.gov/GEDI/guides/GEDI_L4A_AGB_Density_V2_1.html"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "title": "Data set Landing Page DOI URL (DATA SET LANDING PAGE)",
+                        "hreflang": "en-US",
+                        "href": "https://doi.org/10.3334/ORNLDAAC/2056"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "title": "Data Set Documentation (GENERAL DOCUMENTATION)",
+                        "hreflang": "en-US",
+                        "href": "https://data.ornldaac.earthdata.nasa.gov/public/gedi/GEDI_L4A_AGB_Density_V2_1/comp/GEDI_ATBD_L4A_v1.0.pdf"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "title": "Data Set Documentation (GENERAL DOCUMENTATION)",
+                        "hreflang": "en-US",
+                        "href": "https://data.ornldaac.earthdata.nasa.gov/public/gedi/GEDI_L4A_AGB_Density_V2_1/comp/GEDI_L4A_AGB_Density_V2_1.pdf"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "title": "Data Set Documentation (GENERAL DOCUMENTATION)",
+                        "hreflang": "en-US",
+                        "href": "https://data.ornldaac.earthdata.nasa.gov/public/gedi/GEDI_L4A_AGB_Density_V2_1/comp/GEDI_L4A_V2_Common_Queries.pdf"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "title": "Data Set Documentation (GENERAL DOCUMENTATION)",
+                        "hreflang": "en-US",
+                        "href": "https://data.ornldaac.earthdata.nasa.gov/public/gedi/GEDI_L4A_AGB_Density_V2_1/comp/GEDI_L4A_V2_Product_Data_Dictionary.pdf"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "title": "Data Set Documentation (GENERAL DOCUMENTATION)",
+                        "hreflang": "en-US",
+                        "href": "https://data.ornldaac.earthdata.nasa.gov/public/gedi/GEDI_L4A_AGB_Density_V2_1/comp/list_of_deleted_files_mw_163_182.txt"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "title": "Data Set Documentation (GENERAL DOCUMENTATION)",
+                        "hreflang": "en-US",
+                        "href": "https://data.ornldaac.earthdata.nasa.gov/public/gedi/GEDI_L4A_AGB_Density_V2_1/comp/list_of_deleted_files_orbits_17591_09899.txt"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "title": "Data Set Documentation (GENERAL DOCUMENTATION)",
+                        "hreflang": "en-US",
+                        "href": "https://data.ornldaac.earthdata.nasa.gov/public/gedi/GEDI_L4A_AGB_Density_V2_1/comp/list_of_revised_files_mw_163_182.txt"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "title": "Data Set Documentation (GENERAL DOCUMENTATION)",
+                        "hreflang": "en-US",
+                        "href": "https://data.ornldaac.earthdata.nasa.gov/public/gedi/GEDI_L4A_AGB_Density_V2_1/comp/list_of_revised_files_orbits_17591_09899.txt"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "title": "api endpoint to retrieve temporary credentials valid for same-region direct s3 access (VIEW RELATED INFORMATION)",
+                        "hreflang": "en-US",
+                        "href": "https://data.ornldaac.earthdata.nasa.gov/s3credentials"
+                    },
+                    {
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/service#",
+                        "title": "OPeNDAP request URL (GET DATA : OPENDAP DATA)",
+                        "hreflang": "en-US",
+                        "href": "https://opendap.earthdata.nasa.gov/collections/C2237824918-ORNL_CLOUD/granules/GEDI_L4A_AGB_Density_V2_1.GEDI04_A_2020201091035_O09069_03_T01674_02_002_02_V002.h5"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/data#",
+                        "hreflang": "en-US",
+                        "href": "https://search.earthdata.nasa.gov/search?q=GEDI_L4A_AGB_Density_V2_1_2056&ac=true"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "hreflang": "en-US",
+                        "href": "https://doi.org/10.3334/ORNLDAAC/2056"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/service#",
+                        "hreflang": "en-US",
+                        "href": "https://opendap.earthdata.nasa.gov/"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/metadata#",
+                        "hreflang": "en-US",
+                        "href": "https://gedi.umd.edu"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://data.ornldaac.earthdata.nasa.gov/public/gedi/GEDI_L4A_AGB_Density_V2_1/comp/GEDI_L4A_AGB_Density_V2_1.pdf"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://data.ornldaac.earthdata.nasa.gov/public/gedi/GEDI_L4A_AGB_Density_V2_1/comp/GEDI_L4A_AGB_Density_V2_1.pdf"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://data.ornldaac.earthdata.nasa.gov/public/gedi/GEDI_L4A_AGB_Density_V2_1/comp/list_of_deleted_files_mw_163_182.txt"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://data.ornldaac.earthdata.nasa.gov/public/gedi/GEDI_L4A_AGB_Density_V2_1/comp/list_of_deleted_files_orbits_17591_09899.txt"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://data.ornldaac.earthdata.nasa.gov/public/gedi/GEDI_L4A_AGB_Density_V2_1/comp/list_of_revised_files_orbits_17591_09899.txt"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://data.ornldaac.earthdata.nasa.gov/public/gedi/GEDI_L4A_AGB_Density_V2_1/comp/GEDI_ATBD_L4A_v1.0.pdf"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://data.ornldaac.earthdata.nasa.gov/public/gedi/GEDI_L4A_AGB_Density_V2_1/comp/GEDI_L4A_V2_Product_Data_Dictionary.pdf"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://data.ornldaac.earthdata.nasa.gov/public/gedi/GEDI_L4A_AGB_Density_V2_1/comp/GEDI_L4A_V2_Common_Queries.pdf"
+                    },
+                    {
+                        "inherited": true,
+                        "rel": "http://esipfed.org/ns/fedsearch/1.1/documentation#",
+                        "hreflang": "en-US",
+                        "href": "https://data.ornldaac.earthdata.nasa.gov/public/gedi/GEDI_L4A_AGB_Density_V2_1/comp/list_of_revised_files_mw_163_182.txt"
+                    }
+                ]
+            }
+        ]
+    }
+}

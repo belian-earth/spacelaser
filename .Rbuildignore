@@ -3,4 +3,13 @@
 ^src/rust/target$
 ^src/rust/\.cargo$
 ^README\.Rmd$
+^LICENSE$
 ^LICENSE\.md$
+^\.claude$
+^dev\.R$
+^tech-docs$
+^\.vscode$
+^src/\.cargo$
+^src/rust/vendor$
+^src/Makevars$
+^src/Makevars\.win$

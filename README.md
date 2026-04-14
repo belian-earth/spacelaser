@@ -7,14 +7,30 @@
 
 [![Lifecycle:
 experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+[![extendr](https://img.shields.io/badge/extendr-*-276DC2)](https://extendr.github.io/extendr/extendr_api/)
+[![License:Apache](https://img.shields.io/github/license/belian-earth/a5R)](https://www.apache.org/licenses/LICENSE-2.0)
 <!-- badges: end -->
 
 Cloud-optimized partial reading of GEDI and ICESat-2 HDF5 data from R.
 Only the bytes needed for the requested spatial subset are fetched over
 HTTP, avoiding multi-gigabyte downloads.
 
-Supports GEDI L1B, L2A, L2B, L4A, L4C and ICESat-2 ATL03, ATL06, ATL07,
-ATL08, ATL10, ATL13, ATL24.
+## Supported products
+
+| Sensor   | Product | Description                                   |
+|:---------|:--------|:----------------------------------------------|
+| GEDI     | L1B     | Geolocated received and transmitted waveforms |
+| GEDI     | L2A     | Elevation and canopy relative height metrics  |
+| GEDI     | L2B     | Canopy cover fraction and vertical profile    |
+| GEDI     | L4A     | Footprint-level aboveground biomass density   |
+| GEDI     | L4C     | Waveform structural complexity index          |
+| ICESat-2 | ATL03   | Geolocated photon heights                     |
+| ICESat-2 | ATL06   | Land ice surface elevation                    |
+| ICESat-2 | ATL07   | Sea ice surface elevation                     |
+| ICESat-2 | ATL08   | Land and vegetation height segments           |
+| ICESat-2 | ATL10   | Sea ice freeboard                             |
+| ICESat-2 | ATL13   | Inland water surface heights                  |
+| ICESat-2 | ATL24   | Near-shore bathymetric photons                |
 
 ## Installation
 
@@ -51,34 +67,34 @@ granules <- sl_search(
   date_start = "2022-01-01", 
   date_end = "2023-01-01")
 #> ℹ Searching CMR for GEDI L2A granules
-#> ✔ Searching CMR for GEDI L2A granules [9.5s]
+#> ✔ Searching CMR for GEDI L2A granules [2.6s]
 #> 
 #> ✔ Found 9 GEDI L2A granule.
 gedi2a <- sl_read(granules)
 #> ℹ Reading L2A from 9 granules
-#> ✔ Read 579 footprint from 17 beam.✔ Reading L2A from 9 granules [1m 13.5s]
+#> ✔ Read 579 footprint from 17 beam.✔ Reading L2A from 9 granules [1m 17.6s]
 
 gedi2a
 #> # A tibble: 579 × 121
-#>     rh98  rh61  rh64  rh26  rh25  rh55 selected_algorithm quality_flag  rh47
-#>    <dbl> <dbl> <dbl> <dbl> <dbl> <dbl>              <int>        <int> <dbl>
-#>  1  84.8  71.9  72.6 39.5  30.6   70.5                  2            1  67.3
-#>  2  73.8  57.3  58.9  6.58  6.36  53.7                  2            1  45.9
-#>  3  76.0  45.7  48.1  6.06  5.68  39.6                  2            1  24.8
-#>  4  20.2  13.0  13.5  5.76  5.53  11.7                  2            1  10.2
-#>  5  80.1  63.1  64.4 10.6   9.95  58.0                  2            1  49.6
-#>  6  62.0  51.8  52.3 23.5  22.4   50.7                  2            1  48.5
-#>  7  20.6  12.9  13.3  7.85  7.70  12.2                  2            1  11.1
-#>  8  30.6  20.4  21.2  7.82  7.10  18.9                  2            1  16.7
-#>  9  71.1  59.2  59.9 51.2  51.0   58.1                  2            1  56.2
-#> 10  63.8  53.8  54.5 39.6  38.8   52.3                  1            1  49.8
+#>     rh98  rh61 energy_total  rh40      rh4  rh41  rh24    rh10  rh43  rh62  rh80
+#>    <dbl> <dbl>        <dbl> <dbl>    <dbl> <dbl> <dbl>   <dbl> <dbl> <dbl> <dbl>
+#>  1  84.8  71.9        5121. 63.8    0.890  64.3  27.4    8.11  65.3   72.1  77.2
+#>  2  73.8  57.3        4769. 18.7   -0.0300 19.9   6.13   1.90  23.3   57.9  67.3
+#>  3  76.0  45.7        4804. 15.2   -2.13   17.1   5.38   0.440 20.4   46.8  61.6
+#>  4  20.2  13.0        5023.  8.56  -1.01    8.79  5.27   0.590  9.24  13.2  16.0
+#>  5  80.1  63.1        4304. 25.8   -0.0300 29.5   9.42   2.05  31.6   63.6  70.3
+#>  6  62.0  51.8        5889. 43.8   -0.290  44.6  20.9    2.88  46.1   52.0  55.8
+#>  7  20.6  12.9        4695. 10.2    0.590  10.3   7.55   4.26  10.6   13.1  16.2
+#>  8  30.6  20.4        5299. 14.3  -36.9    14.7   6.17 -12.6   15.4   20.6  24.7
+#>  9  71.1  59.2        4393. 54.3    0.180  54.5  50.7   34.3   55.0   59.4  64.8
+#> 10  63.8  53.8        6143. 47.1   -0.480  47.5  37.9    1.08  48.3   54.0  58.2
 #> # ℹ 569 more rows
-#> # ℹ 112 more variables: rh3 <dbl>, rh45 <dbl>, rh99 <dbl>, rh91 <dbl>,
-#> #   rh9 <dbl>, rh65 <dbl>, pft_class <int>, rh71 <dbl>, rh17 <dbl>, rh20 <dbl>,
-#> #   rh75 <dbl>, rh21 <dbl>, rh87 <dbl>, rh22 <dbl>, rh68 <dbl>, rh48 <dbl>,
-#> #   rh82 <dbl>, modis_treecover <dbl>, rh1 <dbl>, energy_total <dbl>,
-#> #   rh85 <dbl>, rh57 <dbl>, rh46 <dbl>, rh62 <dbl>, rh6 <dbl>, rh41 <dbl>,
-#> #   rh80 <dbl>, beam <chr>, solar_elevation <dbl>, region_class <int>, …
+#> # ℹ 110 more variables: rh39 <dbl>, rh23 <dbl>, rh42 <dbl>, rh87 <dbl>,
+#> #   rh85 <dbl>, rh63 <dbl>, rh97 <dbl>, rh18 <dbl>, num_detectedmodes <int>,
+#> #   rh56 <dbl>, rh48 <dbl>, rh47 <dbl>, rh7 <dbl>, rh84 <dbl>, rh38 <dbl>,
+#> #   rh96 <dbl>, sensitivity <dbl>, landsat_treecover <dbl>, rh79 <dbl>,
+#> #   rh99 <dbl>, rh81 <dbl>, rh91 <dbl>, rh74 <dbl>, rh2 <dbl>, rh95 <dbl>,
+#> #   rh57 <dbl>, rh60 <dbl>, rh19 <dbl>, lon_lowestmode <dbl>, rh30 <dbl>, …
 
 # # ICESat-2 uses the same two verbs
 # granules <- sl_search(bbox, product = "ATL08")

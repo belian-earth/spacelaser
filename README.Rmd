@@ -17,14 +17,37 @@ knitr::opts_chunk$set(
 
 <!-- badges: start -->
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+[![extendr](https://img.shields.io/badge/extendr-*-276DC2)](https://extendr.github.io/extendr/extendr_api/)
+[![License:Apache](https://img.shields.io/github/license/belian-earth/a5R)](https://www.apache.org/licenses/LICENSE-2.0)
 <!-- badges: end -->
 
 Cloud-optimized partial reading of GEDI and ICESat-2 HDF5 data from R.
 Only the bytes needed for the requested spatial subset are fetched over
 HTTP, avoiding multi-gigabyte downloads.
 
-Supports GEDI L1B, L2A, L2B, L4A, L4C and ICESat-2 ATL03, ATL06, ATL07,
-ATL08, ATL10, ATL13, ATL24.
+## Supported products
+
+### GEDI
+
+| Product | Description                                   |
+|:--------|:----------------------------------------------|
+| L1B     | Geolocated received and transmitted waveforms |
+| L2A     | Elevation and canopy relative height metrics  |
+| L2B     | Canopy cover fraction and vertical profile    |
+| L4A     | Footprint-level aboveground biomass density   |
+| L4C     | Waveform structural complexity index          |
+
+### ICESat-2
+
+| Product | Description                          |
+|:--------|:-------------------------------------|
+| ATL03   | Geolocated photon heights            |
+| ATL06   | Land ice surface elevation           |
+| ATL07   | Sea ice surface elevation            |
+| ATL08   | Land and vegetation height segments  |
+| ATL10   | Sea ice freeboard                    |
+| ATL13   | Inland water surface heights         |
+| ATL24   | Near-shore bathymetric photons       |
 
 ## Installation
 
@@ -38,18 +61,29 @@ pak::pak("belian-earth/spacelaser")
 
 ## Authentication
 
-NASA Earthdata credentials are resolved from `EARTHDATA_USERNAME` /
-`EARTHDATA_PASSWORD` or a `~/.netrc` entry for `urs.earthdata.nasa.gov`.
-Register at <https://urs.earthdata.nasa.gov/> if you don't have an
-account. The simplest setup:
+All reads go through NASA Earthdata, which requires a free account.
+Register at <https://urs.earthdata.nasa.gov/>.
+
+Credentials can be supplied in any of the following ways:
+
+- **Environment variables** — set `EARTHDATA_USERNAME` and
+  `EARTHDATA_PASSWORD`. Convenient for CI and shell sessions.
+- **A `.netrc` file** — add an entry for `urs.earthdata.nasa.gov` to
+  `~/.netrc` (or `_netrc` on Windows). spacelaser will read it directly.
+- [**`earthdatalogin`**](https://boettiger-lab.github.io/earthdatalogin/) — the simplest option if you don't already have a
+  netrc set up:
 
 ```{r auth, eval = FALSE}
+# install.packages("earthdatalogin")
 earthdatalogin::edl_netrc()
 ```
 
+This writes a netrc for you and is interoperable with other R
+Earthdata tools.
+
 ## Example
 
-```{r example}
+```{r example, eval=FALSE}
 library(spacelaser)
 
 bbox <- sl_bbox(-124.04, 41.39, -124.01, 41.42)

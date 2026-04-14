@@ -82,8 +82,14 @@ write_latlon <- function(group, subgroup, lat_name, lon_name, n_shots) {
 
 # Write a 2D dataset with HDF5 shape [n_shots, n_cols]. Callers think
 # in HDF5 axes; this function handles the hdf5r transposition.
+# Creates parent subgroups on demand if `path` contains slashes.
 write_2d <- function(group, path, n_shots, n_cols, min = 0, max = 1,
                       chunk_shots = 100L) {
+  parts <- strsplit(path, "/", fixed = TRUE)[[1]]
+  if (length(parts) > 1L) {
+    parent_path <- paste(parts[-length(parts)], collapse = "/")
+    if (!group$exists(parent_path)) group$create_group(parent_path)
+  }
   m <- matrix(runif(n_shots * n_cols, min, max),
               nrow = n_cols, ncol = n_shots)
   group$create_dataset(path, robj = m,

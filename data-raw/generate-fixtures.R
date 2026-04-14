@@ -33,6 +33,7 @@ source("data-raw/fixtures/gedi-l2a.R")
 source("data-raw/fixtures/gedi-l2b.R")
 source("data-raw/fixtures/gedi-l4a.R")
 source("data-raw/fixtures/gedi-l4c.R")
+source("data-raw/fixtures/icesat2-atl08.R")
 
 generate <- function(label, maker, filename) {
   message(sprintf("Generating synthetic %s fixture", label))
@@ -46,5 +47,6 @@ generate("GEDI L2A", make_gedi_l2a, "gedi-l2a.h5")
 generate("GEDI L2B", make_gedi_l2b, "gedi-l2b.h5")
 generate("GEDI L4A", make_gedi_l4a, "gedi-l4a.h5")
 generate("GEDI L4C", make_gedi_l4c, "gedi-l4c.h5")
+generate("ICESat-2 ATL08", make_icesat2_atl08, "icesat2-atl08.h5")
 
 message("Done.")

@@ -509,3 +509,107 @@ test_that("L4C fixture: every registry column round-trips when requested", {
   }
   expect_equal(missing, character(0))
 })
+
+# ---------------------------------------------------------------------------
+# ICESat-2 ATL08
+# ---------------------------------------------------------------------------
+#
+# ATL08 exercises paths no GEDI fixture touches:
+#   - ground-track group names (gt1l / gt2r etc.) instead of BEAM*
+#   - lat/lon under a `land_segments/` subgroup
+#   - deeply nested datasets: `land_segments/canopy/h_canopy`,
+#     `land_segments/terrain/h_te_best_fit` — two levels of prefix
+#     stripping
+#   - 2D `canopy_h_metrics [N, 18]` under the nested canopy/ group
+#   - ICESat-2 arm of the SatelliteProduct trait + sl_read.character
+#     routing
+#   - the output has a `track` group-label column instead of `beam`
+
+test_that("ATL08 fixture: sl_read returns a tibble with expected shape", {
+  skip_if_not(file.exists(fixture_path("icesat2-atl08.h5")),
+              "ATL08 fixture not built")
+
+  data <- sl_read(fixture_path("icesat2-atl08.h5"),
+                  product = "ATL08", bbox = fixture_bbox())
+
+  expect_s3_class(data, "data.frame")
+  expect_equal(nrow(data), 500L)
+  expect_setequal(unique(data$track), c("gt1l", "gt2r"))
+  # ICESat-2 output uses `track`, not `beam`
+  expect_true("track" %in% names(data))
+  expect_false("beam" %in% names(data))
+  # lat/lon come from land_segments/ — prefix stripped
+  expect_true(all(c("latitude", "longitude") %in% names(data)))
+})
+
+test_that("ATL08 fixture: spatial filter respects land_segments/ lat/lon path", {
+  skip_if_not(file.exists(fixture_path("icesat2-atl08.h5")))
+  bb <- fixture_bbox(); b <- unclass(bb)
+
+  data <- sl_read(fixture_path("icesat2-atl08.h5"), product = "ATL08", bbox = bb)
+
+  expect_true(all(data$longitude >= b[["xmin"]] &
+                    data$longitude <= b[["xmax"]]))
+  expect_true(all(data$latitude >= b[["ymin"]] &
+                    data$latitude <= b[["ymax"]]))
+})
+
+test_that("ATL08 fixture: nested canopy/ and terrain/ subgroups resolve", {
+  skip_if_not(file.exists(fixture_path("icesat2-atl08.h5")))
+
+  data <- sl_read(fixture_path("icesat2-atl08.h5"),
+                  product = "ATL08", bbox = fixture_bbox(),
+                  columns = c("h_canopy", "h_te_best_fit",
+                              "canopy_openness", "terrain_slope"))
+
+  for (nm in c("h_canopy", "h_te_best_fit",
+               "canopy_openness", "terrain_slope")) {
+    expect_true(nm %in% names(data), label = nm)
+  }
+  # Full nested paths should be stripped, not retained
+  expect_false(any(grepl("land_segments/", names(data))))
+  expect_false(any(grepl("canopy/h_canopy", names(data))))
+})
+
+test_that("ATL08 fixture: canopy_h_metrics expands to 18 columns", {
+  skip_if_not(file.exists(fixture_path("icesat2-atl08.h5")))
+
+  data <- sl_read(fixture_path("icesat2-atl08.h5"),
+                  product = "ATL08", bbox = fixture_bbox(),
+                  columns = c("h_canopy", "canopy_h_metrics"))
+
+  hm_cols <- grep("^canopy_h_metrics\\d+$", names(data), value = TRUE)
+  expect_equal(length(hm_cols), 18L)
+})
+
+test_that("ATL08 fixture: default (NULL) columns returns the default set", {
+  skip_if_not(file.exists(fixture_path("icesat2-atl08.h5")))
+
+  data <- sl_read(fixture_path("icesat2-atl08.h5"),
+                  product = "ATL08", bbox = fixture_bbox())
+
+  # Marquee defaults documented for ATL08
+  expect_true(all(c(
+    "h_canopy", "h_te_best_fit", "night_flag",
+    "latitude", "longitude", "track", "geometry"
+  ) %in% names(data)))
+})
+
+test_that("ATL08 fixture: every registry column round-trips when requested", {
+  skip_if_not(file.exists(fixture_path("icesat2-atl08.h5")))
+
+  data <- sl_read(fixture_path("icesat2-atl08.h5"),
+                  product = "ATL08", bbox = fixture_bbox(),
+                  columns = names(sl_columns("ATL08")))
+
+  registry_names <- names(sl_columns("ATL08"))
+  out_names <- names(data)
+  missing <- character(0)
+  for (nm in registry_names) {
+    if (nm %in% out_names) next
+    if (any(grepl(paste0("^", nm, "\\d+$"), out_names))) next
+    if (any(grepl(paste0("^", nm, "_[a-z_]+$"), out_names))) next
+    missing <- c(missing, nm)
+  }
+  expect_equal(missing, character(0))
+})

@@ -286,7 +286,7 @@ fn columns_to_raw_lists(
 // ---------------------------------------------------------------------------
 
 /// Read GEDI data from a remote HDF5 file with spatial subsetting.
-/// @export
+/// @noRd
 #[extendr]
 fn rust_read_gedi(
     url: &str,
@@ -338,7 +338,7 @@ fn rust_read_gedi(
 }
 
 /// Read ICESat-2 data from a remote HDF5 file with spatial subsetting.
-/// @export
+/// @noRd
 #[extendr]
 fn rust_read_icesat2(
     url: &str,
@@ -392,7 +392,7 @@ fn rust_read_icesat2(
 }
 
 /// List available groups in an HDF5 file (for exploration).
-/// @export
+/// @noRd
 #[extendr]
 fn rust_hdf5_groups(
     url: &str,
@@ -415,7 +415,7 @@ fn rust_hdf5_groups(
 }
 
 /// Read a single dataset from an HDF5 file and return raw bytes + metadata.
-/// @export
+/// @noRd
 #[extendr]
 fn rust_hdf5_dataset(
     url: &str,
@@ -453,7 +453,7 @@ fn rust_hdf5_dataset(
 ///
 /// All files are processed in parallel within a single async runtime.
 /// Returns a list of per-file results (each is a list of beam data).
-/// @export
+/// @noRd
 #[extendr]
 fn rust_read_gedi_multi(
     urls: Vec<String>,
@@ -535,7 +535,7 @@ fn rust_read_gedi_multi(
 }
 
 /// Read ICESat-2 data from multiple remote HDF5 files concurrently.
-/// @export
+/// @noRd
 #[extendr]
 fn rust_read_icesat2_multi(
     urls: Vec<String>,

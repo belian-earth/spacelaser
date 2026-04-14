@@ -259,3 +259,156 @@ test_that("L2B fixture: every registry column round-trips when requested", {
   }
   expect_equal(missing, character(0))
 })
+
+# ---------------------------------------------------------------------------
+# GEDI L1B
+# ---------------------------------------------------------------------------
+
+test_that("L1B fixture: sl_read returns a tibble with expected shape", {
+  skip_if_not(file.exists(fixture_path("gedi-l1b.h5")),
+              "L1B fixture not built")
+
+  data <- sl_read(fixture_path("gedi-l1b.h5"),
+                  product = "L1B", bbox = fixture_bbox())
+
+  expect_s3_class(data, "data.frame")
+  expect_equal(nrow(data), 500L)
+  expect_setequal(unique(data$beam), c("BEAM0000", "BEAM0101"))
+  # L1B uses latitude_bin0 / longitude_bin0, not lat_lowestmode
+  expect_true(all(c("latitude_bin0", "longitude_bin0") %in% names(data)))
+  expect_false("lat_lowestmode" %in% names(data))
+})
+
+test_that("L1B fixture: spatial filter respects geolocation/*_bin0 paths", {
+  skip_if_not(file.exists(fixture_path("gedi-l1b.h5")))
+  bb <- fixture_bbox(); b <- unclass(bb)
+
+  data <- sl_read(fixture_path("gedi-l1b.h5"), product = "L1B", bbox = bb)
+
+  expect_true(all(data$longitude_bin0 >= b[["xmin"]] &
+                    data$longitude_bin0 <= b[["xmax"]]))
+  expect_true(all(data$latitude_bin0 >= b[["ymin"]] &
+                    data$latitude_bin0 <= b[["ymax"]]))
+})
+
+test_that("L1B fixture: rxwaveform is a per-shot list column with 500 samples", {
+  skip_if_not(file.exists(fixture_path("gedi-l1b.h5")))
+
+  # rxwaveform is in the L1B default set
+  data <- sl_read(fixture_path("gedi-l1b.h5"),
+                  product = "L1B", bbox = fixture_bbox())
+
+  expect_true("rxwaveform" %in% names(data))
+  expect_type(data$rxwaveform, "list")
+
+  lengths <- vapply(data$rxwaveform, length, integer(1))
+  expect_true(all(lengths == 500L))
+
+  # Critical regression guard: if pool indexing is off by one, the last
+  # sample of every shot lands on the zero buffer past the last entry.
+  # Assert that the final samples of several shots are non-zero.
+  last_samples <- vapply(data$rxwaveform, function(x) x[length(x)],
+                         numeric(1))
+  expect_true(any(last_samples != 0))
+})
+
+test_that("L1B fixture: txwaveform uses a distinct index pair and is shorter", {
+  skip_if_not(file.exists(fixture_path("gedi-l1b.h5")))
+
+  data <- sl_read(fixture_path("gedi-l1b.h5"),
+                  product = "L1B", bbox = fixture_bbox(),
+                  columns = c("shot_number", "txwaveform"))
+
+  expect_true("txwaveform" %in% names(data))
+  expect_type(data$txwaveform, "list")
+  # txwaveform is a shorter transmitted pulse (128 samples in our fixture)
+  tx_lengths <- vapply(data$txwaveform, length, integer(1))
+  expect_true(all(tx_lengths == 128L))
+})
+
+test_that("L1B fixture: rxwaveform and txwaveform auto-add their index columns", {
+  skip_if_not(file.exists(fixture_path("gedi-l1b.h5")))
+
+  # User requests only the pool columns; reader must pull in the
+  # start/count indices for both pools.
+  data <- sl_read(fixture_path("gedi-l1b.h5"),
+                  product = "L1B", bbox = fixture_bbox(),
+                  columns = c("rxwaveform", "txwaveform"))
+
+  expect_true(all(c("rxwaveform", "txwaveform") %in% names(data)))
+  # Distinct index pairs for rx and tx — proves the pool spec wiring
+  # dispatches on dataset name, not a single shared pair.
+  expect_equal(nrow(data), 500L)
+})
+
+test_that("L1B fixture: transposed surface_type expands into 5 boolean columns", {
+  skip_if_not(file.exists(fixture_path("gedi-l1b.h5")))
+
+  data <- sl_read(fixture_path("gedi-l1b.h5"),
+                  product = "L1B", bbox = fixture_bbox(),
+                  columns = c("shot_number", "surface_type"))
+
+  expected <- c(
+    "surface_type_land", "surface_type_ocean",
+    "surface_type_sea_ice", "surface_type_land_ice",
+    "surface_type_inland_water"
+  )
+  expect_true(all(expected %in% names(data)))
+
+  # Values must be 0/1
+  for (nm in expected) {
+    expect_true(all(data[[nm]] %in% c(0L, 1L)))
+  }
+})
+
+test_that("L1B fixture: surface_type values match encoded geographic semantics", {
+  skip_if_not(file.exists(fixture_path("gedi-l1b.h5")))
+
+  # Generator marks every shot as `land` and ~10% also as `inland_water`.
+  # No ocean / sea_ice / land_ice anywhere. If chunk placement for the
+  # transposed [5, N] dataset is ever broken again, this test catches it:
+  # we'd see either all zeros or the wrong category dominating.
+  data <- sl_read(fixture_path("gedi-l1b.h5"),
+                  product = "L1B", bbox = fixture_bbox(),
+                  columns = c("shot_number", "surface_type"))
+
+  expect_equal(sum(data$surface_type_land), nrow(data))         # 100%
+  expect_gt(sum(data$surface_type_inland_water), 0)             # some
+  expect_lt(sum(data$surface_type_inland_water), nrow(data))    # not all
+  expect_equal(sum(data$surface_type_ocean), 0L)
+  expect_equal(sum(data$surface_type_sea_ice), 0L)
+  expect_equal(sum(data$surface_type_land_ice), 0L)
+})
+
+test_that("L1B fixture: geophys_corr/ subgroup columns round-trip", {
+  skip_if_not(file.exists(fixture_path("gedi-l1b.h5")))
+
+  data <- sl_read(fixture_path("gedi-l1b.h5"),
+                  product = "L1B", bbox = fixture_bbox(),
+                  columns = c("geoid", "tide_earth", "tide_ocean"))
+
+  for (nm in c("geoid", "tide_earth", "tide_ocean")) {
+    expect_true(nm %in% names(data))
+    expect_false(paste0("geophys_corr/", nm) %in% names(data))
+    expect_true(all(is.finite(data[[nm]])))
+  }
+})
+
+test_that("L1B fixture: every registry column round-trips when requested", {
+  skip_if_not(file.exists(fixture_path("gedi-l1b.h5")))
+
+  data <- sl_read(fixture_path("gedi-l1b.h5"),
+                  product = "L1B", bbox = fixture_bbox(),
+                  columns = names(sl_columns("L1B")))
+
+  registry_names <- names(sl_columns("L1B"))
+  out_names <- names(data)
+  missing <- character(0)
+  for (nm in registry_names) {
+    if (nm %in% out_names) next
+    if (any(grepl(paste0("^", nm, "\\d+$"), out_names))) next
+    if (any(grepl(paste0("^", nm, "_[a-z_]+$"), out_names))) next
+    missing <- c(missing, nm)
+  }
+  expect_equal(missing, character(0))
+})

@@ -613,3 +613,90 @@ test_that("ATL08 fixture: every registry column round-trips when requested", {
   }
   expect_equal(missing, character(0))
 })
+
+# ---------------------------------------------------------------------------
+# ICESat-2 ATL03
+# ---------------------------------------------------------------------------
+#
+# ATL03 is unique in using the segment-index spatial filter rather
+# than a direct lat/lon scan. The reader reads segment-level
+# `geolocation/reference_photon_{lat,lon}` (small, ~200 elements),
+# filters to segments in bbox, then expands the matching segments'
+# ph_index_beg + segment_ph_cnt into photon-level row ranges. These
+# tests exercise that whole two-tier path end to end.
+
+test_that("ATL03 fixture: sl_read uses segment-index filter + returns photons", {
+  skip_if_not(file.exists(fixture_path("icesat2-atl03.h5")),
+              "ATL03 fixture not built")
+
+  data <- sl_read(fixture_path("icesat2-atl03.h5"),
+                  product = "ATL03", bbox = fixture_bbox())
+
+  expect_s3_class(data, "data.frame")
+  # Generator: 200 segments × 20 photons / segment, half-in-half-out
+  # segments, 2 tracks → ~2 × 100 × 20 = 4000 photons
+  expect_gt(nrow(data), 3000L)
+  expect_lt(nrow(data), 4100L)
+  expect_setequal(unique(data$track), c("gt1l", "gt2r"))
+  expect_true(all(c("lat_ph", "lon_ph") %in% names(data)))
+})
+
+test_that("ATL03 fixture: photon-level lat/lon land inside the bbox", {
+  skip_if_not(file.exists(fixture_path("icesat2-atl03.h5")))
+  bb <- fixture_bbox(); b <- unclass(bb)
+
+  data <- sl_read(fixture_path("icesat2-atl03.h5"),
+                  product = "ATL03", bbox = bb)
+
+  # Photon coords jitter slightly off the segment reference. After
+  # segment-level filtering the reader's R-side post-filter should
+  # drop photons whose (lat, lon) wander outside the bbox, so every
+  # returned photon must be inside.
+  expect_true(all(data$lon_ph >= b[["xmin"]] &
+                    data$lon_ph <= b[["xmax"]]))
+  expect_true(all(data$lat_ph >= b[["ymin"]] &
+                    data$lat_ph <= b[["ymax"]]))
+})
+
+test_that("ATL03 fixture: signal_conf_ph expands into 5 columns", {
+  skip_if_not(file.exists(fixture_path("icesat2-atl03.h5")))
+
+  data <- sl_read(fixture_path("icesat2-atl03.h5"),
+                  product = "ATL03", bbox = fixture_bbox(),
+                  columns = c("h_ph", "signal_conf_ph"))
+
+  sc_cols <- grep("^signal_conf_ph\\d+$", names(data), value = TRUE)
+  expect_equal(length(sc_cols), 5L)
+})
+
+test_that("ATL03 fixture: every registry column round-trips when requested", {
+  skip_if_not(file.exists(fixture_path("icesat2-atl03.h5")))
+
+  data <- sl_read(fixture_path("icesat2-atl03.h5"),
+                  product = "ATL03", bbox = fixture_bbox(),
+                  columns = names(sl_columns("ATL03")))
+
+  registry_names <- names(sl_columns("ATL03"))
+  out_names <- names(data)
+  missing <- character(0)
+  for (nm in registry_names) {
+    if (nm %in% out_names) next
+    if (any(grepl(paste0("^", nm, "\\d+$"), out_names))) next
+    if (any(grepl(paste0("^", nm, "_[a-z_]+$"), out_names))) next
+    missing <- c(missing, nm)
+  }
+  expect_equal(missing, character(0))
+})
+
+test_that("ATL03 fixture: empty bbox (no segments inside) returns empty frame", {
+  skip_if_not(file.exists(fixture_path("icesat2-atl03.h5")))
+
+  # Bbox 100km from any fixture data — segment filter should short-
+  # circuit and the reader should return zero rows rather than error.
+  far <- sl_bbox(-120.0, 39.0, -119.9, 39.1)
+  data <- sl_read(fixture_path("icesat2-atl03.h5"),
+                  product = "ATL03", bbox = far)
+
+  expect_s3_class(data, "data.frame")
+  expect_equal(nrow(data), 0L)
+})

@@ -5,8 +5,8 @@
 #' reads all 8 beams; users filter post-hoc on the returned `beam` column.
 #'
 #' @param url Character. URL of the GEDI HDF5 file (HTTPS or S3).
-#' @param product Character. GEDI product level: `"L2A"`, `"L2B"`, `"L4A"`,
-#'   or `"L1B"`.
+#' @param product Character. GEDI product level: one of `"L1B"`, `"L2A"`,
+#'   `"L2B"`, `"L4A"`, or `"L4C"`.
 #' @param bbox An `sl_bbox` or numeric `c(xmin, ymin, xmax, ymax)`.
 #' @param columns Character vector of short column names, or `NULL` for the
 #'   product default registry.
@@ -14,7 +14,7 @@
 #' @importFrom rlang check_required arg_match
 #' @noRd
 read_gedi <- function(url,
-                      product = c("L2A", "L2B", "L4A", "L1B"),
+                      product = c("L1B", "L2A", "L2B", "L4A", "L4C"),
                       bbox,
                       columns = NULL) {
   rlang::check_required(url)

@@ -412,3 +412,100 @@ test_that("L1B fixture: every registry column round-trips when requested", {
   }
   expect_equal(missing, character(0))
 })
+
+# ---------------------------------------------------------------------------
+# GEDI L4A
+# ---------------------------------------------------------------------------
+#
+# L4A (footprint AGBD) is the simplest GEDI shape: lat/lon at beam
+# root, one `geolocation/` column, `land_cover_data/` subgroup. No
+# 2D profiles, no pool columns, no transposed. Covered here mostly to
+# exercise the L4A lat/lon path through the SatelliteProduct trait
+# and confirm the L4A-specific marquee column (`agbd`) round-trips.
+
+test_that("L4A fixture: sl_read returns a tibble with expected shape", {
+  skip_if_not(file.exists(fixture_path("gedi-l4a.h5")),
+              "L4A fixture not built")
+
+  data <- sl_read(fixture_path("gedi-l4a.h5"),
+                  product = "L4A", bbox = fixture_bbox())
+
+  expect_s3_class(data, "data.frame")
+  expect_equal(nrow(data), 500L)
+  expect_setequal(unique(data$beam), c("BEAM0000", "BEAM0101"))
+  expect_true(all(c("lat_lowestmode", "lon_lowestmode") %in% names(data)))
+  # Marquee L4A column
+  expect_true("agbd" %in% names(data))
+})
+
+test_that("L4A fixture: every registry column round-trips when requested", {
+  skip_if_not(file.exists(fixture_path("gedi-l4a.h5")))
+
+  data <- sl_read(fixture_path("gedi-l4a.h5"),
+                  product = "L4A", bbox = fixture_bbox(),
+                  columns = names(sl_columns("L4A")))
+
+  registry_names <- names(sl_columns("L4A"))
+  out_names <- names(data)
+  missing <- character(0)
+  for (nm in registry_names) {
+    if (nm %in% out_names) next
+    if (any(grepl(paste0("^", nm, "\\d+$"), out_names))) next
+    if (any(grepl(paste0("^", nm, "_[a-z_]+$"), out_names))) next
+    missing <- c(missing, nm)
+  }
+  expect_equal(missing, character(0))
+})
+
+# ---------------------------------------------------------------------------
+# GEDI L4C
+# ---------------------------------------------------------------------------
+#
+# Same shape as L4A. Worth a smoke test because L4C was recently added
+# to the registry; this catches omissions in product-routing code
+# (arg_match lists, filename detection, default sets, etc.).
+
+test_that("L4C fixture: sl_read returns a tibble with expected shape", {
+  skip_if_not(file.exists(fixture_path("gedi-l4c.h5")),
+              "L4C fixture not built")
+
+  data <- sl_read(fixture_path("gedi-l4c.h5"),
+                  product = "L4C", bbox = fixture_bbox())
+
+  expect_s3_class(data, "data.frame")
+  expect_equal(nrow(data), 500L)
+  expect_setequal(unique(data$beam), c("BEAM0000", "BEAM0101"))
+  expect_true(all(c("lat_lowestmode", "lon_lowestmode") %in% names(data)))
+  # Marquee L4C columns
+  expect_true("wsci" %in% names(data))
+})
+
+test_that("L4C fixture: worldcover_class (new L4C-only column) resolves", {
+  skip_if_not(file.exists(fixture_path("gedi-l4c.h5")))
+
+  data <- sl_read(fixture_path("gedi-l4c.h5"),
+                  product = "L4C", bbox = fixture_bbox(),
+                  columns = c("worldcover_class"))
+
+  expect_true("worldcover_class" %in% names(data))
+  expect_false("land_cover_data/worldcover_class" %in% names(data))
+})
+
+test_that("L4C fixture: every registry column round-trips when requested", {
+  skip_if_not(file.exists(fixture_path("gedi-l4c.h5")))
+
+  data <- sl_read(fixture_path("gedi-l4c.h5"),
+                  product = "L4C", bbox = fixture_bbox(),
+                  columns = names(sl_columns("L4C")))
+
+  registry_names <- names(sl_columns("L4C"))
+  out_names <- names(data)
+  missing <- character(0)
+  for (nm in registry_names) {
+    if (nm %in% out_names) next
+    if (any(grepl(paste0("^", nm, "\\d+$"), out_names))) next
+    if (any(grepl(paste0("^", nm, "_[a-z_]+$"), out_names))) next
+    missing <- c(missing, nm)
+  }
+  expect_equal(missing, character(0))
+})

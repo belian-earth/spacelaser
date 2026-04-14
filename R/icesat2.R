@@ -6,8 +6,8 @@
 #' `track` column.
 #'
 #' @param url Character. URL of the ICESat-2 HDF5 file (HTTPS or S3).
-#' @param product Character. ICESat-2 product: `"ATL08"`, `"ATL03"`, or
-#'   `"ATL06"`.
+#' @param product Character. ICESat-2 product: one of `"ATL03"`, `"ATL06"`,
+#'   `"ATL07"`, `"ATL08"`, `"ATL10"`, `"ATL13"`, or `"ATL24"`.
 #' @param bbox An `sl_bbox` or numeric `c(xmin, ymin, xmax, ymax)`.
 #' @param columns Character vector of short column names, or `NULL` for the
 #'   product default registry.
@@ -15,7 +15,8 @@
 #' @importFrom rlang check_required arg_match
 #' @noRd
 read_icesat2 <- function(url,
-                         product = c("ATL08", "ATL03", "ATL06"),
+                         product = c("ATL03", "ATL06", "ATL07", "ATL08",
+                                     "ATL10", "ATL13", "ATL24"),
                          bbox,
                          columns = NULL) {
   rlang::check_required(url)

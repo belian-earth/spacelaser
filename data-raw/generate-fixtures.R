@@ -31,6 +31,8 @@ source("data-raw/fixtures/_helpers.R")
 source("data-raw/fixtures/gedi-l1b.R")
 source("data-raw/fixtures/gedi-l2a.R")
 source("data-raw/fixtures/gedi-l2b.R")
+source("data-raw/fixtures/gedi-l4a.R")
+source("data-raw/fixtures/gedi-l4c.R")
 
 generate <- function(label, maker, filename) {
   message(sprintf("Generating synthetic %s fixture", label))
@@ -42,5 +44,7 @@ generate <- function(label, maker, filename) {
 generate("GEDI L1B", make_gedi_l1b, "gedi-l1b.h5")
 generate("GEDI L2A", make_gedi_l2a, "gedi-l2a.h5")
 generate("GEDI L2B", make_gedi_l2b, "gedi-l2b.h5")
+generate("GEDI L4A", make_gedi_l4a, "gedi-l4a.h5")
+generate("GEDI L4C", make_gedi_l4c, "gedi-l4c.h5")
 
 message("Done.")

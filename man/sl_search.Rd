@@ -18,15 +18,23 @@ sl_search(
 
 \item{product}{Character. One of:
 \itemize{
-\item GEDI: \code{"L1B"}, \code{"L2A"}, \code{"L2B"}, \code{"L4A"}
-\item ICESat-2: \code{"ATL03"}, \code{"ATL06"}, \code{"ATL08"}
+\item GEDI: \code{"L1B"}, \code{"L2A"}, \code{"L2B"}, \code{"L4A"}, \code{"L4C"}
+\item ICESat-2: \code{"ATL03"}, \code{"ATL06"}, \code{"ATL07"}, \code{"ATL08"}, \code{"ATL10"},
+\code{"ATL13"}, \code{"ATL24"}
 }}
 
-\item{date_start}{Character or POSIXct. Start of date range. Defaults to
-the start of the relevant mission (2019-03-25 for GEDI, 2018-10-14 for
-ICESat-2).}
+\item{date_start, date_end}{Either a \code{Date} object or a character string in
+strict \code{"YYYY-MM-DD"} format (e.g. \code{"2020-06-01"}). Other character
+forms (e.g. \code{"01/06/2020"}, \code{"June 1 2020"}, \code{"2020-06"}) are rejected
+with an informative error to avoid ambiguity. \code{POSIXct} inputs are
+not accepted — format them explicitly with \code{format(x, "\%Y-\%m-\%d")}.
 
-\item{date_end}{Character or POSIXct. End of date range (default: today).}
+Bounds are treated as UTC and inclusive of the end date: a range of
+\code{"2020-06-01"} to \code{"2020-06-30"} covers every granule whose start time
+falls on any of those 30 days.
+
+\code{date_start} defaults to the mission start (2019-03-25 for GEDI,
+2018-10-14 for ICESat-2). \code{date_end} defaults to today.}
 }
 \value{
 A classed data frame (\code{sl_gedi_search} or \code{sl_icesat2_search})

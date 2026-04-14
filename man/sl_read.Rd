@@ -9,9 +9,9 @@
 \usage{
 sl_read(x, bbox, ...)
 
-\method{sl_read}{sl_gedi_search}(x, bbox = NULL, columns = NULL, ...)
+\method{sl_read}{sl_gedi_search}(x, bbox = NULL, columns = NULL, convert_time = TRUE, ...)
 
-\method{sl_read}{sl_icesat2_search}(x, bbox = NULL, columns = NULL, ...)
+\method{sl_read}{sl_icesat2_search}(x, bbox = NULL, columns = NULL, convert_time = TRUE, ...)
 
 \method{sl_read}{character}(x, bbox, ..., product = NULL)
 }
@@ -32,6 +32,15 @@ is an error to avoid silently missing data outside the original search.}
 automatically. \code{NULL} (default) reads the curated default column set
 for the product (see \code{\link[=sl_columns]{sl_columns()}} with \code{set = "default"}). Pass
 \code{names(sl_columns(product))} to read all available columns.}
+
+\item{convert_time}{Logical. If \code{TRUE} (default), the raw \code{delta_time}
+column (seconds since the GEDI / ICESat-2 reference epoch of
+2018-01-01 00:00:00 UTC) is converted to a POSIXct column named
+\code{time}. Set to \code{FALSE} to keep \code{delta_time} as the raw numeric
+seconds-since-epoch value, e.g. if you need to compare against the
+file-level epoch exactly, want to avoid the POSIXct conversion
+overhead on very large photon-level reads, or want to preserve the
+original HDF5 column name.}
 
 \item{product}{Character. Product level (e.g., \code{"L2A"}, \code{"ATL08"}).
 Required when \code{x} is a character vector and the product cannot be

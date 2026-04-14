@@ -18,7 +18,8 @@ read_icesat2 <- function(url,
                          product = c("ATL03", "ATL06", "ATL07", "ATL08",
                                      "ATL10", "ATL13", "ATL24"),
                          bbox,
-                         columns = NULL) {
+                         columns = NULL,
+                         convert_time = TRUE) {
   rlang::check_required(url)
   rlang::check_required(bbox)
   product <- rlang::arg_match(product)
@@ -34,6 +35,7 @@ read_icesat2 <- function(url,
     lat_col = geo_cols$lat,
     lon_col = geo_cols$lon,
     group_label = "track",
-    element_label = "element"
+    element_label = "element",
+    convert_time = convert_time
   )
 }

@@ -34,6 +34,14 @@
 #'   automatically. `NULL` (default) reads the curated default column set
 #'   for the product (see [sl_columns()] with `set = "default"`). Pass
 #'   `names(sl_columns(product))` to read all available columns.
+#' @param convert_time Logical. If `TRUE` (default), the raw `delta_time`
+#'   column (seconds since the GEDI / ICESat-2 reference epoch of
+#'   2018-01-01 00:00:00 UTC) is converted to a POSIXct column named
+#'   `time`. Set to `FALSE` to keep `delta_time` as the raw numeric
+#'   seconds-since-epoch value, e.g. if you need to compare against the
+#'   file-level epoch exactly, want to avoid the POSIXct conversion
+#'   overhead on very large photon-level reads, or want to preserve the
+#'   original HDF5 column name.
 #' @param ... Reserved for method-specific arguments and forwarding.
 #'
 #' @returns A data frame with one row per footprint (GEDI) or
@@ -110,7 +118,8 @@ sl_read <- function(x, bbox, ...) {
 
 #' @rdname sl_read
 #' @export
-sl_read.sl_gedi_search <- function(x, bbox = NULL, columns = NULL, ...) {
+sl_read.sl_gedi_search <- function(x, bbox = NULL, columns = NULL,
+                                   convert_time = TRUE, ...) {
   search_bbox <- attr(x, "bbox")
   bbox <- bbox %||% search_bbox
   check_bbox_within(bbox, search_bbox)
@@ -126,13 +135,15 @@ sl_read.sl_gedi_search <- function(x, bbox = NULL, columns = NULL, ...) {
     lat_col = lat_lon$lat,
     lon_col = lat_lon$lon,
     group_label = "beam",
-    element_label = "footprint"
+    element_label = "footprint",
+    convert_time = convert_time
   )
 }
 
 #' @rdname sl_read
 #' @export
-sl_read.sl_icesat2_search <- function(x, bbox = NULL, columns = NULL, ...) {
+sl_read.sl_icesat2_search <- function(x, bbox = NULL, columns = NULL,
+                                      convert_time = TRUE, ...) {
   search_bbox <- attr(x, "bbox")
   bbox <- bbox %||% search_bbox
   check_bbox_within(bbox, search_bbox)
@@ -148,7 +159,8 @@ sl_read.sl_icesat2_search <- function(x, bbox = NULL, columns = NULL, ...) {
     lat_col = geo_cols$lat,
     lon_col = geo_cols$lon,
     group_label = "track",
-    element_label = "element"
+    element_label = "element",
+    convert_time = convert_time
   )
 }
 
@@ -436,6 +448,34 @@ call_rust_reader <- function(rust_fn, target, product, params) {
   )
 }
 
+#' Reference epoch for GEDI / ICESat-2 `delta_time`.
+#'
+#' Both missions publish `delta_time` as seconds since 2018-01-01 00:00:00 UTC:
+#' GEDI exactly (the "GEDI reference epoch") and ICESat-2 within ~18 leap
+#' seconds of the ATLAS SDP GPS epoch. We hardcode the nominal 2018-01-01 UTC
+#' value to avoid a second HDF5 round-trip to read `/ancillary_data/\\
+#' atlas_sdp_gps_epoch`. The ~18 s difference is immaterial for every
+#' user-facing analysis I can think of; if sub-second precision ever matters
+#' we can switch to reading the file-level value.
+#' @noRd
+.delta_time_epoch <- function() {
+  as.POSIXct("2018-01-01 00:00:00", tz = "UTC")
+}
+
+#' Convert `delta_time` (numeric seconds since epoch) to `time` (POSIXct).
+#'
+#' Operates in-place on the column's position so the rest of the frame's
+#' layout isn't disturbed. Silently returns `data` unchanged if the
+#' reader didn't include `delta_time`.
+#' @noRd
+convert_delta_time <- function(data) {
+  if (!"delta_time" %in% names(data)) return(data)
+  idx <- which(names(data) == "delta_time")
+  data[[idx]] <- .delta_time_epoch() + data[[idx]]
+  names(data)[idx] <- "time"
+  data
+}
+
 #' Convert the Rust reader's raw output into a combined data frame.
 #'
 #' Processes each group (beam / track), builds a tibble with geometry
@@ -451,7 +491,8 @@ assemble_read_result <- function(
   pool_short,
   pool_idx_map,
   fill_values = numeric(0),
-  scale_factors = list()
+  scale_factors = list(),
+  convert_time = TRUE
 ) {
   if (length(raw_result) == 0L) {
     cli::cli_inform("No {element_label}s found within the bounding box.")
@@ -493,6 +534,10 @@ assemble_read_result <- function(
     }
   }
 
+  if (convert_time) {
+    result <- convert_delta_time(result)
+  }
+
   n <- nrow(result)
   cli::cli_progress_done()
   cli::cli_inform(c(
@@ -513,7 +558,8 @@ read_product <- function(
   lat_col,
   lon_col,
   group_label,
-  element_label
+  element_label,
+  convert_time = TRUE
 ) {
   params <- prepare_read_params(product, bbox, columns, lat_col, lon_col,
                                 needs_creds = is_remote_url(url))
@@ -522,7 +568,8 @@ read_product <- function(
   assemble_read_result(
     raw_result, bbox, lat_col, lon_col, group_label, element_label,
     params$pool_short, params$pool_idx_map,
-    params$fill_values, params$scale_factors
+    params$fill_values, params$scale_factors,
+    convert_time = convert_time
   )
 }
 
@@ -540,7 +587,8 @@ read_product_multi <- function(
   lat_col,
   lon_col,
   group_label,
-  element_label
+  element_label,
+  convert_time = TRUE
 ) {
   urls <- urls[!is.na(urls)]
   if (length(urls) == 0L) {
@@ -555,7 +603,8 @@ read_product_multi <- function(
   assemble_read_result(
     raw_result, bbox, lat_col, lon_col, group_label, element_label,
     params$pool_short, params$pool_idx_map,
-    params$fill_values, params$scale_factors
+    params$fill_values, params$scale_factors,
+    convert_time = convert_time
   )
 }
 

@@ -105,16 +105,7 @@ test_that("L2A fixture: every registry column round-trips when requested", {
                   product = "L2A", bbox = fixture_bbox(),
                   columns = names(sl_columns("L2A")))
 
-  registry_names <- names(sl_columns("L2A"))
-  out_names <- names(data)
-  missing <- character(0)
-  for (nm in registry_names) {
-    if (nm %in% out_names) next
-    if (any(grepl(paste0("^", nm, "\\d+$"), out_names))) next
-    if (any(grepl(paste0("^", nm, "_[a-z_]+$"), out_names))) next
-    missing <- c(missing, nm)
-  }
-  expect_equal(missing, character(0))
+  expect_registry_roundtrip(data, "L2A")
 })
 
 test_that("L2A fixture: NULL columns returns the default set", {
@@ -248,16 +239,7 @@ test_that("L2B fixture: every registry column round-trips when requested", {
                   product = "L2B", bbox = fixture_bbox(),
                   columns = names(sl_columns("L2B")))
 
-  registry_names <- names(sl_columns("L2B"))
-  out_names <- names(data)
-  missing <- character(0)
-  for (nm in registry_names) {
-    if (nm %in% out_names) next
-    if (any(grepl(paste0("^", nm, "\\d+$"), out_names))) next
-    if (any(grepl(paste0("^", nm, "_[a-z_]+$"), out_names))) next
-    missing <- c(missing, nm)
-  }
-  expect_equal(missing, character(0))
+  expect_registry_roundtrip(data, "L2B")
 })
 
 # ---------------------------------------------------------------------------
@@ -401,16 +383,7 @@ test_that("L1B fixture: every registry column round-trips when requested", {
                   product = "L1B", bbox = fixture_bbox(),
                   columns = names(sl_columns("L1B")))
 
-  registry_names <- names(sl_columns("L1B"))
-  out_names <- names(data)
-  missing <- character(0)
-  for (nm in registry_names) {
-    if (nm %in% out_names) next
-    if (any(grepl(paste0("^", nm, "\\d+$"), out_names))) next
-    if (any(grepl(paste0("^", nm, "_[a-z_]+$"), out_names))) next
-    missing <- c(missing, nm)
-  }
-  expect_equal(missing, character(0))
+  expect_registry_roundtrip(data, "L1B")
 })
 
 # ---------------------------------------------------------------------------
@@ -445,16 +418,7 @@ test_that("L4A fixture: every registry column round-trips when requested", {
                   product = "L4A", bbox = fixture_bbox(),
                   columns = names(sl_columns("L4A")))
 
-  registry_names <- names(sl_columns("L4A"))
-  out_names <- names(data)
-  missing <- character(0)
-  for (nm in registry_names) {
-    if (nm %in% out_names) next
-    if (any(grepl(paste0("^", nm, "\\d+$"), out_names))) next
-    if (any(grepl(paste0("^", nm, "_[a-z_]+$"), out_names))) next
-    missing <- c(missing, nm)
-  }
-  expect_equal(missing, character(0))
+  expect_registry_roundtrip(data, "L4A")
 })
 
 # ---------------------------------------------------------------------------
@@ -498,16 +462,7 @@ test_that("L4C fixture: every registry column round-trips when requested", {
                   product = "L4C", bbox = fixture_bbox(),
                   columns = names(sl_columns("L4C")))
 
-  registry_names <- names(sl_columns("L4C"))
-  out_names <- names(data)
-  missing <- character(0)
-  for (nm in registry_names) {
-    if (nm %in% out_names) next
-    if (any(grepl(paste0("^", nm, "\\d+$"), out_names))) next
-    if (any(grepl(paste0("^", nm, "_[a-z_]+$"), out_names))) next
-    missing <- c(missing, nm)
-  }
-  expect_equal(missing, character(0))
+  expect_registry_roundtrip(data, "L4C")
 })
 
 # ---------------------------------------------------------------------------
@@ -602,16 +557,7 @@ test_that("ATL08 fixture: every registry column round-trips when requested", {
                   product = "ATL08", bbox = fixture_bbox(),
                   columns = names(sl_columns("ATL08")))
 
-  registry_names <- names(sl_columns("ATL08"))
-  out_names <- names(data)
-  missing <- character(0)
-  for (nm in registry_names) {
-    if (nm %in% out_names) next
-    if (any(grepl(paste0("^", nm, "\\d+$"), out_names))) next
-    if (any(grepl(paste0("^", nm, "_[a-z_]+$"), out_names))) next
-    missing <- c(missing, nm)
-  }
-  expect_equal(missing, character(0))
+  expect_registry_roundtrip(data, "ATL08")
 })
 
 # ---------------------------------------------------------------------------
@@ -676,16 +622,7 @@ test_that("ATL03 fixture: every registry column round-trips when requested", {
                   product = "ATL03", bbox = fixture_bbox(),
                   columns = names(sl_columns("ATL03")))
 
-  registry_names <- names(sl_columns("ATL03"))
-  out_names <- names(data)
-  missing <- character(0)
-  for (nm in registry_names) {
-    if (nm %in% out_names) next
-    if (any(grepl(paste0("^", nm, "\\d+$"), out_names))) next
-    if (any(grepl(paste0("^", nm, "_[a-z_]+$"), out_names))) next
-    missing <- c(missing, nm)
-  }
-  expect_equal(missing, character(0))
+  expect_registry_roundtrip(data, "ATL03")
 })
 
 test_that("ATL03 fixture: empty bbox (no segments inside) returns empty frame", {
@@ -755,17 +692,7 @@ for (.spec in icesat2_smoke_spec) {
       data <- sl_read(fixture_path(fixture_file),
                       product = prod, bbox = fixture_bbox(),
                       columns = names(sl_columns(prod)))
-
-      registry_names <- names(sl_columns(prod))
-      out_names <- names(data)
-      missing <- character(0)
-      for (nm in registry_names) {
-        if (nm %in% out_names) next
-        if (any(grepl(paste0("^", nm, "\\d+$"), out_names))) next
-        if (any(grepl(paste0("^", nm, "_[a-z_]+$"), out_names))) next
-        missing <- c(missing, nm)
-      }
-      expect_equal(missing, character(0))
+      expect_registry_roundtrip(data, prod)
     })
   })
 }

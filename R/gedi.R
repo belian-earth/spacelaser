@@ -16,7 +16,8 @@
 read_gedi <- function(url,
                       product = c("L1B", "L2A", "L2B", "L4A", "L4C"),
                       bbox,
-                      columns = NULL) {
+                      columns = NULL,
+                      convert_time = TRUE) {
   rlang::check_required(url)
   rlang::check_required(bbox)
   product <- rlang::arg_match(product)
@@ -32,7 +33,8 @@ read_gedi <- function(url,
     lat_col = lat_lon$lat,
     lon_col = lat_lon$lon,
     group_label = "beam",
-    element_label = "footprint"
+    element_label = "footprint",
+    convert_time = convert_time
   )
 }
 

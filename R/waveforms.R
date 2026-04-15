@@ -21,14 +21,14 @@
 #'   `elevation_lastbin`, `rx_sample_count`, and `rxwaveform` (list
 #'   column). If `beam` is present, it is carried through to the output.
 #'
-#'   Tip: request these columns explicitly when reading:
+#'   The L1B default column set already includes `rxwaveform` plus
+#'   the `elevation_bin0` / `elevation_lastbin` / `rx_sample_count`
+#'   columns it depends on, so a plain `sl_read(granules)` is enough.
+#'   When narrowing the read, request `rxwaveform` and the dependency
+#'   columns are auto-added:
 #'   ```r
-#'   d <- sl_read(granules, columns = c(
-#'     "shot_number", "rx_energy", "rxwaveform"
-#'   ))
+#'   d <- sl_read(granules, columns = c("shot_number", "rxwaveform"))
 #'   ```
-#'   The `elevation_bin0`, `elevation_lastbin`, and `rx_sample_count`
-#'   columns are auto-added when `rxwaveform` is requested.
 #'
 #' @returns A data frame with one row per waveform sample:
 #'   \describe{

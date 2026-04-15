@@ -2,8 +2,6 @@
 # S3 generic: sl_read()
 # ---------------------------------------------------------------------------
 
-# TODO(vignette): post-hoc beam/track filtering (power beams, strong/weak gt)
-
 #' Read satellite lidar data
 #'
 #' `sl_read()` is an S3 generic that reads GEDI or ICESat-2 data from remote
@@ -90,12 +88,19 @@
 #' Mg/ha. Prediction intervals (`agbd_pi_lower`, `agbd_pi_upper`) and
 #' standard error (`agbd_se`) are included in defaults.
 #'
-#' **ICESat-2 ATL03**: Photon-level data. A single granule can produce
-#' millions of rows. Multi-granule reads may be slow or timeout due to
-#' the large lat/lon arrays that must be downloaded for spatial
-#' filtering. Use a small bounding box and few granules.
-#' `signal_conf_ph` is a 2D column \[N, 5\] (5 surface types: land,
-#' ocean, sea ice, land ice, inland water) that expands to 5 columns.
+#' **GEDI L4C**: Waveform Structural Complexity Index. The `wsci`
+#' column is the headline metric, with prediction intervals
+#' (`wsci_pi_lower`, `wsci_pi_upper`) and decomposed XY/Z components
+#' (`wsci_xy`, `wsci_z`) in defaults. `worldcover_class` provides the
+#' ESA WorldCover land-cover class.
+#'
+#' **ICESat-2 ATL03**: Photon-level data. A single granule can contain
+#' millions of photons. The reader uses ATL03's segment-level spatial
+#' index (`geolocation/reference_photon_lat` etc.) to filter at segment
+#' rate before reading photon-level columns, so spatial subsets stay
+#' fast even on large bboxes. `signal_conf_ph` is a 2D column
+#' \[N, 5\] (5 surface types: land, ocean, sea ice, land ice, inland
+#' water) that expands to 5 columns.
 #'
 #' **ICESat-2 ATL06**: Land ice elevation segments. The default set
 #' includes fit statistics (`n_fit_photons`, `h_robust_sprd`, `snr`)
@@ -103,12 +108,34 @@
 #' corrections are available via `sl_columns("ATL06")` but not in
 #' defaults.
 #'
+#' **ICESat-2 ATL07**: Sea-ice height segments. Defaults include
+#' segment height + confidence + quality, photon rate, AMSR2 ice
+#' concentration, and atmospheric flags. Geolocation parameters
+#' (`solar_*`, `sigma_h`) and finer geophysical corrections live
+#' under `sea_ice_segments/{geolocation,geophysical,stats}/` and are
+#' available via `sl_columns("ATL07", set = "all")`.
+#'
 #' **ICESat-2 ATL08**: The default set includes `canopy_h_metrics`, a
 #' 2D dataset \[N, 18\] of canopy height percentiles (P10 through P95)
 #' that expands to 18 columns. Terrain slope, photon counts, and land
-#' cover are also included. The `*_20m` sub-segment columns and
-#' `*_abs` (absolute height) variants are available but not in
-#' defaults.
+#' cover are also included. `*_abs` (absolute height) variants and
+#' the secondary canopy / terrain metrics are in the registry but not
+#' in defaults.
+#'
+#' **ICESat-2 ATL10**: Sea-ice freeboard. Defaults include
+#' `beam_fb_height` (per-beam freeboard) plus quality, confidence,
+#' and the underlying ATL07 height-segment context.
+#'
+#' **ICESat-2 ATL13**: Inland water surface heights. Defaults include
+#' water-surface height + standard deviation, significant wave height,
+#' water depth, segment provenance (`inland_water_body_*`), and
+#' quality flags. Geometry uses the segment centroid (`segment_lat`,
+#' `segment_lon`).
+#'
+#' **ICESat-2 ATL24**: Near-shore bathymetry, photon-level. Defaults
+#' include orthometric / ellipsoidal / surface heights, photon class
+#' and confidence, and the THU / TVU positional uncertainty pair.
+#' Geometry uses photon coordinates (`lat_ph`, `lon_ph`).
 #'
 #' @seealso [sl_search()], [sl_columns()], [sl_extract_waveforms()]
 #' @export
@@ -375,10 +402,6 @@ check_bbox_within <- function(inner, outer, call = rlang::caller_env()) {
 }
 
 # ---------------------------------------------------------------------------
-# Internal: shared product reader
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
 # Internal: shared product reader (single-URL and multi-URL)
 # ---------------------------------------------------------------------------
 
@@ -610,8 +633,15 @@ reorder_output_columns <- function(data,
 
 #' Convert the Rust reader's raw output into a combined data frame.
 #'
-#' Processes each group (beam / track), builds a tibble with geometry
-#' and pool list columns, strips subgroup path prefixes, and row-binds.
+#' For each group (beam / track) builds a tibble (geometry attached,
+#' pool columns sliced into per-shot list-cols, scale factors applied),
+#' row-binds across groups, then post-processes the combined frame:
+#'
+#'   1. Bbox post-filter — a no-op for direct-scan products, but trims
+#'      the few edge photons ATL03's segment-level filter can include.
+#'   2. `delta_time` -> POSIXct `time` (when `convert_time = TRUE`).
+#'   3. Canonical column reorder (group / id / time / coords / user /
+#'      auto-added infrastructure / geometry).
 #' @noRd
 assemble_read_result <- function(
   raw_result,
@@ -810,9 +840,20 @@ icesat2_lat_lon <- function(product) {
 
 #' Convert raw bytes from Rust to an R vector based on HDF5 dtype.
 #'
-#' The Rust side sends each column as a raw byte vector plus a JSON string
-#' describing the HDF5 datatype (e.g. `FixedPoint { size: 4, signed: true }`)
-#' and element count. We use `readBin()` to reinterpret the bytes.
+#' Most columns are returned from the Rust FFI already typed (Doubles /
+#' Integers, with fill-values replaced). This raw-bytes path is used for:
+#'
+#'   - Pool columns (rxwaveform, txwaveform, pgap_theta_z): variable
+#'     length per shot, sliced into list-cols on the R side from the
+#'     flat byte buffer rather than typed up front.
+#'   - `sl_hdf5_read()`: low-level dataset access where the user reads
+#'     a single arbitrary HDF5 path with no per-product knowledge.
+#'
+#' The Rust side accompanies the bytes with a JSON string describing
+#' the HDF5 datatype (e.g. `FixedPoint { size: 4, signed: true }`) and
+#' element count; we use `readBin()` to reinterpret. uint64 is split
+#' into hi/lo int32 pairs and combined arithmetically since R has no
+#' native u64.
 #'
 #' @param raw_bytes Raw vector of bytes from the Rust reader.
 #' @param info_json JSON string with element_size, num_elements, dtype fields.
@@ -863,8 +904,11 @@ parse_column <- function(raw_bytes, info_json) {
 
 #' Extract element_size, num_elements, dtype from column info JSON.
 #'
-#' Uses simple regex extraction instead of a full JSON parser to avoid
-#' pulling in jsonlite as a dependency for this single internal use.
+#' Uses simple regex extraction instead of a full JSON parser. The
+#' shape is fixed and known (three flat keys, no nesting), so the
+#' regex is unambiguous and we avoid pulling in jsonlite as a
+#' dependency for what's only used by `parse_column()` and
+#' `sl_hdf5_read()`.
 #'
 #' @noRd
 parse_column_info <- function(json_str) {

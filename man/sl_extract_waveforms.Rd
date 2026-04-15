@@ -12,15 +12,14 @@ Must include columns: \code{shot_number}, \code{elevation_bin0},
 \code{elevation_lastbin}, \code{rx_sample_count}, and \code{rxwaveform} (list
 column). If \code{beam} is present, it is carried through to the output.
 
-Tip: request these columns explicitly when reading:
+The L1B default column set already includes \code{rxwaveform} plus
+the \code{elevation_bin0} / \code{elevation_lastbin} / \code{rx_sample_count}
+columns it depends on, so a plain \code{sl_read(granules)} is enough.
+When narrowing the read, request \code{rxwaveform} and the dependency
+columns are auto-added:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{d <- sl_read(granules, columns = c(
-  "shot_number", "rx_energy", "rxwaveform"
-))
-}\if{html}{\out{</div>}}
-
-The \code{elevation_bin0}, \code{elevation_lastbin}, and \code{rx_sample_count}
-columns are auto-added when \code{rxwaveform} is requested.}
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{d <- sl_read(granules, columns = c("shot_number", "rxwaveform"))
+}\if{html}{\out{</div>}}}
 }
 \value{
 A data frame with one row per waveform sample:

@@ -635,8 +635,19 @@ fn rust_read_icesat2_multi(
     Ok(List::from_values(lists))
 }
 
+/// Returns true when this Rust crate was compiled with debug assertions
+/// enabled (i.e. without --release). Used by the benchmark setup to
+/// refuse to run against an unoptimised binary, since rextendr::document()
+/// generates a debug Makevars by default during dev iteration.
+/// @noRd
+#[extendr]
+fn rust_is_debug() -> bool {
+    cfg!(debug_assertions)
+}
+
 extendr_module! {
     mod spacelaser;
+    fn rust_is_debug;
     fn rust_read_gedi;
     fn rust_read_icesat2;
     fn rust_read_gedi_multi;

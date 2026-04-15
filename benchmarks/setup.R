@@ -8,32 +8,49 @@
 #
 # Sourced by `compare.R`. Not a standalone script.
 
-# Spacelaser itself should already be loaded before sourcing this file
-# (either via `devtools::load_all(".")` during dev, or `library(spacelaser)`
-# when installed). That lets the same benchmark scripts work from a dev
-# checkout and from an installed package.
+# Always benchmark against an installed --release build. devtools::load_all()
+# triggers rextendr::document() which sets DEBUG=true and produces a debug
+# binary (~6-15% slower for our workload, but anywhere from 2-10x slower for
+# byte-heavy work in general). The Rust side exposes rust_is_debug() so we
+# can fail fast if someone is about to time the wrong binary.
 if (!"spacelaser" %in% loadedNamespaces()) {
-  if (requireNamespace("spacelaser", quietly = TRUE)) {
-    library(spacelaser)
-  } else if (requireNamespace("devtools", quietly = TRUE) && file.exists("DESCRIPTION")) {
-    devtools::load_all(".", quiet = TRUE)
-  } else {
-    stop("Install spacelaser or run from a dev checkout with devtools available.")
+  if (!requireNamespace("spacelaser", quietly = TRUE)) {
+    if (requireNamespace("devtools", quietly = TRUE) && file.exists("DESCRIPTION")) {
+      message("spacelaser not installed — installing from source (release build)…")
+      Sys.unsetenv("DEBUG")  # rextendr::document() sets this; clear before install
+      devtools::install(quick = TRUE, quiet = TRUE, upgrade = "never")
+    } else {
+      stop(
+        "Install spacelaser first:\n",
+        "  Sys.unsetenv('DEBUG'); devtools::install(quick = TRUE)\n",
+        "load_all() is deliberately not used here — it produces debug builds."
+      )
+    }
   }
+  library(spacelaser)
+}
+if (isTRUE(spacelaser:::rust_is_debug())) {
+  stop(
+    "Loaded spacelaser was built with debug assertions on. Benchmark would\n",
+    "underestimate spacelaser's true performance. Rebuild with:\n",
+    "  Sys.unsetenv('DEBUG')\n",
+    "  Rscript -e 'source(\"tools/config.R\")'   # rewrites src/Makevars\n",
+    "  Rscript -e 'devtools::install(quick = TRUE)'"
+  )
 }
 suppressPackageStartupMessages({
   library(data.table)
 })
 
 # Mondah forest, Gabon — well-known GEDI calibration site, dense tropical
-# canopy. Bbox centred on (9.335°E, 0.565°N). Size has been scaled up
-# from the initial 0.03° square to ~0.0424° square (= 2x area) to probe
-# how the spacelaser advantage scales as the query touches more orbits.
-# The same (center, date range, column set) means results are directly
-# comparable to the 2026-04-15 0.03° run archived in results/.
-BENCH_BBOX  <- sl_bbox(9.3138, 0.5438, 9.3562, 0.5862)
+# canopy. 0.03° × 0.03° at this location and date range yields ~11 granules,
+# small enough for ~30 GB cold-cache downloads on a typical dev machine
+# while still producing a meaningful spatial subset workload (~1200 shots).
+# This is the canonical "headline" benchmark workload. For scaling
+# experiments, bump bbox or extend BENCH_END (see results/ for past runs).
+BENCH_BBOX  <- sl_bbox(9.32, 0.55, 9.35, 0.58)
 BENCH_START <- "2020-01-01"
-BENCH_END   <- "2023-12-31"
+BENCH_END   <- "2021-12-31"
 BENCH_PRODUCT <- "L2A"
 
 # Ecologist-realistic column set — mixes 1D scalars, 2D (`rh` → rh0..rh100),

@@ -10,6 +10,13 @@
 #' @useDynLib spacelaser, .registration = TRUE
 NULL
 
+#' Returns true when this Rust crate was compiled with debug assertions
+#' enabled (i.e. without --release). Used by the benchmark setup to
+#' refuse to run against an unoptimised binary, since rextendr::document()
+#' generates a debug Makevars by default during dev iteration.
+#' @noRd
+rust_is_debug <- function() .Call(wrap__rust_is_debug)
+
 #' Read GEDI data from a remote HDF5 file with spatial subsetting.
 #' @noRd
 rust_read_gedi <- function(url, product, xmin, ymin, xmax, ymax, columns, beams, username, password, pool_columns, transposed_columns) .Call(wrap__rust_read_gedi, url, product, xmin, ymin, xmax, ymax, columns, beams, username, password, pool_columns, transposed_columns)

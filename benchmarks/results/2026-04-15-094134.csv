@@ -1,0 +1,2 @@
+"timestamp","bbox","date_start","date_end","product","n_granules","hdf5r_dl_s","hdf5r_read_s","hdf5r_total_s","hdf5r_bytes","hdf5r_rows","sl_total_s","sl_rows","speedup"
+"2026-04-15 09:41:34","9.3138,0.5438,9.3562,0.5862","2020-01-01","2023-12-31","L2A",17,867.91,3.19,871.1,45127605505,3542,120.39,3542,7.2

@@ -26,12 +26,14 @@ suppressPackageStartupMessages({
 })
 
 # Mondah forest, Gabon — well-known GEDI calibration site, dense tropical
-# canopy. 0.03° × 0.03° matches the PNW test bbox, same order of magnitude
-# as a typical plot-scale spatial query. If granule counts come in too
-# low/high, tune these.
-BENCH_BBOX  <- sl_bbox(9.32, 0.55, 9.35, 0.58)
+# canopy. Bbox centred on (9.335°E, 0.565°N). Size has been scaled up
+# from the initial 0.03° square to ~0.0424° square (= 2x area) to probe
+# how the spacelaser advantage scales as the query touches more orbits.
+# The same (center, date range, column set) means results are directly
+# comparable to the 2026-04-15 0.03° run archived in results/.
+BENCH_BBOX  <- sl_bbox(9.3138, 0.5438, 9.3562, 0.5862)
 BENCH_START <- "2020-01-01"
-BENCH_END   <- "2021-12-31"
+BENCH_END   <- "2023-12-31"
 BENCH_PRODUCT <- "L2A"
 
 # Ecologist-realistic column set — mixes 1D scalars, 2D (`rh` → rh0..rh100),

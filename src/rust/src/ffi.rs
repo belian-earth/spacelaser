@@ -528,7 +528,10 @@ fn rust_read_gedi_multi(
                         .map_err(|e| e.to_string())
                 }
             })
-            .buffer_unordered(4)
+            // Up from 4. Multi-granule reads are dominated by HTTP
+            // round-trips; bumping concurrency lets us saturate NASA
+            // DAAC endpoints more completely on fast connections.
+            .buffer_unordered(8)
             .collect()
             .await;
 
@@ -608,7 +611,10 @@ fn rust_read_icesat2_multi(
                         .map_err(|e| e.to_string())
                 }
             })
-            .buffer_unordered(4)
+            // Up from 4. Multi-granule reads are dominated by HTTP
+            // round-trips; bumping concurrency lets us saturate NASA
+            // DAAC endpoints more completely on fast connections.
+            .buffer_unordered(8)
             .collect()
             .await;
 

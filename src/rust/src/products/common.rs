@@ -252,7 +252,12 @@ async fn read_single_group(
                 }
             }
         })
-        .buffer_unordered(16)
+        // Up from 16. Per-beam column reads are network-bound: each
+        // column is a handful of small Range requests that overlap
+        // naturally when concurrency is high. With 8 beams × 32 cols
+        // in flight, an 8-granule wave can have hundreds of in-flight
+        // requests, which is appropriate for a high-bandwidth link.
+        .buffer_unordered(32)
         .collect()
         .await;
 

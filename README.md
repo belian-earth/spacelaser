@@ -42,6 +42,32 @@ HTTP, avoiding multi-gigabyte downloads.
 | ATL13   | Inland water surface heights        |
 | ATL24   | Near-shore bathymetric photons      |
 
+## Why spacelaser
+
+The standard R workflow for GEDI / ICESat-2 data is to download whole
+HDF5 granules, then filter locally. For a typical spatial subset query
+that wastes minutes and gigabytes — the file you’re filtering is usually
+100-10,000× larger than the answer you actually want.
+
+Spacelaser issues HTTP Range requests against the remote files and
+returns just the rows that fall inside your bounding box, with no local
+caching needed.
+
+Cold-cache benchmark, GEDI L2A, 0.03° × 0.03° bbox over Gabon, 2 years,
+11 granules, ecologist-realistic column set:
+
+|  | spacelaser | curl + hdf5r (status quo) |
+|----|----|----|
+| Wall time | **70 s** | 1,568 s |
+| Bytes downloaded | (small) | 27 GiB |
+| Disk used | 0 | 27 GiB |
+| Output | 1,246 shots × 112 cols | 1,246 shots × 112 cols (bit-perfect equivalent) |
+
+That’s a **22.5×** speedup, robustly **15-22×** across runs depending on
+NASA network conditions. Full methodology, equivalence-check machinery,
+reproduction instructions, and all archived runs in
+[`benchmarks/`](benchmarks/).
+
 ## Installation
 
 Requires a [Rust toolchain](https://www.rust-lang.org/tools/install)

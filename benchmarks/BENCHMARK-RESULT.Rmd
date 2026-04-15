@@ -1,0 +1,145 @@
+---
+output: github_document
+---
+
+<!-- BENCHMARK-RESULT.md is generated — do not edit by hand.
+     Re-render with:
+       Rscript -e 'rmarkdown::render("benchmarks/BENCHMARK-RESULT.Rmd")'
+     Or run the full pipeline via benchmarks/run.sh
+     Methodology, caveats, and reproduction instructions live in README.md. -->
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE,
+                      results = "asis")
+library(arrow)
+library(knitr)
+
+# Rmd is in benchmarks/; results/ is a sibling. knitr's default wd
+# is the Rmd's directory, so these resolve correctly.
+paths <- list(
+  timing = function(p) sprintf("results/latest/%s-timing.parquet", p),
+  equiv  = "results/latest/equivalence.parquet"
+)
+
+read_timing <- function(p) {
+  path <- paths$timing(p)
+  if (!file.exists(path)) return(NULL)
+  as.data.frame(arrow::read_parquet(path))
+}
+
+t_hdf5r  <- read_timing("hdf5r")
+t_sl     <- read_timing("spacelaser")
+t_h5coro <- read_timing("h5coro")
+
+equiv <- if (file.exists(paths$equiv))
+  as.data.frame(arrow::read_parquet(paths$equiv)) else
+  data.frame()
+
+fmt_s  <- function(x) if (is.na(x)) "—" else sprintf("%.1f s", x)
+fmt_b  <- function(x) {
+  if (is.na(x)) "—"
+  else format(structure(x, class = "object_size"), units = "auto")
+}
+fmt_int <- function(x) if (is.na(x)) "—" else format(x, big.mark = ",")
+```
+
+# Benchmark result
+
+```{r provenance}
+frames <- Filter(Negate(is.null), list(t_hdf5r, t_sl, t_h5coro))
+if (length(frames) == 0L) {
+  cat("*No benchmark data yet. Run `benchmarks/run.sh`.*\n")
+} else {
+  row <- frames[[1L]][1L, ]
+  cat(sprintf(
+    "GEDI **%s**, bbox `%s`, %s → %s, %s granules. Run at **%s**.\n",
+    row$product, row$bbox, row$date_start, row$date_end,
+    fmt_int(row$n_granules), row$timestamp
+  ))
+}
+have_data <- length(frames) > 0L
+```
+
+## Headline
+
+```{r headline, eval = have_data}
+pipelines <- list(
+  list(label = "Spacelaser (Rust, partial HTTP range reads)", t = t_sl),
+  list(label = "h5coro (Python, partial HTTP range reads)",    t = t_h5coro),
+  list(label = "Status quo (curl + hdf5r, full download)",     t = t_hdf5r)
+)
+pipelines <- Filter(function(x) !is.null(x$t), pipelines)
+
+tab <- do.call(rbind, lapply(pipelines, function(x) {
+  data.frame(
+    Pipeline        = x$label,
+    `Wall time`     = fmt_s(x$t$seconds_total),
+    `Download`      = fmt_s(x$t$seconds_download),
+    `Read`          = fmt_s(x$t$seconds_read),
+    `Bytes on disk` = fmt_b(x$t$bytes_downloaded),
+    Rows            = fmt_int(x$t$n_rows),
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+}))
+knitr::kable(tab, align = "lrrrrr")
+```
+
+```{r speedups, eval = have_data}
+lines <- character(0)
+if (!is.null(t_hdf5r) && !is.null(t_sl)) {
+  lines <- c(lines, sprintf(
+    "**Spacelaser: %.1f×** faster than status quo.",
+    t_hdf5r$seconds_total / t_sl$seconds_total
+  ))
+}
+if (!is.null(t_hdf5r) && !is.null(t_h5coro)) {
+  lines <- c(lines, sprintf(
+    "**h5coro: %.1f×** faster than status quo.",
+    t_hdf5r$seconds_total / t_h5coro$seconds_total
+  ))
+}
+if (!is.null(t_sl) && !is.null(t_h5coro)) {
+  rel <- t_h5coro$seconds_total / t_sl$seconds_total
+  lines <- c(lines, sprintf(
+    "Spacelaser is **%.2f×** %s h5coro.",
+    if (rel >= 1) rel else 1 / rel,
+    if (rel >= 1) "faster than" else "slower than"
+  ))
+}
+if (length(lines) > 0L) cat("\n", paste(lines, collapse = "  \n"), "\n", sep = "")
+
+if (!is.null(t_hdf5r) && !is.na(t_hdf5r$seconds_download)) {
+  cat(sprintf(
+    "\n\nStatus-quo phase split: **%s downloading** vs **%s reading** — the bottleneck is data transfer, not HDF5 parsing.\n",
+    fmt_s(t_hdf5r$seconds_download), fmt_s(t_hdf5r$seconds_read)
+  ))
+}
+```
+
+## Equivalence
+
+```{r equiv, eval = have_data}
+if (nrow(equiv) > 0L) {
+  tab <- data.frame(
+    Pair          = sprintf("%s vs %s", equiv$left, equiv$right),
+    `Shared cols` = equiv$n_common_cols,
+    `All match`   = ifelse(equiv$all_match, "✓", "✗"),
+    Notes         = ifelse(nzchar(equiv$divergent_cols), equiv$divergent_cols, ""),
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+  knitr::kable(tab, align = "lrll")
+} else {
+  cat("*Need ≥2 pipelines' data to run the cross-pipeline check.*\n")
+}
+```
+
+spacelaser and hdf5r agree on every shared column. h5coro matches on
+row count and coordinates but returns zeros on the science columns
+(rh0–100, quality_flag, sensitivity, elev_*); pending investigation,
+likely a hyperslice or fill-value handling issue in our h5coro driver
+rather than h5coro itself. Timing comparison remains valid.
+
+---
+
+See [`README.md`](README.md) for methodology, workload details, variance
+discussion, and reproduction instructions.

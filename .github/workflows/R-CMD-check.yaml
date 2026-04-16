@@ -28,12 +28,12 @@ jobs:
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
-      # NASA Earthdata credentials for the three live integration
-      # tests in test-integration-live.R. When absent (e.g. PRs from
-      # forks, which GitHub withholds secrets from), those tests
-      # skip cleanly via skip_if_no_earthdata().
-      EARTHDATA_USERNAME: ${{ secrets.EARTHDATA_USERNAME }}
-      EARTHDATA_PASSWORD: ${{ secrets.EARTHDATA_PASSWORD }}
+      # R-CMD-check does NOT run live integration tests: the opt-in
+      # flag SPACELASER_INTEGRATION is left unset, so the suite in
+      # test-integration-live.R skips on every matrix runner. This
+      # avoids five parallel jobs hammering NASA with authenticated
+      # reads from the same credentials. Live integration coverage
+      # happens on the single-runner test-coverage workflow instead.
 
     steps:
       - uses: actions/checkout@v4

@@ -12,16 +12,29 @@
 # credentials are available, so `devtools::test()` works out of the
 # box whether you have credentials set up or not.
 
-#' Skip a test when creds / network / CRAN rule it out.
+#' Skip a test unless live-integration mode is opted in.
 #'
-#' The gate is deliberately friendly: missing creds produces a skip,
-#' not a failure, so local `devtools::test()` runs don't require
-#' every contributor to have an Earthdata account. CI should set
-#' EARTHDATA_USERNAME / EARTHDATA_PASSWORD as secrets to exercise
-#' these tests.
+#' Integration tests are opt-in via `SPACELASER_INTEGRATION`. Default
+#' `devtools::test()` runs stay deterministic and offline, and the
+#' five-runner R-CMD-check matrix does not hammer NASA with parallel
+#' authenticated reads. The test-coverage workflow exports the flag
+#' so the live suite still runs there (single ubuntu runner).
+#'
+#' Local use: `Sys.setenv(SPACELASER_INTEGRATION = 1); devtools::test()`.
+#' @noRd
+skip_unless_integration <- function() {
+  testthat::skip_on_cran()
+  if (!nzchar(Sys.getenv("SPACELASER_INTEGRATION", unset = ""))) {
+    testthat::skip("SPACELASER_INTEGRATION not set (integration tests are opt-in)")
+  }
+}
+
+#' Same as `skip_unless_integration()`, but also requires Earthdata
+#' credentials. Use for tests that authenticate against URS/DAAC
+#' endpoints; pure CMR probes should call the base helper instead.
 #' @noRd
 skip_if_no_earthdata <- function() {
-  testthat::skip_on_cran()
+  skip_unless_integration()
   creds <- tryCatch(
     spacelaser:::sl_earthdata_creds(),
     error = function(e) NULL

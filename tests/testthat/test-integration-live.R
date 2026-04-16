@@ -99,8 +99,9 @@ test_that("Live CMR probe: concept IDs still valid across DAACs", {
   # No auth needed — CMR search is unauthenticated. This test catches
   # concept-ID retirements and CMR response-schema drift. Running it
   # against one product per DAAC keeps it fast (~1 s) while covering
-  # the three distinct catalogs we query.
-  skip_on_cran()
+  # the three distinct catalogs we query. Gated on the integration
+  # opt-in so R-CMD-check doesn't ping CMR from every matrix runner.
+  skip_unless_integration()
 
   bb <- test_bbox()
   dr <- test_date_range()

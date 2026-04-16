@@ -7,7 +7,7 @@
 sl_hdf5_groups(url, path = "/")
 }
 \arguments{
-\item{url}{Character. URL of the HDF5 file.}
+\item{url}{Character. HTTPS URL of the HDF5 file.}
 
 \item{path}{Character. HDF5 group path to list (default: \code{"/"}).}
 }
@@ -15,6 +15,8 @@ sl_hdf5_groups(url, path = "/")
 A character vector of group/dataset names.
 }
 \description{
-Explore the internal structure of a remote HDF5 file by listing the
-members of a group. Useful for discovering available datasets and beams.
+Low-level helper for exploring the internal structure of a remote
+HDF5 file. Useful for discovering available datasets, beams, or
+subgroups when working outside the curated \code{\link[=sl_columns]{sl_columns()}} registry.
+Earthdata credentials are required (see \code{\link[=sl_search]{sl_search()}} for setup).
 }

@@ -89,13 +89,13 @@
   tide_ocean_pole                    = "geophys_corr/tide_ocean_pole",
   tide_pole                          = "geophys_corr/tide_pole",
   # ------------------------------------------------------------------
-  # Pool datasets (variable-length per shot; opt-in via `columns`).
+  # Pool datasets — variable-length per shot, returned as list columns.
   # These are flat 1D arrays concatenating all shots' waveform samples
-  # across the beam. The reader fetches them in full and the R side
-  # slices each shot's waveform into a list column using the
-  # rx_/tx_sample_start_index and rx_/tx_sample_count vectors.
-  # Not returned when `columns = NULL` (too expensive, and produces
-  # list columns which most downstream code doesn't expect).
+  # across the beam. The reader fetches just the relevant byte ranges
+  # using rx_/tx_sample_start_index + rx_/tx_sample_count and slices
+  # them into per-shot list columns on the R side.
+  # `rxwaveform` is in the L1B default set — L1B without it is just
+  # metadata. `txwaveform` is opt-in via `columns`.
   # ------------------------------------------------------------------
   rxwaveform                         = "rxwaveform",
   txwaveform                         = "txwaveform"
@@ -116,14 +116,16 @@
   pgap_theta_z = list(start = "rx_sample_start_index", count = "rx_sample_count")
 )
 
-#' L1B pool columns — opt-in waveform datasets.
+#' L1B pool columns — variable-length-per-shot waveform datasets.
 #'
 #' Short names of the L1B columns that live at the beam root as flat
-#' 1D arrays of variable-length-per-shot samples rather than shot-rate
-#' values. They are read in full by the Rust layer and sliced into
-#' per-shot list columns by `build_tibble()` using the map below.
-#' Excluded from the default column set so a plain `sl_read(granules)`
-#' does not silently download tens of megabytes per beam.
+#' 1D arrays concatenating all shots' samples rather than shot-rate
+#' values. The Rust layer fetches just the byte ranges spanning the
+#' selected shots; `build_tibble()` slices them into per-shot list
+#' columns using the index map below.
+#'
+#' `rxwaveform` is in the L1B default set (an L1B granule without
+#' waveforms is just metadata). `txwaveform` is opt-in.
 #' @noRd
 .gedi_l1b_pool_columns <- c("rxwaveform", "txwaveform")
 
@@ -861,8 +863,9 @@ product_default_columns <- function(product) {
 #' argument of [sl_read()]). Values are the full HDF5 dataset paths.
 #'
 #' @param product Character. One of:
-#'   * GEDI: `"L1B"`, `"L2A"`, `"L2B"`, `"L4A"`
-#'   * ICESat-2: `"ATL03"`, `"ATL06"`, `"ATL08"`
+#'   * GEDI: `"L1B"`, `"L2A"`, `"L2B"`, `"L4A"`, `"L4C"`
+#'   * ICESat-2: `"ATL03"`, `"ATL06"`, `"ATL07"`, `"ATL08"`,
+#'     `"ATL10"`, `"ATL13"`, `"ATL24"`
 #' @param set Character. Which column set to return:
 #'   * `"all"` (default): every column in the registry, including
 #'     geophysical corrections, instrument details, and pool columns.
@@ -898,10 +901,11 @@ sl_columns <- function(
 
 #' Validate and resolve column names to full HDF5 paths.
 #'
-#' When `columns` is `NULL`, returns the full default column set for the
-#' product, excluding any pool columns (see `.gedi_l1b_pool_columns`).
-#' Pool columns are opt-in because they are expensive and produce list
-#' columns.
+#' When `columns` is `NULL`, returns the product's curated default set
+#' (see `.default_column_registry`). The default sets are opinionated
+#' subsets of the registry; some include pool columns (e.g. L1B's
+#' `rxwaveform`), others omit them. As a fallback for any product that
+#' lacks a default set, returns the full registry minus pool columns.
 #'
 #' Short user-facing names are matched against the registry. Names that look
 #' like expanded 2D columns (e.g., `"rh90"`) are resolved by stripping
@@ -972,13 +976,17 @@ ensure_lat_lon <- function(columns, lat_col, lon_col) {
 }
 
 # ---------------------------------------------------------------------------
-# Internal: pool column handling (GEDI L1B waveforms)
+# Internal: pool column handling
 # ---------------------------------------------------------------------------
+# Pool columns are flat 1D HDF5 datasets that concatenate variable-length
+# per-shot data across a beam. The reader slices them into per-shot list
+# columns using `*_sample_start_index` + `*_sample_count`. GEDI L1B has
+# `rxwaveform` and `txwaveform`; GEDI L2B has `pgap_theta_z`.
 
 #' Short names of pool columns for a given product.
 #'
-#' Only GEDI L1B has pool columns in the current registry set. Other
-#' products return `character(0)`.
+#' GEDI L1B and L2B currently have pool columns; other products return
+#' `character(0)`.
 #' @noRd
 product_pool_columns <- function(product) {
   switch(
@@ -1121,12 +1129,14 @@ build_pool_specs <- function(pool_short, pool_paths, product) {
 
 #' Known fill-value sentinels for each sensor family.
 #'
-#' GEDI uses -9999 (most columns) and -999999 (DEM columns). ICESat-2
-#' ATL08 uses HDF5 float max (3.4028235e+38). ATL06 uses IEEE NaN, which
-#' R already represents as NA. ATL03 photon-level data has no fill values.
+#' GEDI (all products) uses -9999 for most columns and -999999 for DEM
+#' columns. ICESat-2 ATL08 and ATL13 use HDF5 float max (3.4028235e+38).
+#' Other ICESat-2 products (ATL03, ATL06, ATL07, ATL10, ATL24) either
+#' use IEEE NaN — which R already represents as NA — or have no fill
+#' values; they need no explicit sentinel handling.
 #'
-#' These are applied to all numeric/integer columns after parsing. The
-#' sentinel values are exact IEEE 754 representations, so equality
+#' These sentinels are applied to all numeric/integer columns after
+#' parsing. The values are exact IEEE 754 representations, so equality
 #' comparison is correct.
 #' @noRd
 product_fill_values <- function(product) {

@@ -3,11 +3,17 @@
 
 #' Resolve Earthdata credentials for data access.
 #'
-#' Returns username/password for the NASA Earthdata OAuth flow. Credentials
-#' are resolved in this order:
+#' Returns the username + password the Rust reader uses to authenticate
+#' against NASA Earthdata. The DAAC endpoints redirect once to
+#' urs.earthdata.nasa.gov; the Rust client sends Basic auth at the URS
+#' step and follows the resulting Set-Cookie back to the data URL —
+#' so what we hand it from R is just `(username, password)`, no token.
+#'
+#' Resolved in this order:
 #'
 #' 1. `EARTHDATA_USERNAME` + `EARTHDATA_PASSWORD` environment variables
-#' 2. A `.netrc` file (checks `GDAL_HTTP_NETRC_FILE` env var, then `~/.netrc`)
+#' 2. A `.netrc` file (checks `GDAL_HTTP_NETRC_FILE` env var first so an
+#'    `earthdatalogin` setup is picked up automatically, then `~/.netrc`)
 #'
 #' Cached for the session after first successful resolution.
 #'
@@ -71,7 +77,9 @@ parse_netrc <- function(machine) {
   ))
 
   for (netrc_path in paths) {
-    if (!file.exists(netrc_path)) next
+    if (!file.exists(netrc_path)) {
+      next
+    }
 
     lines <- readLines(netrc_path, warn = FALSE)
     tokens <- unlist(strsplit(paste(lines, collapse = " "), "\\s+"))
@@ -79,8 +87,11 @@ parse_netrc <- function(machine) {
 
     i <- 1L
     while (i <= length(tokens)) {
-      if (tokens[i] == "machine" && i + 1L <= length(tokens) &&
-          tokens[i + 1L] == machine) {
+      if (
+        tokens[i] == "machine" &&
+          i + 1L <= length(tokens) &&
+          tokens[i + 1L] == machine
+      ) {
         login <- NULL
         password <- NULL
         j <- i + 2L

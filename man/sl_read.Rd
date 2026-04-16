@@ -112,12 +112,19 @@ automatically converted to metres for consistency with L2A.
 Mg/ha. Prediction intervals (\code{agbd_pi_lower}, \code{agbd_pi_upper}) and
 standard error (\code{agbd_se}) are included in defaults.
 
-\strong{ICESat-2 ATL03}: Photon-level data. A single granule can produce
-millions of rows. Multi-granule reads may be slow or timeout due to
-the large lat/lon arrays that must be downloaded for spatial
-filtering. Use a small bounding box and few granules.
-\code{signal_conf_ph} is a 2D column [N, 5] (5 surface types: land,
-ocean, sea ice, land ice, inland water) that expands to 5 columns.
+\strong{GEDI L4C}: Waveform Structural Complexity Index. The \code{wsci}
+column is the headline metric, with prediction intervals
+(\code{wsci_pi_lower}, \code{wsci_pi_upper}) and decomposed XY/Z components
+(\code{wsci_xy}, \code{wsci_z}) in defaults. \code{worldcover_class} provides the
+ESA WorldCover land-cover class.
+
+\strong{ICESat-2 ATL03}: Photon-level data. A single granule can contain
+millions of photons. The reader uses ATL03's segment-level spatial
+index (\code{geolocation/reference_photon_lat} etc.) to filter at segment
+rate before reading photon-level columns, so spatial subsets stay
+fast even on large bboxes. \code{signal_conf_ph} is a 2D column
+[N, 5] (5 surface types: land, ocean, sea ice, land ice, inland
+water) that expands to 5 columns.
 
 \strong{ICESat-2 ATL06}: Land ice elevation segments. The default set
 includes fit statistics (\code{n_fit_photons}, \code{h_robust_sprd}, \code{snr})
@@ -125,12 +132,34 @@ and reference DEM height (\code{dem_h}). Tidal and geophysical
 corrections are available via \code{sl_columns("ATL06")} but not in
 defaults.
 
+\strong{ICESat-2 ATL07}: Sea-ice height segments. Defaults include
+segment height + confidence + quality, photon rate, AMSR2 ice
+concentration, and atmospheric flags. Geolocation parameters
+(\verb{solar_*}, \code{sigma_h}) and finer geophysical corrections live
+under \verb{sea_ice_segments/\{geolocation,geophysical,stats\}/} and are
+available via \code{sl_columns("ATL07", set = "all")}.
+
 \strong{ICESat-2 ATL08}: The default set includes \code{canopy_h_metrics}, a
 2D dataset [N, 18] of canopy height percentiles (P10 through P95)
 that expands to 18 columns. Terrain slope, photon counts, and land
-cover are also included. The \verb{*_20m} sub-segment columns and
-\verb{*_abs} (absolute height) variants are available but not in
-defaults.
+cover are also included. \verb{*_abs} (absolute height) variants and
+the secondary canopy / terrain metrics are in the registry but not
+in defaults.
+
+\strong{ICESat-2 ATL10}: Sea-ice freeboard. Defaults include
+\code{beam_fb_height} (per-beam freeboard) plus quality, confidence,
+and the underlying ATL07 height-segment context.
+
+\strong{ICESat-2 ATL13}: Inland water surface heights. Defaults include
+water-surface height + standard deviation, significant wave height,
+water depth, segment provenance (\verb{inland_water_body_*}), and
+quality flags. Geometry uses the segment centroid (\code{segment_lat},
+\code{segment_lon}).
+
+\strong{ICESat-2 ATL24}: Near-shore bathymetry, photon-level. Defaults
+include orthometric / ellipsoidal / surface heights, photon class
+and confidence, and the THU / TVU positional uncertainty pair.
+Geometry uses photon coordinates (\code{lat_ph}, \code{lon_ph}).
 }
 }
 \seealso{

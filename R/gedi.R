@@ -1,15 +1,20 @@
 #' Read a single GEDI granule.
 #'
-#' Internal helper used by [sl_read()] when given a character URL. Encapsulates
-#' GEDI-specific knowledge: lat/lon paths and the `beam` group label. Always
-#' reads all 8 beams; users filter post-hoc on the returned `beam` column.
+#' Internal helper used by [sl_read()] when given a character URL.
+#' Encapsulates GEDI-specific knowledge: lat/lon paths (which differ
+#' per-product — see `gedi_lat_lon()`) and the `beam` group label.
+#' Reads all of GEDI's 8 beams that exist in the file (degraded
+#' periods may have fewer); users filter post-hoc on the returned
+#' `beam` column.
 #'
-#' @param url Character. URL of the GEDI HDF5 file (HTTPS or S3).
-#' @param product Character. GEDI product level: one of `"L1B"`, `"L2A"`,
-#'   `"L2B"`, `"L4A"`, or `"L4C"`.
+#' @param url Character. URL of the GEDI HDF5 file. HTTP/HTTPS or a
+#'   local filesystem path (`file://` or bare path) are both accepted.
+#' @param product Character. GEDI product level: one of `"L1B"`,
+#'   `"L2A"`, `"L2B"`, `"L4A"`, or `"L4C"`.
 #' @param bbox An `sl_bbox` or numeric `c(xmin, ymin, xmax, ymax)`.
-#' @param columns Character vector of short column names, or `NULL` for the
-#'   product default registry.
+#' @param columns Character vector of short column names, or `NULL`
+#'   for the product's curated default set.
+#' @param convert_time Logical. See [sl_read()].
 #'
 #' @importFrom rlang check_required arg_match
 #' @noRd

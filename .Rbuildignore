@@ -16,3 +16,4 @@
 ^data-raw$
 ^codecov\.yml$
 ^\.github$
+^benchmarks$

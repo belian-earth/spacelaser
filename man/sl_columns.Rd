@@ -13,8 +13,9 @@ sl_columns(
 \arguments{
 \item{product}{Character. One of:
 \itemize{
-\item GEDI: \code{"L1B"}, \code{"L2A"}, \code{"L2B"}, \code{"L4A"}
-\item ICESat-2: \code{"ATL03"}, \code{"ATL06"}, \code{"ATL08"}
+\item GEDI: \code{"L1B"}, \code{"L2A"}, \code{"L2B"}, \code{"L4A"}, \code{"L4C"}
+\item ICESat-2: \code{"ATL03"}, \code{"ATL06"}, \code{"ATL07"}, \code{"ATL08"},
+\code{"ATL10"}, \code{"ATL13"}, \code{"ATL24"}
 }}
 
 \item{set}{Character. Which column set to return:

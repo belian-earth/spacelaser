@@ -238,7 +238,8 @@ search_cmr <- function(bbox, concept_id, date_start, date_end, product_label) {
     "v" = "Found {rl} {product_label} {cli::qty(rl)} granule{?s}."
   ))
 
-  # Attach class and product metadata for S3 dispatch in grab()
+  # Caller (sl_search) wraps in new_sl_search() to attach the class and
+  # bbox/product attributes that sl_read.sl_*_search dispatch on.
   result
 }
 

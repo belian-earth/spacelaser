@@ -528,7 +528,10 @@ fn rust_read_gedi_multi(
                         .map_err(|e| e.to_string())
                 }
             })
-            .buffer_unordered(4)
+            // Up from 4. Multi-granule reads are dominated by HTTP
+            // round-trips; bumping concurrency lets us saturate NASA
+            // DAAC endpoints more completely on fast connections.
+            .buffer_unordered(8)
             .collect()
             .await;
 
@@ -608,7 +611,10 @@ fn rust_read_icesat2_multi(
                         .map_err(|e| e.to_string())
                 }
             })
-            .buffer_unordered(4)
+            // Up from 4. Multi-granule reads are dominated by HTTP
+            // round-trips; bumping concurrency lets us saturate NASA
+            // DAAC endpoints more completely on fast connections.
+            .buffer_unordered(8)
             .collect()
             .await;
 
@@ -629,8 +635,19 @@ fn rust_read_icesat2_multi(
     Ok(List::from_values(lists))
 }
 
+/// Returns true when this Rust crate was compiled with debug assertions
+/// enabled (i.e. without --release). Used by the benchmark setup to
+/// refuse to run against an unoptimised binary, since rextendr::document()
+/// generates a debug Makevars by default during dev iteration.
+/// @noRd
+#[extendr]
+fn rust_is_debug() -> bool {
+    cfg!(debug_assertions)
+}
+
 extendr_module! {
     mod spacelaser;
+    fn rust_is_debug;
     fn rust_read_gedi;
     fn rust_read_icesat2;
     fn rust_read_gedi_multi;

@@ -1,7 +1,7 @@
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
-# spacelaser
+# spacelaser <a href="https://belian-earth.github.io/spacelaser/"><img src="man/figures/logo.png" align="right" height="138" alt="spacelaser website" /></a>
 
 <!-- badges: start -->
 
@@ -14,9 +14,121 @@ coverage](https://codecov.io/gh/belian-earth/spacelaser/graph/badge.svg)](https:
 [![R-CMD-check](https://github.com/belian-earth/spacelaser/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/belian-earth/spacelaser/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
-Cloud-optimized partial reading of GEDI and ICESat-2 HDF5 data from R.
-Only the bytes needed for the requested spatial subset are fetched over
-HTTP, avoiding multi-gigabyte downloads.
+Fast cloud-optimized partial reading of GEDI and ICESat-2 HDF5 data from
+R. Only the bytes needed for the requested spatial/temporal subset are
+fetched over HTTP, avoiding multi-gigabyte downloads.
+
+## Installation
+
+Requires a [Rust toolchain](https://www.rust-lang.org/tools/install)
+(cargo + rustc).
+
+``` r
+# install.packages("pak")
+pak::pak("belian-earth/spacelaser")
+```
+
+## Authentication
+
+All reads go through NASA Earthdata, which requires a free account.
+Register at <https://urs.earthdata.nasa.gov/>.
+
+Credentials can be supplied in any of the following ways:
+
+- **Environment variables** — set `EARTHDATA_USERNAME` and
+  `EARTHDATA_PASSWORD`. Convenient for CI and shell sessions.
+
+- **A `.netrc` file** — add an entry for `urs.earthdata.nasa.gov` to
+  `~/.netrc` (or `_netrc` on Windows). spacelaser will read it directly.
+
+- [**`earthdatalogin`**](https://boettiger-lab.github.io/earthdatalogin/)
+  — the simplest option if you don’t already have a netrc set up:
+
+``` r
+# install.packages("earthdatalogin")
+earthdatalogin::edl_netrc()
+```
+
+This writes a netrc for you and is interoperable with other R Earthdata
+tools.
+
+## Example with GEDI L2A
+
+``` r
+library(spacelaser)
+
+bbox <- sl_bbox(-124.04, 41.39, -124.01, 41.42)
+
+granules <- sl_search(
+  bbox,
+  product = "L2A",
+  date_start = "2022-01-01",
+  date_end = "2023-01-01"
+)
+#> ℹ Searching CMR for GEDI L2A granules
+#> ✔ Searching CMR for GEDI L2A granules [815ms]
+#> 
+#> ✔ Found 9 GEDI L2A granules.
+gedi2a <- sl_read(granules)
+#> ℹ Reading L2A from 9 granules
+#> ✔ Read 579 footprint from 17 beam.✔ Reading L2A from 9 granules [53.2s]
+
+gedi2a
+#> # A tibble: 579 × 121
+#>    beam     shot_number time                lat_lowestmode lon_lowestmode
+#>    <chr>          <dbl> <dttm>                       <dbl>          <dbl>
+#>  1 BEAM0000     2.28e17 2022-12-20 14:08:10           41.4          -124.
+#>  2 BEAM0000     2.28e17 2022-12-20 14:08:10           41.4          -124.
+#>  3 BEAM0001     2.28e17 2022-12-20 14:08:10           41.4          -124.
+#>  4 BEAM0001     2.28e17 2022-12-20 14:08:10           41.4          -124.
+#>  5 BEAM0001     2.28e17 2022-12-20 14:08:10           41.4          -124.
+#>  6 BEAM0001     2.28e17 2022-12-20 14:08:10           41.4          -124.
+#>  7 BEAM0001     2.28e17 2022-12-20 14:08:10           41.4          -124.
+#>  8 BEAM0001     2.28e17 2022-12-20 14:08:10           41.4          -124.
+#>  9 BEAM0001     2.28e17 2022-12-20 14:08:10           41.4          -124.
+#> 10 BEAM0001     2.28e17 2022-12-20 14:08:10           41.4          -124.
+#> # ℹ 569 more rows
+#> # ℹ 116 more variables: degrade_flag <int>, quality_flag <int>,
+#> #   sensitivity <dbl>, solar_elevation <dbl>, elev_lowestmode <dbl>,
+#> #   elev_highestreturn <dbl>, energy_total <dbl>, num_detectedmodes <int>,
+#> #   rh0 <dbl>, rh1 <dbl>, rh2 <dbl>, rh3 <dbl>, rh4 <dbl>, rh5 <dbl>,
+#> #   rh6 <dbl>, rh7 <dbl>, rh8 <dbl>, rh9 <dbl>, rh10 <dbl>, rh11 <dbl>,
+#> #   rh12 <dbl>, rh13 <dbl>, rh14 <dbl>, rh15 <dbl>, rh16 <dbl>, rh17 <dbl>, …
+
+g <- gedi2a[gedi2a$quality_flag == 1, ]
+
+plot(
+  g$geometry,
+  pch = 21,
+  cex = 1.5,
+  bg = hcl.colors(100, "Viridis", alpha = 0.7)[
+    findInterval(g$rh98, seq(0, 100), all.inside = TRUE)
+  ]
+)
+```
+
+<img src="man/figures/README-example-1.png" alt="" width="100%" />
+
+## Exploring other products
+
+`sl_columns()` lists what a product offers. All 12 GEDI and ICESat-2
+products supported by spacelaser use the same two verbs (`sl_search()` →
+`sl_read()`); only the product string and column names change.
+
+``` r
+# ICESat-2 photon-level data — full column inventory
+sl_columns("ATL03", set = "all")
+#>                    lat_ph                    lon_ph                      h_ph 
+#>          "heights/lat_ph"          "heights/lon_ph"            "heights/h_ph" 
+#>                delta_time            signal_conf_ph            dist_ph_across 
+#>      "heights/delta_time"  "heights/signal_conf_ph"  "heights/dist_ph_across" 
+#>             dist_ph_along            pce_mframe_cnt             ph_id_channel 
+#>   "heights/dist_ph_along"  "heights/pce_mframe_cnt"   "heights/ph_id_channel" 
+#>               ph_id_count               ph_id_pulse                quality_ph 
+#>     "heights/ph_id_count"     "heights/ph_id_pulse"      "heights/quality_ph" 
+#>           signal_class_ph                 weight_ph 
+#> "heights/signal_class_ph"       "heights/weight_ph"
+```
 
 ## Supported products
 
@@ -67,118 +179,6 @@ Cold-cache benchmark, GEDI L2A, 0.03° × 0.03° bbox over Gabon, 2 years,
 That’s a **22.5×** speedup, robustly **15-22×** across runs depending on
 network conditions. Full methods and results can be found in
 [`benchmarks/`](https://github.com/belian-earth/spacelaser/tree/main/benchmarks).
-
-## Installation
-
-Requires a [Rust toolchain](https://www.rust-lang.org/tools/install)
-(cargo + rustc).
-
-``` r
-# install.packages("pak")
-pak::pak("belian-earth/spacelaser")
-```
-
-## Authentication
-
-All reads go through NASA Earthdata, which requires a free account.
-Register at <https://urs.earthdata.nasa.gov/>.
-
-Credentials can be supplied in any of the following ways:
-
-- **Environment variables** — set `EARTHDATA_USERNAME` and
-  `EARTHDATA_PASSWORD`. Convenient for CI and shell sessions.
-
-- **A `.netrc` file** — add an entry for `urs.earthdata.nasa.gov` to
-  `~/.netrc` (or `_netrc` on Windows). spacelaser will read it directly.
-
-- [**`earthdatalogin`**](https://boettiger-lab.github.io/earthdatalogin/)
-  — the simplest option if you don’t already have a netrc set up:
-
-``` r
-# install.packages("earthdatalogin")
-earthdatalogin::edl_netrc()
-```
-
-This writes a netrc for you and is interoperable with other R Earthdata
-tools.
-
-## Example with GEDI L2A
-
-``` r
-library(spacelaser)
-
-bbox <- sl_bbox(-124.04, 41.39, -124.01, 41.42)
-
-granules <- sl_search(
-  bbox,
-  product = "L2A",
-  date_start = "2022-01-01",
-  date_end = "2023-01-01"
-)
-#> ℹ Searching CMR for GEDI L2A granules
-#> ✔ Searching CMR for GEDI L2A granules [767ms]
-#> 
-#> ✔ Found 9 GEDI L2A granules.
-gedi2a <- sl_read(granules)
-#> ℹ Reading L2A from 9 granules
-#> ✔ Read 579 footprint from 17 beam.✔ Reading L2A from 9 granules [53.9s]
-
-gedi2a
-#> # A tibble: 579 × 121
-#>    beam     shot_number time                lat_lowestmode lon_lowestmode
-#>    <chr>          <dbl> <dttm>                       <dbl>          <dbl>
-#>  1 BEAM1011     2.24e17 2022-11-25 06:16:52           41.4          -124.
-#>  2 BEAM1011     2.24e17 2022-11-25 06:16:52           41.4          -124.
-#>  3 BEAM1011     2.24e17 2022-11-25 06:16:52           41.4          -124.
-#>  4 BEAM1011     2.24e17 2022-11-25 06:16:52           41.4          -124.
-#>  5 BEAM1011     2.24e17 2022-11-25 06:16:52           41.4          -124.
-#>  6 BEAM1011     2.24e17 2022-11-25 06:16:52           41.4          -124.
-#>  7 BEAM1011     2.24e17 2022-11-25 06:16:52           41.4          -124.
-#>  8 BEAM1011     2.24e17 2022-11-25 06:16:52           41.4          -124.
-#>  9 BEAM1011     2.24e17 2022-11-25 06:16:52           41.4          -124.
-#> 10 BEAM1011     2.24e17 2022-11-25 06:16:52           41.4          -124.
-#> # ℹ 569 more rows
-#> # ℹ 116 more variables: degrade_flag <int>, quality_flag <int>,
-#> #   sensitivity <dbl>, solar_elevation <dbl>, elev_lowestmode <dbl>,
-#> #   elev_highestreturn <dbl>, energy_total <dbl>, num_detectedmodes <int>,
-#> #   rh0 <dbl>, rh1 <dbl>, rh2 <dbl>, rh3 <dbl>, rh4 <dbl>, rh5 <dbl>,
-#> #   rh6 <dbl>, rh7 <dbl>, rh8 <dbl>, rh9 <dbl>, rh10 <dbl>, rh11 <dbl>,
-#> #   rh12 <dbl>, rh13 <dbl>, rh14 <dbl>, rh15 <dbl>, rh16 <dbl>, rh17 <dbl>, …
-
-g <- gedi2a[gedi2a$quality_flag == 1, ]
-
-plot(
-  g$geometry,
-  pch = 21,
-  cex = 1.5,
-  bg = hcl.colors(100, "Viridis", alpha = 0.7)[
-    findInterval(g$rh98, seq(0, 100), all.inside = TRUE)
-  ]
-)
-```
-
-<img src="man/figures/README-example-1.png" alt="" width="100%" />
-
-## Exploring other products
-
-`sl_columns()` lists what a product offers. All 12 GEDI and ICESat-2
-products supported by spacelaser use the same two verbs (`sl_search()` →
-`sl_read()`); only the product string and column names change.
-
-``` r
-# ICESat-2 photon-level data — full column inventory
-sl_columns("ATL03", set = "all")
-#>                    lat_ph                    lon_ph                      h_ph 
-#>          "heights/lat_ph"          "heights/lon_ph"            "heights/h_ph" 
-#>                delta_time            signal_conf_ph            dist_ph_across 
-#>      "heights/delta_time"  "heights/signal_conf_ph"  "heights/dist_ph_across" 
-#>             dist_ph_along            pce_mframe_cnt             ph_id_channel 
-#>   "heights/dist_ph_along"  "heights/pce_mframe_cnt"   "heights/ph_id_channel" 
-#>               ph_id_count               ph_id_pulse                quality_ph 
-#>     "heights/ph_id_count"     "heights/ph_id_pulse"      "heights/quality_ph" 
-#>           signal_class_ph                 weight_ph 
-#> "heights/signal_class_ph"       "heights/weight_ph"
-```
 
 ## Acknowledgements
 

@@ -4,10 +4,72 @@
 \name{spacelaser-package}
 \alias{spacelaser}
 \alias{spacelaser-package}
-\title{spacelaser: Cloud-Optimized Partial Reading of GEDI and ICESat-2 HDF5 Data}
+\title{spacelaser: Fast Remote Reads of GEDI and ICESat-2 Lidar Data}
 \description{
-Read GEDI and ICESat-2 satellite lidar data directly from NASA Earthdata cloud storage using HTTP range requests. Only fetches the bytes needed for the requested spatial subset, avoiding multi-gigabyte file downloads. Powered by a pure-Rust h5coro-style HDF5 partial reader.
+R bindings for a pure-Rust HDF5 parser (via extendr) that fetches
+spatial subsets of NASA GEDI and ICESat-2 lidar granules over HTTP
+range requests, avoiding multi-gigabyte downloads. Returns tibbles
+with \code{wk} geometry columns, ready for analysis.
+
+Supported products: GEDI L1B / L2A / L2B / L4A / L4C and ICESat-2
+ATL03 / ATL06 / ATL07 / ATL08 / ATL10 / ATL13 / ATL24.
 }
+\section{Search}{
+
+\itemize{
+\item \code{\link[=sl_search]{sl_search()}} --- find granules via NASA CMR
+\item \code{\link[=sl_bbox]{sl_bbox()}} --- construct a bounding box for spatial queries
+}
+}
+
+\section{Read}{
+
+\itemize{
+\item \code{\link[=sl_read]{sl_read()}} --- pull spatial subsets from remote HDF5 granules
+(dispatches on \code{\link[=sl_search]{sl_gedi_search}} /
+\code{\link[=sl_search]{sl_icesat2_search}} objects or a character vector of
+URLs)
+}
+}
+
+\section{Columns}{
+
+\itemize{
+\item \code{\link[=sl_columns]{sl_columns()}} --- inspect the curated column registry for a
+given product; returns available column names, HDF5 paths, types,
+and whether each is in the default read set
+}
+}
+
+\section{Waveforms}{
+
+\itemize{
+\item \code{\link[=sl_extract_waveforms]{sl_extract_waveforms()}} --- expand GEDI L1B rxwaveform list
+columns to long form with interpolated elevation per sample, for
+direct plotting or downstream analysis
+}
+}
+
+\section{Low-level HDF5}{
+
+\itemize{
+\item \code{\link[=sl_hdf5_groups]{sl_hdf5_groups()}} --- list groups and datasets inside a remote
+HDF5 file
+\item \code{\link[=sl_hdf5_read]{sl_hdf5_read()}} --- read a single dataset by full HDF5 path,
+returning a typed R vector
+}
+}
+
+\section{Authentication}{
+
+NASA Earthdata credentials are required for any read that hits a
+DAAC endpoint. spacelaser resolves them from, in order,
+\code{EARTHDATA_USERNAME} + \code{EARTHDATA_PASSWORD} environment variables
+or a \code{.netrc} file (via \code{GDAL_HTTP_NETRC_FILE} or \verb{~/.netrc}).
+Register at \url{https://urs.earthdata.nasa.gov/} and set up with
+\code{earthdatalogin::edl_netrc()} if preferred.
+}
+
 \author{
 \strong{Maintainer}: Hugh Graham \email{hugh@belian.earth}
 

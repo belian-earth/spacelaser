@@ -13,7 +13,7 @@ knitr::opts_chunk$set(
 )
 ```
 
-# spacelaser
+# spacelaser <a href="https://belian-earth.github.io/spacelaser/"><img src="man/figures/logo.png" align="right" height="138" alt="spacelaser website" /></a>
 
 <!-- badges: start -->
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
@@ -23,56 +23,10 @@ knitr::opts_chunk$set(
 [![R-CMD-check](https://github.com/belian-earth/spacelaser/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/belian-earth/spacelaser/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
-Cloud-optimized partial reading of GEDI and ICESat-2 HDF5 data from R.
-Only the bytes needed for the requested spatial subset are fetched over
+Fast cloud-optimized partial reading of GEDI and ICESat-2 HDF5 data from R.
+Only the bytes needed for the requested spatial/temporal subset are fetched over
 HTTP, avoiding multi-gigabyte downloads.
 
-## Supported products
-
-### GEDI
-
-| Product | Description                                   |
-|:--------|:----------------------------------------------|
-| L1B     | Geolocated waveforms |
-| L2A     | Ground elevation, relative height metrics  |
-| L2B     | Canopy cover fraction and vertical profile    |
-| L4A     | Footprint-level aboveground biomass density   |
-| L4C     | Waveform structural complexity index          |
-
-### ICESat-2
-
-| Product | Description                          |
-|:--------|:-------------------------------------|
-| ATL03   | Geolocated photon heights            |
-| ATL06   | Land ice surface elevation           |
-| ATL07   | Sea ice surface elevation            |
-| ATL08   | Terrain height, canopy height, and canopy cover  |
-| ATL10   | Sea ice freeboard                    |
-| ATL13   | Inland water surface data         |
-| ATL24   | Coastal and Nearshore bathymetry      |
-
-## Why spacelaser
-
-The standard R workflow for GEDI / ICESat-2 data is to download whole
-HDF5 granules, then filter locally. For a typical spatial subset query
-that wastes minutes and gigabytes — the file you're filtering is
-usually orders of magnitude larger than the answer you actually want.
-
-Spacelaser sends HTTP range requests against the remote files and
-returns just the rows that fall inside your bounding box, with no
-local caching needed.
-
-The result is incredibly fast and efficient remote data access. Cold-cache benchmark, GEDI L2A, 0.03° × 0.03° bbox over Gabon, 2 years, 11 granules, ecologist-realistic column set:
-
-| | spacelaser | curl + hdf5r (status quo) |
-|---|---|---|
-| Wall time | **70 s** | 1,568 s |
-| Bytes downloaded | (small) | 27 GiB |
-| Disk used | 0 | 27 GiB |
-| Output | 1,246 shots × 112 cols | 1,246 shots × 112 cols (bit-perfect equivalent) |
-
-That's a **22.5×** speedup, robustly **15-22×** across runs depending
-on network conditions. Full methods and results can be found in [`benchmarks/`](https://github.com/belian-earth/spacelaser/tree/main/benchmarks).
 
 ## Installation
 
@@ -149,6 +103,54 @@ names change.
 # ICESat-2 photon-level data — full column inventory
 sl_columns("ATL03", set = "all")
 ```
+
+
+## Supported products
+
+### GEDI
+
+| Product | Description                                   |
+|:--------|:----------------------------------------------|
+| L1B     | Geolocated waveforms |
+| L2A     | Ground elevation, relative height metrics  |
+| L2B     | Canopy cover fraction and vertical profile    |
+| L4A     | Footprint-level aboveground biomass density   |
+| L4C     | Waveform structural complexity index          |
+
+### ICESat-2
+
+| Product | Description                          |
+|:--------|:-------------------------------------|
+| ATL03   | Geolocated photon heights            |
+| ATL06   | Land ice surface elevation           |
+| ATL07   | Sea ice surface elevation            |
+| ATL08   | Terrain height, canopy height, and canopy cover  |
+| ATL10   | Sea ice freeboard                    |
+| ATL13   | Inland water surface data         |
+| ATL24   | Coastal and Nearshore bathymetry      |
+
+## Why spacelaser
+
+The standard R workflow for GEDI / ICESat-2 data is to download whole
+HDF5 granules, then filter locally. For a typical spatial subset query
+that wastes minutes and gigabytes — the file you're filtering is
+usually orders of magnitude larger than the answer you actually want.
+
+Spacelaser sends HTTP range requests against the remote files and
+returns just the rows that fall inside your bounding box, with no
+local caching needed.
+
+The result is incredibly fast and efficient remote data access. Cold-cache benchmark, GEDI L2A, 0.03° × 0.03° bbox over Gabon, 2 years, 11 granules, ecologist-realistic column set:
+
+| | spacelaser | curl + hdf5r (status quo) |
+|---|---|---|
+| Wall time | **70 s** | 1,568 s |
+| Bytes downloaded | (small) | 27 GiB |
+| Disk used | 0 | 27 GiB |
+| Output | 1,246 shots × 112 cols | 1,246 shots × 112 cols (bit-perfect equivalent) |
+
+That's a **22.5×** speedup, robustly **15-22×** across runs depending
+on network conditions. Full methods and results can be found in [`benchmarks/`](https://github.com/belian-earth/spacelaser/tree/main/benchmarks).
 
 ## Acknowledgements
 

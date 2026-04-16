@@ -16,6 +16,10 @@ jobs:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       EARTHDATA_USERNAME: ${{ secrets.EARTHDATA_USERNAME }}
       EARTHDATA_PASSWORD: ${{ secrets.EARTHDATA_PASSWORD }}
+      # Opt in to live integration tests against NASA CMR + DAAC.
+      # R-CMD-check deliberately leaves this unset so its five-runner
+      # matrix doesn't hammer NASA with parallel authenticated reads.
+      SPACELASER_INTEGRATION: "1"
 
     steps:
       - uses: actions/checkout@v4

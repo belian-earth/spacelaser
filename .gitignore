@@ -29,6 +29,7 @@ tech-docs/
 
 # dev scratchpads
 dev.R
+examples.R
 src/rust/vendor
 src/Makevars
 src/Makevars.win

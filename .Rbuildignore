@@ -17,3 +17,6 @@
 ^codecov\.yml$
 ^\.github$
 ^benchmarks$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$

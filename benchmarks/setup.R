@@ -15,6 +15,10 @@
 # binary (~6-15% slower for our workload, but anywhere from 2-10x slower for
 # byte-heavy work in general). The Rust side exposes rust_is_debug() so we
 # can fail fast if someone is about to time the wrong binary.
+#
+# TODO: once the Makevars/build flow no longer silently produces debug
+# binaries during dev iteration, drop rust_is_debug() + this guard and
+# the corresponding Rust FFI export.
 if (!"spacelaser" %in% loadedNamespaces()) {
   if (!requireNamespace("spacelaser", quietly = TRUE)) {
     if (requireNamespace("devtools", quietly = TRUE) && file.exists("DESCRIPTION")) {

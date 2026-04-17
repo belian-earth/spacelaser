@@ -726,7 +726,7 @@
   "shot_number", "beam", "channel", "delta_time",
   "rx_energy", "stale_return_flag",
   "elevation_bin0", "elevation_lastbin",
-  "rx_sample_count", "rx_sample_start_index",
+  "rx_sample_count",
   "noise_mean_corrected", "noise_stddev_corrected",
   "digital_elevation_model", "digital_elevation_model_srtm",
   "geoid", "solar_elevation",

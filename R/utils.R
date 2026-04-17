@@ -573,9 +573,9 @@ reorder_output_columns <- function(data,
   # to slice each pool list-column, plus any extra `deps` declared in
   # the pool index spec (e.g. L1B `rxwaveform` declares
   # elevation_bin0 / elevation_lastbin so sl_extract_waveforms() can
-  # interpolate per-sample elevations). Treated as auto-added trailing
-  # infrastructure UNLESS the user explicitly requested them.
-  index_cols <- character(0)
+  # interpolate per-sample elevations).
+  start_count_cols <- character(0)
+  dep_cols <- character(0)
   if (length(pool_idx_map) > 0L) {
     starts <- vapply(pool_idx_map, function(s) s$start, character(1))
     counts <- vapply(pool_idx_map, function(s) s$count, character(1))
@@ -583,15 +583,25 @@ reorder_output_columns <- function(data,
       lapply(pool_idx_map, function(s) s$deps %||% character(0)),
       use.names = FALSE
     )
-    index_cols <- unique(c(starts, counts, deps))
+    start_count_cols <- unique(c(starts, counts))
+    dep_cols <- unique(deps)
   }
-  auto_indices <- intersect(
-    setdiff(index_cols, user_columns),
+
+  # Pool start/count index columns are consumed by the Rust pool slicer
+  # and have no user-facing value. Strip them unless the user explicitly
+  # requested them. Deps (elevation_bin0 etc.) are kept — users need
+  # them for sl_extract_waveforms and similar downstream processing.
+  drop_cols <- intersect(
+    setdiff(start_count_cols, user_columns),
+    out_names
+  )
+  auto_deps <- intersect(
+    setdiff(dep_cols, user_columns),
     out_names
   )
 
-  # Trailing: auto-added indices, then geometry.
-  trailing <- intersect(c(auto_indices, "geometry"), out_names)
+  # Trailing: auto-added deps, then geometry.
+  trailing <- intersect(c(auto_deps, "geometry"), out_names)
 
   # Map base name -> ordered expansion column names, derived from the
   # transposed_specs (encoded "path:label1,label2,..."). Used when a
@@ -639,10 +649,9 @@ reorder_output_columns <- function(data,
 
   # Defensive: any column not yet placed (shouldn't happen, but never
   # silently drop) goes between the user middle and the trailing block.
-  remaining <- setdiff(out_names, c(marquee, middle, trailing))
+  remaining <- setdiff(out_names, c(marquee, middle, trailing, drop_cols))
 
   final_order <- c(marquee, middle, remaining, trailing)
-  stopifnot(setequal(final_order, out_names))
   data[, final_order, drop = FALSE]
 }
 
@@ -902,20 +911,18 @@ parse_column <- function(raw_bytes, info_json) {
     } else if (elem_size == 2 && !signed) {
       readBin(raw_bytes, what = "integer", n = n, size = 2L, endian = "little", signed = FALSE)
     } else if (elem_size <= 4) {
-      # uint32: R only supports signed = FALSE for sizes 1 and 2.
-      # Read as signed; values > 2^31 - 1 are rare in practice.
-      readBin(raw_bytes, what = "integer", n = n, size = elem_size, endian = "little")
+      # uint32: R integer is signed 32-bit (max 2.1e9). Unsigned values
+      # above that wrap negative. Promote to double (exact for all u32
+      # since max 4.3e9 << 2^53).
+      x <- readBin(raw_bytes, what = "integer", n = n, size = elem_size, endian = "little")
+      ifelse(x < 0L, as.double(x) + 4294967296, as.double(x))
     } else {
-      # int64 / uint64: R has no native 64-bit integer. Convert by
-      # reading pairs of 32-bit words and combining into doubles.
-      # Exact for values up to 2^53 (~9e15), which covers all
-      # GEDI/ICESat-2 integer columns (shot numbers, indices, counts).
-      pairs <- readBin(raw_bytes, what = "integer", n = n * 2L, size = 4L, endian = "little")
-      lo <- pairs[seq(1L, length(pairs), 2L)]
-      hi <- pairs[seq(2L, length(pairs), 2L)]
-      # Unsigned interpretation of the low word (R int32 wraps at 2^31)
-      lo_d <- ifelse(lo < 0L, as.double(lo) + 4294967296, as.double(lo))
-      lo_d + as.double(hi) * 4294967296
+      # int64 / uint64 → bit64::integer64.
+      # readBin as "double" gives us the raw 8 bytes as f64 bit patterns,
+      # which is exactly the representation bit64 uses internally.
+      x <- readBin(raw_bytes, what = "double", n = n, size = 8L, endian = "little")
+      class(x) <- "integer64"
+      x
     }
   } else {
     raw_bytes

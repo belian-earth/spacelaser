@@ -132,11 +132,15 @@ test_that("parse_column decodes 2-byte unsigned FixedPoint past the signed range
 # FixedPoint — u32 fall-through (signed-read of small values)
 # ---------------------------------------------------------------------------
 
-test_that("parse_column reads u32 via the signed-fallback path for small values", {
-  # The u32 path reads as signed int32; values below 2^31 round-trip
-  # exactly, which is what the current implementation promises.
-  vals <- c(0L, 1L, 1000000L, 2147483647L)
-  bytes <- writeBin(vals, raw(), size = 4L, endian = "little")
+test_that("parse_column promotes u32 to double (exact for all u32 values)", {
+  # R integer is signed 32-bit (max 2.1e9). Unsigned u32 values above
+  # that would wrap negative, so we promote all u32 to double.
+  vals <- c(0, 1, 1000000, 2147483647, 3000000000, 4294967295)
+  bytes <- raw(0)
+  for (v in vals) {
+    i <- if (v > 2147483647) as.integer(v - 2^32) else as.integer(v)
+    bytes <- c(bytes, writeBin(i, raw(), size = 4L, endian = "little"))
+  }
 
   out <- spacelaser:::parse_column(
     bytes,
@@ -146,7 +150,7 @@ test_that("parse_column reads u32 via the signed-fallback path for small values"
     )
   )
 
-  expect_type(out, "integer")
+  expect_type(out, "double")
   expect_equal(out, vals)
 })
 
@@ -154,22 +158,11 @@ test_that("parse_column reads u32 via the signed-fallback path for small values"
 # FixedPoint — 64-bit hi/lo split
 # ---------------------------------------------------------------------------
 
-test_that("parse_column decodes 8-byte unsigned FixedPoint via lo/hi split", {
-  # GEDI shot_number-shaped values: well under 2^53 so exact.
-  vals <- c(0, 1, 4294967295, 4294967296, 123456789012345)
-  bytes <- raw(0)
-  for (v in vals) {
-    lo <- v %% 2^32                         # unsigned low word as double
-    hi <- floor(v / 2^32)
-    # writeBin writes signed int32; map lo > 2^31 - 1 to two's complement.
-    lo_i <- as.integer(if (lo > 2147483647) lo - 2^32 else lo)
-    hi_i <- as.integer(hi)
-    bytes <- c(
-      bytes,
-      writeBin(lo_i, raw(), size = 4L, endian = "little"),
-      writeBin(hi_i, raw(), size = 4L, endian = "little")
-    )
-  }
+test_that("parse_column returns bit64::integer64 for 8-byte unsigned FixedPoint", {
+  vals <- bit64::as.integer64(c(0, 1, 4294967295, 4294967296, 123456789012345))
+  # Build raw byte representation: unclass(vals) exposes the raw
+  # bit-pattern doubles that bit64 stores internally.
+  bytes <- writeBin(unclass(vals), raw(), size = 8L, endian = "little")
 
   out <- spacelaser:::parse_column(
     bytes,
@@ -179,7 +172,7 @@ test_that("parse_column decodes 8-byte unsigned FixedPoint via lo/hi split", {
     )
   )
 
-  expect_type(out, "double")
+  expect_s3_class(out, "integer64")
   expect_equal(out, vals)
 })
 

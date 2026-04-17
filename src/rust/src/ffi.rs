@@ -206,6 +206,21 @@ fn column_data_to_robj(
         Doubles::from_values(doubles).into()
     } else if s <= 4 {
         // Integer (signed or unsigned, ≤ 32 bits)
+        //
+        // Signed → R integer (i32). Unsigned 1-2 bytes → R integer
+        // (fits in i32). Unsigned 4 bytes → R double (u32 max 4.3e9
+        // exceeds i32 max 2.1e9 but is exact in f64).
+        if !is_signed && s == 4 {
+            let doubles: Vec<Rfloat> = b.chunks_exact(4).take(n).map(|chunk| {
+                let val = u32::from_le_bytes(chunk.try_into().unwrap()) as f64;
+                if fill_values.iter().any(|&fv| val == fv) {
+                    Rfloat::na()
+                } else {
+                    Rfloat::from(val)
+                }
+            }).collect();
+            return Doubles::from_values(doubles).into();
+        }
         let fill_ints: Vec<i32> = fill_values.iter().map(|&fv| fv as i32).collect();
         let ints: Vec<Rint> = match s {
             1 => {
@@ -232,7 +247,7 @@ fn column_data_to_robj(
                 }).collect()
             }
             _ => {
-                // 3 or 4 bytes → i32
+                // 3 or 4 bytes, signed → i32
                 b.chunks_exact(s).take(n).map(|chunk| {
                     let mut buf = [0u8; 4];
                     buf[..s].copy_from_slice(chunk);
@@ -243,18 +258,30 @@ fn column_data_to_robj(
         };
         Integers::from_values(ints).into()
     } else {
-        // int64 / uint64: convert to f64 (exact for values ≤ 2^53)
+        // int64 / uint64 → bit64::integer64.
+        //
+        // bit64 stores int64 values as doubles where the 8 bytes ARE
+        // the raw int64 bit pattern (a transmute, not a conversion).
+        // NA is represented by i64::MIN (0x8000_0000_0000_0000).
+        //
+        // All current unsigned 64-bit values in GEDI/ICESat-2
+        // (shot_number max ~2.3e17) fit within signed int64 range
+        // (max 9.2e18), so treating uint64 as int64 is safe.
+        const BIT64_NA_BITS: u64 = 0x8000_0000_0000_0000;
         let doubles: Vec<Rfloat> = b.chunks_exact(8).take(n).map(|chunk| {
-            let lo = u32::from_le_bytes(chunk[..4].try_into().unwrap()) as f64;
-            let hi = i32::from_le_bytes(chunk[4..8].try_into().unwrap()) as f64;
-            let val = lo + hi * 4294967296.0;
-            if fill_values.iter().any(|&fv| val == fv) {
-                Rfloat::na()
+            let bits = u64::from_le_bytes(chunk.try_into().unwrap());
+            // Fill-value check: interpret raw bits as i64, cast to f64,
+            // compare against the f64 fill values from the product spec.
+            let as_f64 = (bits as i64) as f64;
+            if bits == BIT64_NA_BITS || fill_values.iter().any(|&fv| as_f64 == fv) {
+                Rfloat::from(f64::from_bits(BIT64_NA_BITS))
             } else {
-                Rfloat::from(val)
+                Rfloat::from(f64::from_bits(bits))
             }
         }).collect();
-        Doubles::from_values(doubles).into()
+        let mut robj: Robj = Doubles::from_values(doubles).into();
+        robj.set_attrib(class_symbol(), "integer64").unwrap();
+        robj
     }
 }
 

@@ -47,4 +47,5 @@
 "_PACKAGE"
 
 #' @useDynLib spacelaser, .registration = TRUE
+#' @importFrom bit64 as.integer64
 NULL

@@ -40,8 +40,7 @@ pak::pak("belian-earth/spacelaser")
 
 ## Authentication
 
-All reads go through NASA Earthdata, which requires a free account.
-Register at <https://urs.earthdata.nasa.gov/>.
+All reads go through NASA Earthdata, which requires a free account. Register at <https://urs.earthdata.nasa.gov/>.
 
 Credentials can be supplied in any of the following ways:
 

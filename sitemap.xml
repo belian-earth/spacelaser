@@ -1,6 +1,8 @@
 <urlset xmlns = 'http://www.sitemaps.org/schemas/sitemap/0.9'>
 <url><loc>https://belian-earth.github.io/spacelaser/404.html</loc></url>
 <url><loc>https://belian-earth.github.io/spacelaser/LICENSE.html</loc></url>
+<url><loc>https://belian-earth.github.io/spacelaser/articles/gedi-l1b-waveforms.html</loc></url>
+<url><loc>https://belian-earth.github.io/spacelaser/articles/index.html</loc></url>
 <url><loc>https://belian-earth.github.io/spacelaser/authors.html</loc></url>
 <url><loc>https://belian-earth.github.io/spacelaser/index.html</loc></url>
 <url><loc>https://belian-earth.github.io/spacelaser/reference/index.html</loc></url>
@@ -12,6 +14,5 @@
 <url><loc>https://belian-earth.github.io/spacelaser/reference/sl_read.html</loc></url>
 <url><loc>https://belian-earth.github.io/spacelaser/reference/sl_search.html</loc></url>
 <url><loc>https://belian-earth.github.io/spacelaser/reference/spacelaser-package.html</loc></url>
-<url><loc>https://belian-earth.github.io/spacelaser/remote-hdf5-partial-read-analysis.html</loc></url>
 </urlset>
 

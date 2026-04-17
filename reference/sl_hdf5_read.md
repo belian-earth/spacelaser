@@ -30,3 +30,17 @@ sl_hdf5_read(url, dataset)
 
 An R vector — numeric, integer, or raw, depending on the underlying HDF5
 datatype.
+
+## Examples
+
+``` r
+if (FALSE) { # interactive()
+url <- paste0(
+  "https://data.lpdaac.earthdatacloud.nasa.gov/lp-prod-protected/",
+  "GEDI02_A.002/GEDI02_A_2020009130403_O06095_03_T02944_02_003_01_V002/",
+  "GEDI02_A_2020009130403_O06095_03_T02944_02_003_01_V002.h5"
+)
+lat <- sl_hdf5_read(url, "BEAM0000/lat_lowestmode")
+str(lat)
+}
+```

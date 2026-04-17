@@ -28,6 +28,10 @@ of its first argument:"><meta property="og:image" content="https://belian-earth.
 
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto"><li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
+<li class="nav-item dropdown">
+  <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/gedi-l1b-waveforms.html">GEDI L1B waveforms: from raw returns to height above ground</a></li>
+  </ul></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
 <li class="nav-item"><a class="external-link nav-link" href="https://github.com/belian-earth/spacelaser"><span class="fa fa-github"></span></a></li>
@@ -128,7 +132,7 @@ be supplied to subset further but must be contained within it.</p></li>
 file name, or uses the explicit <code>product</code> argument.</p></li>
 </ul><p>All beams (GEDI) or ground tracks (ICESat-2) are always read; the returned
 data frame includes a <code>beam</code> (GEDI) or <code>track</code> (ICESat-2) identifier
-column for post-hoc filtering with <code>dplyr::filter()</code> or base subsetting.</p><div class="section">
+column for post-hoc filtering with <code><a href="https://dplyr.tidyverse.org/reference/filter.html" class="external-link">dplyr::filter()</a></code> or base subsetting.</p><div class="section">
 <h3 id="default-columns">Default columns<a class="anchor" aria-label="anchor" href="#default-columns"></a></h3>
 
 

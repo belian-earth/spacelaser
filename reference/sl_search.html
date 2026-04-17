@@ -28,6 +28,10 @@ valid product strings do not overlap."><meta property="og:image" content="https:
 
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto"><li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
+<li class="nav-item dropdown">
+  <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/gedi-l1b-waveforms.html">GEDI L1B waveforms: from raw returns to height above ground</a></li>
+  </ul></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
 <li class="nav-item"><a class="external-link nav-link" href="https://github.com/belian-earth/spacelaser"><span class="fa fa-github"></span></a></li>
@@ -125,6 +129,28 @@ spatial filtering (e.g. against an irregular polygon), filter the returned
     <div class="dont-index"><p><code><a href="sl_read.html">sl_read()</a></code> to read data from the returned granules.</p></div>
     </div>
 
+    <div class="section level2">
+    <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># interactive()</span></span></span>
+<span class="r-in"><span><span class="co"># GEDI L2A over a small Pacific Northwest forest bbox, summer 2020.</span></span></span>
+<span class="r-in"><span><span class="va">granules</span> <span class="op">&lt;-</span> <span class="fu">sl_search</span><span class="op">(</span></span></span>
+<span class="r-in"><span>  <span class="fu"><a href="sl_bbox.html">sl_bbox</a></span><span class="op">(</span><span class="op">-</span><span class="fl">124.04</span>, <span class="fl">41.39</span>, <span class="op">-</span><span class="fl">124.01</span>, <span class="fl">41.42</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>  product    <span class="op">=</span> <span class="st">"L2A"</span>,</span></span>
+<span class="r-in"><span>  date_start <span class="op">=</span> <span class="st">"2020-06-01"</span>,</span></span>
+<span class="r-in"><span>  date_end   <span class="op">=</span> <span class="st">"2020-09-01"</span></span></span>
+<span class="r-in"><span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">granules</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># ICESat-2 ATL08 (land + canopy segments) over the same bbox, 2020.</span></span></span>
+<span class="r-in"><span><span class="fu">sl_search</span><span class="op">(</span></span></span>
+<span class="r-in"><span>  <span class="fu"><a href="sl_bbox.html">sl_bbox</a></span><span class="op">(</span><span class="op">-</span><span class="fl">124.10</span>, <span class="fl">41.36</span>, <span class="op">-</span><span class="fl">124.00</span>, <span class="fl">41.45</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>  product    <span class="op">=</span> <span class="st">"ATL08"</span>,</span></span>
+<span class="r-in"><span>  date_start <span class="op">=</span> <span class="st">"2020-01-01"</span>,</span></span>
+<span class="r-in"><span>  date_end   <span class="op">=</span> <span class="st">"2021-01-01"</span></span></span>
+<span class="r-in"><span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="op">}</span></span></span>
+</code></pre></div>
+    </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside></div>
 

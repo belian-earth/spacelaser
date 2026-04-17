@@ -86,8 +86,9 @@ with `NA`.
 
 All beams (GEDI) or ground tracks (ICESat-2) are always read; the
 returned data frame includes a `beam` (GEDI) or `track` (ICESat-2)
-identifier column for post-hoc filtering with `dplyr::filter()` or base
-subsetting.
+identifier column for post-hoc filtering with
+[`dplyr::filter()`](https://dplyr.tidyverse.org/reference/filter.html)
+or base subsetting.
 
 ### Default columns
 

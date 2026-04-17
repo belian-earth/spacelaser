@@ -92,3 +92,26 @@ returned `geometry` column with your favourite spatial package.
 
 [`sl_read()`](https://belian-earth.github.io/spacelaser/reference/sl_read.md)
 to read data from the returned granules.
+
+## Examples
+
+``` r
+if (FALSE) { # interactive()
+# GEDI L2A over a small Pacific Northwest forest bbox, summer 2020.
+granules <- sl_search(
+  sl_bbox(-124.04, 41.39, -124.01, 41.42),
+  product    = "L2A",
+  date_start = "2020-06-01",
+  date_end   = "2020-09-01"
+)
+granules
+
+# ICESat-2 ATL08 (land + canopy segments) over the same bbox, 2020.
+sl_search(
+  sl_bbox(-124.10, 41.36, -124.00, 41.45),
+  product    = "ATL08",
+  date_start = "2020-01-01",
+  date_end   = "2021-01-01"
+)
+}
+```

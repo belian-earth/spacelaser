@@ -27,3 +27,17 @@ sl_hdf5_groups(url, path = "/")
 ## Value
 
 A character vector of group/dataset names.
+
+## Examples
+
+``` r
+if (FALSE) { # interactive()
+url <- paste0(
+  "https://data.lpdaac.earthdatacloud.nasa.gov/lp-prod-protected/",
+  "GEDI02_A.002/GEDI02_A_2020009130403_O06095_03_T02944_02_003_01_V002/",
+  "GEDI02_A_2020009130403_O06095_03_T02944_02_003_01_V002.h5"
+)
+sl_hdf5_groups(url)
+sl_hdf5_groups(url, path = "BEAM0000/geolocation")
+}
+```

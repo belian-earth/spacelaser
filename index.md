@@ -52,27 +52,27 @@ granules <- sl_search(
   date_end = "2023-01-01"
 )
 #> ℹ Searching CMR for GEDI L2A granules
-#> ✔ Searching CMR for GEDI L2A granules [815ms]
+#> ✔ Searching CMR for GEDI L2A granules [7.6s]
 #> 
 #> ✔ Found 9 GEDI L2A granules.
 gedi2a <- sl_read(granules)
 #> ℹ Reading L2A from 9 granules
-#> ✔ Read 579 footprint from 17 beam.✔ Reading L2A from 9 granules [53.2s]
+#> ✔ Read 579 footprints from 17 beams.✔ Reading L2A from 9 granules [1m 0.4s]
 
 gedi2a
 #> # A tibble: 579 × 121
 #>    beam     shot_number time                lat_lowestmode lon_lowestmode
-#>    <chr>          <dbl> <dttm>                       <dbl>          <dbl>
-#>  1 BEAM0000     2.28e17 2022-12-20 14:08:10           41.4          -124.
-#>  2 BEAM0000     2.28e17 2022-12-20 14:08:10           41.4          -124.
-#>  3 BEAM0001     2.28e17 2022-12-20 14:08:10           41.4          -124.
-#>  4 BEAM0001     2.28e17 2022-12-20 14:08:10           41.4          -124.
-#>  5 BEAM0001     2.28e17 2022-12-20 14:08:10           41.4          -124.
-#>  6 BEAM0001     2.28e17 2022-12-20 14:08:10           41.4          -124.
-#>  7 BEAM0001     2.28e17 2022-12-20 14:08:10           41.4          -124.
-#>  8 BEAM0001     2.28e17 2022-12-20 14:08:10           41.4          -124.
-#>  9 BEAM0001     2.28e17 2022-12-20 14:08:10           41.4          -124.
-#> 10 BEAM0001     2.28e17 2022-12-20 14:08:10           41.4          -124.
+#>    <chr>        <int64> <dttm>                       <dbl>          <dbl>
+#>  1 BEAM0000       2.e17 2022-12-20 14:08:10           41.4          -124.
+#>  2 BEAM0000       2.e17 2022-12-20 14:08:10           41.4          -124.
+#>  3 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.
+#>  4 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.
+#>  5 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.
+#>  6 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.
+#>  7 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.
+#>  8 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.
+#>  9 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.
+#> 10 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.
 #> # ℹ 569 more rows
 #> # ℹ 116 more variables: degrade_flag <int>, quality_flag <int>,
 #> #   sensitivity <dbl>, solar_elevation <dbl>, elev_lowestmode <dbl>,

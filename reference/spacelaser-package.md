@@ -57,6 +57,16 @@ endpoint. spacelaser resolves them from, in order,
 [`earthdatalogin::edl_netrc()`](https://boettiger-lab.github.io/earthdatalogin/reference/edl_netrc.html)
 if preferred.
 
+## See also
+
+Useful links:
+
+- <https://github.com/belian-earth/spacelaser>
+
+- <https://belian-earth.github.io/spacelaser/>
+
+- Report bugs at <https://github.com/belian-earth/spacelaser/issues>
+
 ## Author
 
 **Maintainer**: Hugh Graham <hugh@belian.earth>

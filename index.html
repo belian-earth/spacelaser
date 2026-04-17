@@ -44,6 +44,12 @@
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto">
 <li class="nav-item"><a class="nav-link" href="reference/index.html">Reference</a></li>
+<li class="nav-item dropdown">
+  <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles">
+<li><a class="dropdown-item" href="articles/gedi-l1b-waveforms.html">GEDI L1B waveforms: from raw returns to height above ground</a></li>
+  </ul>
+</li>
       </ul>
 <ul class="navbar-nav">
 <li class="nav-item"><form class="form-inline" role="search">
@@ -104,27 +110,27 @@
 <span>  date_end <span class="op">=</span> <span class="st">"2023-01-01"</span></span>
 <span><span class="op">)</span></span>
 <span><span class="co">#&gt; ℹ Searching CMR for GEDI L2A granules</span></span>
-<span><span class="co">#&gt; ✔ Searching CMR for GEDI L2A granules [815ms]</span></span>
+<span><span class="co">#&gt; ✔ Searching CMR for GEDI L2A granules [7.6s]</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; ✔ Found 9 GEDI L2A granules.</span></span>
 <span><span class="va">gedi2a</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/sl_read.html">sl_read</a></span><span class="op">(</span><span class="va">granules</span><span class="op">)</span></span>
 <span><span class="co">#&gt; ℹ Reading L2A from 9 granules</span></span>
-<span><span class="co">#&gt; ✔ Read 579 footprint from 17 beam.✔ Reading L2A from 9 granules [53.2s]</span></span>
+<span><span class="co">#&gt; ✔ Read 579 footprints from 17 beams.✔ Reading L2A from 9 granules [1m 0.4s]</span></span>
 <span></span>
 <span><span class="va">gedi2a</span></span>
 <span><span class="co">#&gt; # A tibble: 579 × 121</span></span>
 <span><span class="co">#&gt;    beam     shot_number time                lat_lowestmode lon_lowestmode</span></span>
-<span><span class="co">#&gt;    &lt;chr&gt;          &lt;dbl&gt; &lt;dttm&gt;                       &lt;dbl&gt;          &lt;dbl&gt;</span></span>
-<span><span class="co">#&gt;  1 BEAM0000     2.28e17 2022-12-20 14:08:10           41.4          -124.</span></span>
-<span><span class="co">#&gt;  2 BEAM0000     2.28e17 2022-12-20 14:08:10           41.4          -124.</span></span>
-<span><span class="co">#&gt;  3 BEAM0001     2.28e17 2022-12-20 14:08:10           41.4          -124.</span></span>
-<span><span class="co">#&gt;  4 BEAM0001     2.28e17 2022-12-20 14:08:10           41.4          -124.</span></span>
-<span><span class="co">#&gt;  5 BEAM0001     2.28e17 2022-12-20 14:08:10           41.4          -124.</span></span>
-<span><span class="co">#&gt;  6 BEAM0001     2.28e17 2022-12-20 14:08:10           41.4          -124.</span></span>
-<span><span class="co">#&gt;  7 BEAM0001     2.28e17 2022-12-20 14:08:10           41.4          -124.</span></span>
-<span><span class="co">#&gt;  8 BEAM0001     2.28e17 2022-12-20 14:08:10           41.4          -124.</span></span>
-<span><span class="co">#&gt;  9 BEAM0001     2.28e17 2022-12-20 14:08:10           41.4          -124.</span></span>
-<span><span class="co">#&gt; 10 BEAM0001     2.28e17 2022-12-20 14:08:10           41.4          -124.</span></span>
+<span><span class="co">#&gt;    &lt;chr&gt;        &lt;int64&gt; &lt;dttm&gt;                       &lt;dbl&gt;          &lt;dbl&gt;</span></span>
+<span><span class="co">#&gt;  1 BEAM0000       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
+<span><span class="co">#&gt;  2 BEAM0000       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
+<span><span class="co">#&gt;  3 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
+<span><span class="co">#&gt;  4 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
+<span><span class="co">#&gt;  5 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
+<span><span class="co">#&gt;  6 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
+<span><span class="co">#&gt;  7 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
+<span><span class="co">#&gt;  8 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
+<span><span class="co">#&gt;  9 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
+<span><span class="co">#&gt; 10 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
 <span><span class="co">#&gt; # ℹ 569 more rows</span></span>
 <span><span class="co">#&gt; # ℹ 116 more variables: degrade_flag &lt;int&gt;, quality_flag &lt;int&gt;,</span></span>
 <span><span class="co">#&gt; #   sensitivity &lt;dbl&gt;, solar_elevation &lt;dbl&gt;, elev_lowestmode &lt;dbl&gt;,</span></span>

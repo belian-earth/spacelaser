@@ -70,6 +70,15 @@ Register at \url{https://urs.earthdata.nasa.gov/} and set up with
 \code{earthdatalogin::edl_netrc()} if preferred.
 }
 
+\seealso{
+Useful links:
+\itemize{
+  \item \url{https://github.com/belian-earth/spacelaser}
+  \item \url{https://belian-earth.github.io/spacelaser/}
+  \item Report bugs at \url{https://github.com/belian-earth/spacelaser/issues}
+}
+
+}
 \author{
 \strong{Maintainer}: Hugh Graham \email{hugh@belian.earth}
 

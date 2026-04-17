@@ -20,3 +20,14 @@ HDF5 file. Useful for discovering available datasets, beams, or
 subgroups when working outside the curated \code{\link[=sl_columns]{sl_columns()}} registry.
 Earthdata credentials are required (see \code{\link[=sl_search]{sl_search()}} for setup).
 }
+\examples{
+\dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
+url <- paste0(
+  "https://data.lpdaac.earthdatacloud.nasa.gov/lp-prod-protected/",
+  "GEDI02_A.002/GEDI02_A_2020009130403_O06095_03_T02944_02_003_01_V002/",
+  "GEDI02_A_2020009130403_O06095_03_T02944_02_003_01_V002.h5"
+)
+sl_hdf5_groups(url)
+sl_hdf5_groups(url, path = "BEAM0000/geolocation")
+\dontshow{\}) # examplesIf}
+}

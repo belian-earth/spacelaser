@@ -23,6 +23,8 @@ Imports:
 Suggests:
     earthdatalogin,
     httptest2,
+    knitr,
+    rmarkdown,
     testthat (>= 3.0.0),
     withr
 Config/rextendr/version: 0.4.2
@@ -33,3 +35,4 @@ RoxygenNote: 7.3.3
 SystemRequirements: Cargo (Rust's package manager), rustc
 URL: https://github.com/belian-earth/spacelaser, https://belian-earth.github.io/spacelaser/
 BugReports: https://github.com/belian-earth/spacelaser/issues
+VignetteBuilder: knitr

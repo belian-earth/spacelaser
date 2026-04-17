@@ -322,11 +322,26 @@ detect_sensor <- function(url, product = NULL) {
 
 #' Create a bounding box for spatial queries
 #'
+#' Wraps four corner coordinates into an `sl_bbox` vector used by
+#' [sl_search()] and [sl_read()]. The main value is up-front validation:
+#' arguments are checked for correct ordering (`xmin < xmax`, `ymin < ymax`)
+#' and for coordinates falling within WGS84 bounds (latitude in
+#' \[-90, 90\], longitude in \[-180, 180\]), so mistakes surface here
+#' rather than as a silent empty search or a failed HTTP request.
+#'
 #' @param xmin Minimum longitude (western boundary).
 #' @param ymin Minimum latitude (southern boundary).
 #' @param xmax Maximum longitude (eastern boundary).
 #' @param ymax Maximum latitude (northern boundary).
 #' @returns A named double vector of class `sl_bbox`.
+#' @examples
+#' # Construct a bounding box over a Pacific Northwest forest site.
+#' sl_bbox(-124.04, 41.39, -124.01, 41.42)
+#'
+#' # Validation catches common mistakes before they reach the search
+#' # or reader. Wrap in try() so the example chunk keeps running.
+#' try(sl_bbox(-124.01, 41.39, -124.04, 41.42))  # xmin >= xmax
+#' try(sl_bbox(0, -100, 1, 1))                   # latitude out of range
 #' @export
 sl_bbox <- function(xmin, ymin, xmax, ymax) {
   rlang::check_required(xmin)
@@ -713,9 +728,14 @@ assemble_read_result <- function(
   )
 
   n <- nrow(result)
+  n_groups <- length(group_tbls)
   cli::cli_progress_done()
+  # qty() overrides the pluraliser's quantity — without it the most
+  # recent inline is the label string, which counts as 1 and defeats
+  # {?s}.
   cli::cli_inform(c(
-    "v" = "Read {n} {element_label}{?s} from {length(group_tbls)} {group_label}{?s}."
+    "v" = "Read {n} {element_label}{cli::qty(n)}{?s} from \\
+           {n_groups} {group_label}{cli::qty(n_groups)}{?s}."
   ))
 
   result

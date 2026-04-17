@@ -727,7 +727,9 @@
   "rx_energy", "stale_return_flag",
   "elevation_bin0", "elevation_lastbin",
   "rx_sample_count", "rx_sample_start_index",
-  "digital_elevation_model", "solar_elevation",
+  "noise_mean_corrected", "noise_stddev_corrected",
+  "digital_elevation_model", "digital_elevation_model_srtm",
+  "geoid", "solar_elevation",
   "rxwaveform"
 )
 # fmt: skip

@@ -23,7 +23,7 @@ knitr::opts_chunk$set(
 
 ```{r setup}
 library(spacelaser)
-library(dplyr)
+suppressPackageStartupMessages(library(dplyr))
 library(ggplot2)
 ```
 
@@ -32,9 +32,12 @@ library(ggplot2)
 GEDI L2A gives you summary elevation metrics per shot — ground elevation,
 relative height quantiles (RH0 through RH100), canopy energy totals. That's
 what most users want most of the time. L1B is the step before: one full
-*waveform* per shot, capturing the raw lidar return amplitude as a function
-of elevation. Everything in L2A is derived from L1B by peak detection, noise
-filtering, and mode fitting.
+*waveform* per shot, capturing the lidar return amplitude as a function
+of elevation. The L1B waveform has already been smoothed with a Gaussian
+of width 2 ns to remove ADC sampling artefacts (Hofton & Blair, 2019,
+Section 3.2.3); it is not the raw telemetered signal (that lives in L1A,
+which is not publicly distributed). Everything in L2A is derived from
+L1B by peak detection, additional smoothing, and mode fitting.
 
 Working directly with L1B is worth it when you want to:
 
@@ -42,9 +45,9 @@ Working directly with L1B is worth it when you want to:
 - Detect features L2A's algorithms didn't capture (understory layers,
   near-ground returns in steep terrain, water-surface returns)
 - Build your own metrics or validate L2A's ground detection against the
-  raw signal
+  L1B signal
 
-This vignette walks from raw L1B waveforms to height-above-detected-ground
+This vignette walks from L1B waveforms to height-above-detected-ground
 plots by joining L1B with L2A on `shot_number` and using L2A's
 `elev_lowestmode` as the per-shot zero reference.
 
@@ -77,9 +80,10 @@ l1b <- sl_read(g_l1b[1L, ], bbox = bbox)
 l2a <- sl_read(g_l2a[1L, ], bbox = bbox)
 ```
 
-`l1b` carries the raw waveform (`rxwaveform`) and its structural metadata
-(`elevation_bin0`, `elevation_lastbin`, `rx_sample_count`), plus noise
-statistics, DEM references, and per-shot metadata. `l2a` carries the
+`l1b` carries the waveform (`rxwaveform`, already Gaussian-smoothed at
+the L1B processing stage) and its structural metadata (`elevation_bin0`,
+`elevation_lastbin`, `rx_sample_count`), plus noise statistics, DEM
+references, and per-shot metadata. `l2a` carries the
 processed ground elevation (`elev_lowestmode`), quality flags
 (`quality_flag`, `sensitivity`, `degrade_flag`), and the relative-height
 quantiles (`rh0` through `rh100`).
@@ -114,13 +118,14 @@ detection.
 ## Extract waveforms, then re-reference to ground
 
 `sl_extract_waveforms` knows how to subtract DEM references, but it doesn't
-know about L2A ground. Extract in ellipsoidal space and subtract
+know about L2A ground. Extract in ellipsoidal space (the default) and subtract
 `elev_lowestmode` per shot post-hoc.
 
 ```{r extract, eval = eval_live}
 wf <- sl_extract_waveforms(
   l1b_joined,
-  normalise_amplitude = "snr"   # baseline-aligned so beams/channels compare
+  height_ref = "ellipsoid", 
+  normalise_amplitude = "snr"   # noise-normalised so beams/channels compare
 )
 
 # per-sample ground reference, looked up by shot
@@ -135,6 +140,18 @@ wf$height_above_ground <- wf$elevation - ground_by_sample
 canopy, negative is noise samples below ground where the RX window
 continues.
 
+We used `normalise_amplitude = "snr"` above, which subtracts the per-shot
+noise mean and divides by the per-shot noise standard deviation. This puts
+every shot on a common scale regardless of which digitiser channel captured
+it (GEDI's channels have different baseline pedestals; without
+normalisation, waveforms from different beams cluster at different
+baselines). The alternative `"noise"` subtracts the mean but skips the
+division, leaving amplitude in baseline-subtracted ADC counts; `"raw"` (the default)
+returns the waveform as-is. SNR units are convenient for overlaying multiple shots because the noise
+floor sits at zero with unit variance across all shots, regardless of beam
+or channel. A value of 4 would mean "4 standard deviations above noise",
+which provides an intuitive scale for distinguishing signal from background.
+
 ## Anatomy of a single waveform
 
 Before stacking hundreds of shots into a composite, it's worth unpacking
@@ -142,10 +159,10 @@ what a single waveform actually contains. Pick a shot with a tall canopy
 (`rh95` above 50 m) and plot its amplitude vs height, annotated with the
 L2A-derived structural metrics.
 
-```{r single-shot, eval = eval_live}
+```{r single-shot, eval = eval_live, fig.width = 5, fig.height = 9}
 tall_shot <- l1b_joined |>
   arrange(desc(rh95)) |>
-  slice(5L) |>  # top-5 avoids any outlier; adjust to taste
+  slice(5L) |>  # 5th tallest rh95 (avoids possible outliers at the very top)
   pull(shot_number)
 
 wf_one  <- wf |> filter(shot_number == tall_shot)
@@ -181,10 +198,10 @@ ggplot(wf_one, aes(amplitude, height_above_ground)) +
 Things to notice:
 
 - The **strong peak at 0 m** is where L2A detected ground — that's why
-  `height_above_ground = 0` lines up with it. In the raw waveform this
-  was at some ellipsoidal elevation; we shifted to ground-referenced
+  `height_above_ground = 0` lines up with it. Before ground-referencing
+  this peak sat at some ellipsoidal elevation; we shifted it to zero
   here.
-- The **broader peak around `rh95`** is the canopy top. `rh95` is
+- The **broader peak around `rh95`** is approximately the canopy top. `rh95` is
   defined so 95 % of the waveform energy (cumulative from ground up)
   has been returned by that height — you can see the waveform fall off
   sharply just above it.
@@ -196,14 +213,12 @@ Things to notice:
 ## Comparing two shots: short vs tall
 
 The same machinery over a different shot looks very different.
-Pick one shot with low `rh95` and one with high to see how canopy
-structure shows up in the waveform.
+Pick one shot with low `rh95` and compare it to the tall one above. 
 
 ```{r two-shots, eval = eval_live}
+# tall_shot is already defined from the anatomy section above
 short_shot <- l1b_joined |>
   filter(rh95 < 15) |> slice(1L) |> pull(shot_number)
-tall_shot  <- l1b_joined |>
-  filter(rh95 > 70) |> slice(1L) |> pull(shot_number)
 
 wf_pair <- wf |>
   filter(shot_number %in% c(short_shot, tall_shot)) |>
@@ -229,19 +244,17 @@ ggplot(wf_pair, aes(amplitude, height_above_ground)) +
 ```
 
 The short shot (open ground or low vegetation) is dominated by a single
-ground peak with almost no energy above a few metres. The tall shot
+ground peak with almost no energy above a 10 metres. The tall shot
 has clear canopy structure: a ground return at zero plus a broad
-canopy-top return at 50-90 m, possibly with understory detail in
-between. Those two waveforms produced the `rh95` difference you see in
-L2A — by different amounts of energy concentrating above ground.
+canopy-top return at 50-90 m. 
 
 ## Composite view across the bbox
 
-Now that you know what one waveform looks like, stack them all. We
+Now that we know what one waveform looks like, let's stack them all. We
 overlay the amplitude quantiles at each height so the composite reads as
 a structural profile rather than spaghetti.
 
-```{r composite, eval = eval_live}
+```{r composite, eval = eval_live, fig.width = 5, fig.height = 9}
 wf_quantiles <- wf |>
   filter(height_above_ground >= 0, height_above_ground <= 200) |>
   mutate(h_bin = round(height_above_ground)) |>
@@ -254,23 +267,24 @@ wf_quantiles <- wf |>
   )
 
 ggplot() +
-  geom_path(
-    data = wf,
-    aes(amplitude, height_above_ground, group = shot_number),
-    alpha = 0.05, colour = "#1d743eff", linewidth = 0.1
-  ) +
   geom_ribbon(
     data = wf_quantiles,
     aes(xmin = q10, xmax = q90, y = h_bin),
-    fill = "#1d743eff", alpha = 0.25
+    fill = "#24964fff", alpha = 0.1, colour= "#888888ff", linewidth = 0.4
   ) +
+  geom_path(
+    data = wf,
+    aes(amplitude, height_above_ground, group = shot_number), colour = "#24964fff", linewidth = 0.1, alpha=0.6
+  ) +
+  
   geom_path(
     data = wf_quantiles,
     aes(q50, h_bin),
-    colour = "#0d4723ff", linewidth = 0.7
+    colour = "#175e32ff", linewidth = 0.8
   ) +
-  geom_hline(yintercept = 0, colour = "#d48282", linewidth = 0.3) +
-  coord_cartesian(ylim = c(0, 200)) +
+  geom_hline(yintercept = 0, colour = "#d48282", linewidth = 0.8) +
+  coord_cartesian(ylim = c(0, 120)) +
+  scale_x_continuous(trans = "pseudo_log") +
   labs(
     x = "Amplitude (noise σ units)",
     y = "Height above detected ground (m)",
@@ -285,8 +299,6 @@ peak at ground, a secondary peak near median canopy height, decaying
 returns above it. The **10-90 % ribbon** shows shot-to-shot variation
 — narrow bands mean consistent structure across the bbox, wide bands
 mean heterogeneous canopy (edge shots, gaps, short vs tall mixed).
-For our small redwood bbox the ribbon is tight: the forest is
-structurally similar everywhere we looked.
 
 ## Cross-check: compute your own RH metrics
 
@@ -322,24 +334,32 @@ If the points hug the 1:1 line, our simple-minded cumulative-energy RH95
 agrees with L2A's more principled version. Disagreements identify shots
 where L2A's noise thresholding, smoothing, or algorithm selection
 (`selected_algorithm`) produces a meaningfully different answer than a
-naive cumsum. Those disagreements are usually *L2A doing the right thing*,
-not the other way around.
+naive cumsum. Those disagreements are *L2A doing the right thing*,
+not the other way around ;).
 
 ## What we skipped (and why)
 
-- **Waveform smoothing.** L2A applies a Gaussian kernel before peak detection.
-  We used raw samples. Smoothing before RH computation typically nudges
-  percentile heights by <1 m but can matter in noisy shots.
 - **Algorithm selection.** L2A ships six algorithm variants per shot and
   picks one via `selected_algorithm`. Our cumulative-energy RH uses none of
   that machinery.
 - **Ground detection from scratch.** We used L2A's `elev_lowestmode` rather
-  than detecting ground ourselves. Home-rolled ground detection in dense
-  canopy or steep terrain is substantially worse than L2A's multi-year
-  algorithm; when you need the ground peak, read L2A.
+  than detecting ground ourselves. naive ground detection in dense
+  canopy or steep terrain is tricky and likely to be worse than L2A's algorithm; when you need the ground peak, read L2A.
+- **Noise mean is not independently corrected.** Per the ATBD (Section
+  3.2.1), "no corrections are currently applied to the mean noise
+  level; the value from the telemetered datapacket is recorded."
+  The column name `noise_mean_corrected` refers to the noise mean
+  *of the corrected (smoothed) waveform*, not to an adjusted mean.
+  Only `noise_stddev_corrected` receives an active correction (for
+  odd-even sampler offsets, Section 3.2.2). This distinction is
+  immaterial for the subtraction and SNR normalisation we perform
+  here: the mean and standard deviation are measured on the same
+  smoothed waveform we analyse, so the units match.
 
 ## Further reading
 
-- [Hofton et al. (2019), GEDI L1B ATBD](https://lpdaac.usgs.gov/documents/982/GEDI01_B_ATBD_v2.0.pdf) — full waveform capture and calibration
-- [Hofton & Blair (2019), GEDI L2A ATBD](https://lpdaac.usgs.gov/documents/588/GEDI_FCCSD_ATBD_v1.0.pdf) — peak detection and RH metric derivation
-- [`sl_extract_waveforms()`] in this package — the primary helper used here
+- Hofton, M. A. & Blair, J. B. (2019). *Algorithm Theoretical Basis
+  Document for GEDI Transmit and Receive Waveform Processing for L1
+  and L2 Products*, v1.0. NASA Goddard Space Flight Center. Covers
+  L1B waveform smoothing, noise correction, and the L2A/L2B
+  algorithm chain referenced throughout this vignette.

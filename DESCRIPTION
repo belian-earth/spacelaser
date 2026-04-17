@@ -22,7 +22,9 @@ Imports:
     vctrs,
     wk
 Suggests:
+    dplyr,
     earthdatalogin,
+    ggplot2,
     httptest2,
     knitr,
     rmarkdown,

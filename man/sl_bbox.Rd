@@ -19,5 +19,19 @@ sl_bbox(xmin, ymin, xmax, ymax)
 A named double vector of class \code{sl_bbox}.
 }
 \description{
-Create a bounding box for spatial queries
+Wraps four corner coordinates into an \code{sl_bbox} vector used by
+\code{\link[=sl_search]{sl_search()}} and \code{\link[=sl_read]{sl_read()}}. The main value is up-front validation:
+arguments are checked for correct ordering (\code{xmin < xmax}, \code{ymin < ymax})
+and for coordinates falling within WGS84 bounds (latitude in
+[-90, 90], longitude in [-180, 180]), so mistakes surface here
+rather than as a silent empty search or a failed HTTP request.
+}
+\examples{
+# Construct a bounding box over a Pacific Northwest forest site.
+sl_bbox(-124.04, 41.39, -124.01, 41.42)
+
+# Validation catches common mistakes before they reach the search
+# or reader. Wrap in try() so the example chunk keeps running.
+try(sl_bbox(-124.01, 41.39, -124.04, 41.42))  # xmin >= xmax
+try(sl_bbox(0, -100, 1, 1))                   # latitude out of range
 }

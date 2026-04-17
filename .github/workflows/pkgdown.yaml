@@ -20,6 +20,11 @@ jobs:
       group: pkgdown-${{ github.event_name != 'pull_request' || github.run_id }}
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      # Earthdata credentials so vignettes that hit NASA CMR + DAAC
+      # render with full output on the pkgdown site. The eval_live
+      # guard in each vignette checks EARTHDATA_USERNAME.
+      EARTHDATA_USERNAME: ${{ secrets.EARTHDATA_USERNAME }}
+      EARTHDATA_PASSWORD: ${{ secrets.EARTHDATA_PASSWORD }}
     permissions:
       contents: write
     steps:

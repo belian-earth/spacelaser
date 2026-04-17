@@ -8,12 +8,24 @@
 #' @param url Character. HTTPS URL of the HDF5 file.
 #' @param path Character. HDF5 group path to list (default: `"/"`).
 #' @returns A character vector of group/dataset names.
+#' @examplesIf interactive()
+#' url <- paste0(
+#'   "https://data.lpdaac.earthdatacloud.nasa.gov/lp-prod-protected/",
+#'   "GEDI02_A.002/GEDI02_A_2020009130403_O06095_03_T02944_02_003_01_V002/",
+#'   "GEDI02_A_2020009130403_O06095_03_T02944_02_003_01_V002.h5"
+#' )
+#' sl_hdf5_groups(url)
+#' sl_hdf5_groups(url, path = "BEAM0000/geolocation")
 #' @export
 sl_hdf5_groups <- function(url, path = "/") {
   rlang::check_required(url)
   creds <- sl_earthdata_creds()
-  rust_hdf5_groups(url = url, path = path,
-                   username = creds$username, password = creds$password)
+  rust_hdf5_groups(
+    url = url,
+    path = path,
+    username = creds$username,
+    password = creds$password
+  )
 }
 
 #' Read a single dataset from a remote HDF5 file
@@ -29,6 +41,14 @@ sl_hdf5_groups <- function(url, path = "/") {
 #'   `"/BEAM0101/lat_lowestmode"`).
 #' @returns An R vector — numeric, integer, or raw, depending on the
 #'   underlying HDF5 datatype.
+#' @examplesIf interactive()
+#' url <- paste0(
+#'   "https://data.lpdaac.earthdatacloud.nasa.gov/lp-prod-protected/",
+#'   "GEDI02_A.002/GEDI02_A_2020009130403_O06095_03_T02944_02_003_01_V002/",
+#'   "GEDI02_A_2020009130403_O06095_03_T02944_02_003_01_V002.h5"
+#' )
+#' lat <- sl_hdf5_read(url, "BEAM0000/lat_lowestmode")
+#' str(lat)
 #' @export
 sl_hdf5_read <- function(url, dataset) {
   rlang::check_required(url)

@@ -43,8 +43,10 @@ synth_values <- function(name, n) {
   )
 
   if (name == "shot_number") {
-    # 64-bit integer sequence, stored as double (hdf5r handles)
-    return(seq_len(n) + 1e12)
+    # Stored as int64 (hdf5r writes H5T_STD_I64LE from bit64::integer64).
+    # Values above 2^53 exercise the bit64 precision path that plain
+    # doubles can't handle.
+    return(bit64::as.integer64("228000000000000000") + bit64::as.integer64(seq_len(n)))
   }
   if (name %in% int_cols) {
     return(sample.int(10L, n, replace = TRUE))
@@ -115,8 +117,13 @@ write_transposed_2d <- function(group, path, data, chunk_shots = 100L) {
 # exercised realistically.
 write_pool <- function(beam, pool_name, start_col, count_col,
                         n_shots, samples_per_shot, min = 0, max = 1) {
-  starts <- seq.int(1L, by = samples_per_shot, length.out = n_shots)
-  counts <- rep(samples_per_shot, n_shots)
+  # Write pool indices as int64 to match real GEDI HDF5 schemas (L1B
+  # uses uint64, L2B uses int64; both map to FixedPoint size=8 in our
+  # Rust reader and come back as bit64::integer64).
+  starts <- bit64::as.integer64(
+    seq.int(1L, by = samples_per_shot, length.out = n_shots)
+  )
+  counts <- bit64::as.integer64(rep(samples_per_shot, n_shots))
   pool_len <- n_shots * samples_per_shot
   pool_values <- runif(pool_len, min, max)
 

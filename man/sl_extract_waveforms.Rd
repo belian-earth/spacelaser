@@ -4,60 +4,120 @@
 \alias{sl_extract_waveforms}
 \title{Extract L1B waveforms to long form with elevation profile}
 \usage{
-sl_extract_waveforms(x)
+sl_extract_waveforms(
+  x,
+  height_ref = c("ellipsoid", "geoid", "tandemx", "srtm"),
+  normalise_amplitude = c("raw", "noise", "snr")
+)
 }
 \arguments{
 \item{x}{A data frame from \code{\link[=sl_read]{sl_read()}} containing GEDI L1B data.
-Must include columns: \code{shot_number}, \code{elevation_bin0},
-\code{elevation_lastbin}, \code{rx_sample_count}, and \code{rxwaveform} (list
-column). If \code{beam} is present, it is carried through to the output.
+Must include \code{shot_number}, \code{elevation_bin0}, \code{elevation_lastbin},
+\code{rx_sample_count}, and \code{rxwaveform} (list column). If \code{beam} is
+present, it is carried through to the output. Additional columns
+are required for non-default \code{height_ref} and \code{normalise_amplitude}
+values — see the description of each mode below.}
 
-The L1B default column set already includes \code{rxwaveform} plus
-the \code{elevation_bin0} / \code{elevation_lastbin} / \code{rx_sample_count}
-columns it depends on, so a plain \code{sl_read(granules)} is enough.
-When narrowing the read, request \code{rxwaveform} and the dependency
-columns are auto-added:
+\item{height_ref}{Reference surface for the returned \code{elevation}
+column:
+\describe{
+\item{\code{"ellipsoid"}}{(default) WGS-84 ellipsoidal elevation,
+exactly as reported by L1B. No extra columns needed.}
+\item{\code{"geoid"}}{Height above the EGM2008 geoid (mean sea
+level): \code{elevation - geoid} per shot. Requires \code{geoid}.}
+\item{\code{"tandemx"}}{Height above the TanDEM-X 90 m DEM at the
+footprint: \code{elevation - digital_elevation_model} per shot.
+A rough proxy for height above ground when an L2A ground
+return isn't available. Requires \code{digital_elevation_model}.}
+\item{\code{"srtm"}}{Same as \code{"tandemx"}, but against the SRTM DEM.
+Requires \code{digital_elevation_model_srtm}.}
+}}
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{d <- sl_read(granules, columns = c("shot_number", "rxwaveform"))
-}\if{html}{\out{</div>}}}
+\item{normalise_amplitude}{Baseline correction for the returned
+\code{amplitude} column. Raw GEDI waveform samples carry a per-shot
+pedestal that differs by digitiser channel, so raw amplitudes
+from different shots / beams / channels are not directly
+comparable.
+\describe{
+\item{\code{"raw"}}{(default) Sample values straight from
+\code{rxwaveform}. No extra columns needed.}
+\item{\code{"noise"}}{Baseline-subtracted amplitude:
+\code{rxwaveform - noise_mean_corrected} per shot, so every shot's
+free-atmosphere noise floor sits at zero. Requires
+\code{noise_mean_corrected}.}
+\item{\code{"snr"}}{Noise-normalised amplitude:
+\code{(rxwaveform - noise_mean_corrected) / noise_stddev_corrected}
+per shot, expressed in units of the per-shot noise standard
+deviation. Useful for peak-detection. Requires
+\code{noise_mean_corrected} and \code{noise_stddev_corrected}.}
+}}
 }
 \value{
 A data frame with one row per waveform sample:
 \describe{
 \item{shot_number}{Shot identifier (repeated per sample).}
 \item{beam}{Beam name, if present in input.}
-\item{elevation}{Sample elevation in metres (WGS-84 ellipsoidal),
-interpolated from \code{elevation_bin0} and \code{elevation_lastbin}.}
-\item{amplitude}{Waveform return amplitude (raw float from HDF5).}
+\item{elevation}{Sample elevation in metres, referenced to the
+surface chosen by \code{height_ref}.}
+\item{amplitude}{Waveform return amplitude, adjusted according
+to \code{normalise_amplitude}.}
 }
 }
 \description{
-Converts GEDI L1B received waveform list columns into a long-form
-data frame with one row per waveform sample. Each sample is assigned
-an elevation by linearly interpolating between \code{elevation_bin0}
-(waveform top) and \code{elevation_lastbin} (waveform bottom).
+Converts GEDI L1B received-waveform list columns into a long-form
+data frame with one row per waveform sample, with each sample
+assigned an elevation by linearly interpolating between
+\code{elevation_bin0} (waveform top) and \code{elevation_lastbin} (waveform
+bottom). The elevation reference is configurable via \code{height_ref}
+and the amplitude normalisation via \code{normalise_amplitude}.
 }
 \details{
-This is the standard preprocessing step for waveform visualisation
-and analysis. The output can be plotted directly with ggplot2:
-
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{library(ggplot2)
-wf <- sl_extract_waveforms(gedi_l1b)
-ggplot(wf, aes(amplitude, elevation)) +
-  geom_path() +
-  facet_wrap(~shot_number)
-}\if{html}{\out{</div>}}
-
-The elevation for each sample is computed as:
+The per-sample elevation is computed as
 
 \code{elevation[i] = elevation_bin0 - i * (elevation_bin0 - elevation_lastbin) / rx_sample_count}
 
-where \code{i} runs from 1 to \code{rx_sample_count}. This places sample 1 one
-step below \code{elevation_bin0} and sample \code{rx_sample_count} at
-\code{elevation_lastbin}, matching the chewie convention.
+for \code{i} in \verb{1..rx_sample_count}, placing sample 1 one step below
+\code{elevation_bin0} and sample \code{rx_sample_count} at \code{elevation_lastbin}
+(chewie convention). The \code{height_ref} argument then subtracts the
+corresponding per-shot reference (geoid, DEM, or nothing) from
+every sample.
 
-Shots with \code{NA} elevation or zero \code{rx_sample_count} are dropped.
+The L1B default column set includes \code{rxwaveform}, the structural
+dependency columns (\code{elevation_bin0}, \code{elevation_lastbin},
+\code{rx_sample_count}, \code{shot_number}), the height references (\code{geoid},
+\code{digital_elevation_model}, \code{digital_elevation_model_srtm}), and the
+noise statistics (\code{noise_mean_corrected}, \code{noise_stddev_corrected}).
+Every \code{height_ref} and \code{normalise_amplitude} mode therefore works
+out of the box against a plain \code{sl_read(granules)}. When narrowing
+the read with \code{columns = c(...)}, request the columns needed for
+your chosen modes.
+
+Shots with \code{NA} reference elevations, \code{NA} noise statistics (when
+requested), or zero \code{rx_sample_count} are dropped silently.
+}
+\examples{
+\dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
+bbox <- sl_bbox(-124.04, 41.39, -124.01, 41.42)
+granules <- sl_search(bbox, product = "L1B",
+                      date_start = "2020-06-01",
+                      date_end   = "2020-06-30")
+d <- sl_read(granules[1L, ], bbox = bbox)
+
+# Absolute ellipsoidal elevations, raw amplitudes (defaults).
+wf <- sl_extract_waveforms(d)
+
+# Height above the TanDEM-X DEM with baseline-subtracted amplitude —
+# waveforms from different beams / channels line up at zero.
+wf_agl <- sl_extract_waveforms(
+  d,
+  height_ref         = "tandemx",
+  normalise_amplitude = "noise"
+)
+
+# SNR units: amplitudes in multiples of per-shot noise σ.
+wf_snr <- sl_extract_waveforms(d, normalise_amplitude = "snr")
+\dontshow{\}) # examplesIf}
 }
 \seealso{
-\code{\link[=sl_read]{sl_read()}} with \code{columns = c("rxwaveform", ...)}
+\code{\link[=sl_read]{sl_read()}}
 }

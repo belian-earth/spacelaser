@@ -23,3 +23,14 @@ pulling individual fields not covered by the curated registry, or
 for inspecting a dataset before requesting it via \code{\link[=sl_read]{sl_read()}}.
 Earthdata credentials are required (see \code{\link[=sl_search]{sl_search()}} for setup).
 }
+\examples{
+\dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
+url <- paste0(
+  "https://data.lpdaac.earthdatacloud.nasa.gov/lp-prod-protected/",
+  "GEDI02_A.002/GEDI02_A_2020009130403_O06095_03_T02944_02_003_01_V002/",
+  "GEDI02_A_2020009130403_O06095_03_T02944_02_003_01_V002.h5"
+)
+lat <- sl_hdf5_read(url, "BEAM0000/lat_lowestmode")
+str(lat)
+\dontshow{\}) # examplesIf}
+}

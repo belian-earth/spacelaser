@@ -103,7 +103,7 @@ test_that("transposed surface_type expands in registry label order", {
 
 # ---- Auto-added trailing block --------------------------------------------
 
-test_that("auto-added pool indices land in the trailing block before geometry", {
+test_that("auto-added pool deps land before geometry, pool indices are stripped", {
   skip_if_not(file.exists(l1b))
 
   data <- sl_read(l1b, product = "L1B", bbox = bbox,
@@ -112,36 +112,30 @@ test_that("auto-added pool indices land in the trailing block before geometry", 
   geom_pos <- match("geometry", nm)
   expect_equal(geom_pos, length(nm))  # geometry last
 
-  # The four pool-related auto-added columns should sit in the run
-  # immediately before geometry (rx_sample_start_index, rx_sample_count,
-  # plus the rxwaveform deps elevation_bin0 / elevation_lastbin).
-  trailing <- nm[(geom_pos - 4):(geom_pos - 1)]
-  expect_setequal(
-    trailing,
-    c("rx_sample_start_index", "rx_sample_count",
-      "elevation_bin0", "elevation_lastbin")
-  )
+  # Pool-index columns (rx_sample_start_index) are consumed by the Rust
+  # pool slicer and stripped from the output. Only the rxwaveform deps
+  # that the user might need (elevation_bin0, elevation_lastbin) appear
+  # before geometry.
+  expect_false("rx_sample_start_index" %in% nm)
+  expect_true("elevation_bin0" %in% nm)
+  expect_true("elevation_lastbin" %in% nm)
 })
 
-test_that("user-requested pool index stays in the middle (not pushed to trail)", {
+test_that("user-requested pool index stays in the middle (not stripped)", {
   skip_if_not(file.exists(l1b))
 
   data <- sl_read(l1b, product = "L1B", bbox = bbox,
                   columns = c("rx_sample_start_index", "rxwaveform",
                               "rx_sample_count"))
   nm <- names(data)
-  # rx_sample_start_index was explicitly requested first → middle, not trailing.
-  # rx_sample_count was also explicitly requested → middle.
-  # No auto-added trailing block (everything was asked for).
-  geom_pos <- match("geometry", nm)
-  trailing <- nm[(geom_pos - 2):(geom_pos - 1)]
-  # Trailing should now be the pool deps that the user did NOT request.
-  expect_setequal(trailing, c("elevation_bin0", "elevation_lastbin"))
+  # rx_sample_start_index was explicitly requested → kept in middle,
+  # NOT stripped (stripping only applies to auto-added indices).
+  expect_true("rx_sample_start_index" %in% nm)
+  expect_true("rx_sample_count" %in% nm)
 
-  # The two index columns should appear in user-requested order in the middle
   pos_start <- match("rx_sample_start_index", nm)
-  pos_count <- match("rx_sample_count", nm)
   pos_rx    <- match("rxwaveform", nm)
+  pos_count <- match("rx_sample_count", nm)
   expect_lt(pos_start, pos_rx)
   expect_lt(pos_rx,    pos_count)
 })

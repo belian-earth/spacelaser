@@ -127,22 +127,22 @@ for the full pipeline.</p>
 <code class="sourceCode R"><span><span class="va">g_l1b</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sl_search.html">sl_search</a></span><span class="op">(</span><span class="va">bbox</span>, product <span class="op">=</span> <span class="st">"L1B"</span>,</span>
 <span>                   date_start <span class="op">=</span> <span class="va">dates</span><span class="op">$</span><span class="va">start</span>, date_end <span class="op">=</span> <span class="va">dates</span><span class="op">$</span><span class="va">end</span><span class="op">)</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Searching CMR for GEDI L1B granules</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Searching CMR for GEDI L1B granules <span style="color: #B2B2B2;">[6.7s]</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Searching CMR for GEDI L1B granules <span style="color: #B2B2B2;">[6.9s]</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Found 1 GEDI L1B granule.</span></span>
 <span><span class="va">g_l2a</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sl_search.html">sl_search</a></span><span class="op">(</span><span class="va">bbox</span>, product <span class="op">=</span> <span class="st">"L2A"</span>,</span>
 <span>                   date_start <span class="op">=</span> <span class="va">dates</span><span class="op">$</span><span class="va">start</span>, date_end <span class="op">=</span> <span class="va">dates</span><span class="op">$</span><span class="va">end</span><span class="op">)</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Searching CMR for GEDI L2A granules</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Searching CMR for GEDI L2A granules <span style="color: #B2B2B2;">[214ms]</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Searching CMR for GEDI L2A granules <span style="color: #B2B2B2;">[475ms]</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Found 1 GEDI L2A granule.</span></span>
 <span></span>
 <span><span class="va">l1b</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sl_read.html">sl_read</a></span><span class="op">(</span><span class="va">g_l1b</span><span class="op">[</span><span class="fl">1L</span>, <span class="op">]</span>, bbox <span class="op">=</span> <span class="va">bbox</span><span class="op">)</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Reading L1B from 1 granule</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Read 140 footprints from 5 beams.<span style="color: #00BB00;">✔</span> Reading L1B from 1 granule <span style="color: #B2B2B2;">[18.9s]</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Read 140 footprints from 5 beams.<span style="color: #00BB00;">✔</span> Reading L1B from 1 granule <span style="color: #B2B2B2;">[22s]</span></span></span>
 <span><span class="va">l2a</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sl_read.html">sl_read</a></span><span class="op">(</span><span class="va">g_l2a</span><span class="op">[</span><span class="fl">1L</span>, <span class="op">]</span>, bbox <span class="op">=</span> <span class="va">bbox</span><span class="op">)</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Reading L2A from 1 granule</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Read 138 footprints from 5 beams.<span style="color: #00BB00;">✔</span> Reading L2A from 1 granule <span style="color: #B2B2B2;">[13.6s]</span></span></span></code></pre></div>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Read 138 footprints from 5 beams.<span style="color: #00BB00;">✔</span> Reading L2A from 1 granule <span style="color: #B2B2B2;">[14s]</span></span></span></code></pre></div>
 <p><code>l1b</code> carries the waveform (<code>rxwaveform</code>,
 already Gaussian-smoothed at the L1B processing stage) and its
 structural metadata (<code>elevation_bin0</code>,

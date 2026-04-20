@@ -1,7 +1,7 @@
 # spacelaser
 
-Fast cloud-optimized partial reading of GEDI and ICESat-2 HDF5 data from
-R. Only the bytes needed for the requested spatial/temporal subset are
+Cloud-optimized partial reading of GEDI and ICESat-2 HDF5 data from R.
+Only the bytes needed for the requested spatial/temporal subset are
 fetched over HTTP, avoiding multi-gigabyte downloads.
 
 ## Installation
@@ -52,27 +52,27 @@ granules <- sl_search(
   date_end = "2023-01-01"
 )
 #> ℹ Searching CMR for GEDI L2A granules
-#> ✔ Searching CMR for GEDI L2A granules [7.6s]
+#> ✔ Searching CMR for GEDI L2A granules [13s]
 #> 
 #> ✔ Found 9 GEDI L2A granules.
 gedi2a <- sl_read(granules)
 #> ℹ Reading L2A from 9 granules
-#> ✔ Read 579 footprints from 17 beams.✔ Reading L2A from 9 granules [1m 0.4s]
+#> ✔ Read 579 footprints from 17 beams.✔ Reading L2A from 9 granules [1m 4.9s]
 
 gedi2a
 #> # A tibble: 579 × 121
 #>    beam     shot_number time                lat_lowestmode lon_lowestmode
 #>    <chr>        <int64> <dttm>                       <dbl>          <dbl>
-#>  1 BEAM0000       2.e17 2022-12-20 14:08:10           41.4          -124.
-#>  2 BEAM0000       2.e17 2022-12-20 14:08:10           41.4          -124.
-#>  3 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.
-#>  4 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.
-#>  5 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.
-#>  6 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.
-#>  7 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.
-#>  8 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.
-#>  9 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.
-#> 10 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.
+#>  1 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
+#>  2 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
+#>  3 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
+#>  4 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
+#>  5 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
+#>  6 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
+#>  7 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
+#>  8 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
+#>  9 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
+#> 10 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
 #> # ℹ 569 more rows
 #> # ℹ 116 more variables: degrade_flag <int>, quality_flag <int>,
 #> #   sensitivity <dbl>, solar_elevation <dbl>, elev_lowestmode <dbl>,
@@ -155,30 +155,20 @@ Spacelaser sends HTTP range requests against the remote files and
 returns just the rows that fall inside your bounding box, with no local
 caching needed.
 
-The result is incredibly fast and efficient remote data access.
-Cold-cache benchmark, GEDI L2A, 0.03° × 0.03° bbox over Gabon, 2 years,
-11 granules, ecologist-realistic column set:
-
-|                  | spacelaser             | curl + hdf5r (status quo)                       |
-|------------------|------------------------|-------------------------------------------------|
-| Wall time        | **70 s**               | 1,568 s                                         |
-| Bytes downloaded | (small)                | 27 GiB                                          |
-| Disk used        | 0                      | 27 GiB                                          |
-| Output           | 1,246 shots × 112 cols | 1,246 shots × 112 cols (bit-perfect equivalent) |
-
-That’s a **22.5×** speedup, robustly **15-22×** across runs depending on
-network conditions. Full methods and results can be found in
-[`benchmarks/`](https://github.com/belian-earth/spacelaser/tree/main/benchmarks).
+In practice this is roughly 15-20× quicker than downloading whole
+granules. See
+[`benchmarks/`](https://github.com/belian-earth/spacelaser/tree/main/benchmarks)
+for methodology and comparisons with other approaches.
 
 ## Acknowledgements
 
 spacelaser is a Rust reimplementation of the partial-HDF5 reading
 approach pioneered by
 **[h5coro](https://github.com/SlideRuleEarth/h5coro)** (NASA SlideRule
-Earth). The core idea underpinning this package, targeted HTTP Range
-requests against cloud-hosted HDF5 granules instead of downloading the
-full files, is theirs. This package brings that idea to R with a
-GEDI/ICESat-2-specific API and a ground-up Rust parser.
+Earth). The core idea is theirs: targeted HTTP range requests against
+cloud-hosted HDF5 granules rather than downloading whole files. This
+package brings that idea to R with a GEDI/ICESat-2-specific API and a
+ground-up Rust parser.
 
 ### Data
 

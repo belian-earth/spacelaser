@@ -71,7 +71,7 @@
 </div>
 <!-- badges: start -->
 
-<p>Fast cloud-optimized partial reading of GEDI and ICESat-2 HDF5 data from R. Only the bytes needed for the requested spatial/temporal subset are fetched over HTTP, avoiding multi-gigabyte downloads.</p>
+<p>Cloud-optimized partial reading of GEDI and ICESat-2 HDF5 data from R. Only the bytes needed for the requested spatial/temporal subset are fetched over HTTP, avoiding multi-gigabyte downloads.</p>
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
@@ -110,27 +110,27 @@
 <span>  date_end <span class="op">=</span> <span class="st">"2023-01-01"</span></span>
 <span><span class="op">)</span></span>
 <span><span class="co">#&gt; ℹ Searching CMR for GEDI L2A granules</span></span>
-<span><span class="co">#&gt; ✔ Searching CMR for GEDI L2A granules [7.6s]</span></span>
+<span><span class="co">#&gt; ✔ Searching CMR for GEDI L2A granules [13s]</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; ✔ Found 9 GEDI L2A granules.</span></span>
 <span><span class="va">gedi2a</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/sl_read.html">sl_read</a></span><span class="op">(</span><span class="va">granules</span><span class="op">)</span></span>
 <span><span class="co">#&gt; ℹ Reading L2A from 9 granules</span></span>
-<span><span class="co">#&gt; ✔ Read 579 footprints from 17 beams.✔ Reading L2A from 9 granules [1m 0.4s]</span></span>
+<span><span class="co">#&gt; ✔ Read 579 footprints from 17 beams.✔ Reading L2A from 9 granules [1m 4.9s]</span></span>
 <span></span>
 <span><span class="va">gedi2a</span></span>
 <span><span class="co">#&gt; # A tibble: 579 × 121</span></span>
 <span><span class="co">#&gt;    beam     shot_number time                lat_lowestmode lon_lowestmode</span></span>
 <span><span class="co">#&gt;    &lt;chr&gt;        &lt;int64&gt; &lt;dttm&gt;                       &lt;dbl&gt;          &lt;dbl&gt;</span></span>
-<span><span class="co">#&gt;  1 BEAM0000       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
-<span><span class="co">#&gt;  2 BEAM0000       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
-<span><span class="co">#&gt;  3 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
-<span><span class="co">#&gt;  4 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
-<span><span class="co">#&gt;  5 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
-<span><span class="co">#&gt;  6 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
-<span><span class="co">#&gt;  7 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
-<span><span class="co">#&gt;  8 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
-<span><span class="co">#&gt;  9 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
-<span><span class="co">#&gt; 10 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
+<span><span class="co">#&gt;  1 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
+<span><span class="co">#&gt;  2 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
+<span><span class="co">#&gt;  3 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
+<span><span class="co">#&gt;  4 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
+<span><span class="co">#&gt;  5 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
+<span><span class="co">#&gt;  6 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
+<span><span class="co">#&gt;  7 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
+<span><span class="co">#&gt;  8 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
+<span><span class="co">#&gt;  9 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
+<span><span class="co">#&gt; 10 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
 <span><span class="co">#&gt; # ℹ 569 more rows</span></span>
 <span><span class="co">#&gt; # ℹ 116 more variables: degrade_flag &lt;int&gt;, quality_flag &lt;int&gt;,</span></span>
 <span><span class="co">#&gt; #   sensitivity &lt;dbl&gt;, solar_elevation &lt;dbl&gt;, elev_lowestmode &lt;dbl&gt;,</span></span>
@@ -250,47 +250,12 @@
 </h2>
 <p>The standard R workflow for GEDI / ICESat-2 data is to download whole HDF5 granules, then filter locally. For a typical spatial subset query that wastes minutes and gigabytes — the file you’re filtering is usually orders of magnitude larger than the answer you actually want.</p>
 <p>Spacelaser sends HTTP range requests against the remote files and returns just the rows that fall inside your bounding box, with no local caching needed.</p>
-<p>The result is incredibly fast and efficient remote data access. Cold-cache benchmark, GEDI L2A, 0.03° × 0.03° bbox over Gabon, 2 years, 11 granules, ecologist-realistic column set:</p>
-<table class="table">
-<colgroup>
-<col width="33%">
-<col width="33%">
-<col width="33%">
-</colgroup>
-<thead><tr class="header">
-<th></th>
-<th>spacelaser</th>
-<th>curl + hdf5r (status quo)</th>
-</tr></thead>
-<tbody>
-<tr class="odd">
-<td>Wall time</td>
-<td><strong>70 s</strong></td>
-<td>1,568 s</td>
-</tr>
-<tr class="even">
-<td>Bytes downloaded</td>
-<td>(small)</td>
-<td>27 GiB</td>
-</tr>
-<tr class="odd">
-<td>Disk used</td>
-<td>0</td>
-<td>27 GiB</td>
-</tr>
-<tr class="even">
-<td>Output</td>
-<td>1,246 shots × 112 cols</td>
-<td>1,246 shots × 112 cols (bit-perfect equivalent)</td>
-</tr>
-</tbody>
-</table>
-<p>That’s a <strong>22.5×</strong> speedup, robustly <strong>15-22×</strong> across runs depending on network conditions. Full methods and results can be found in <a href="https://github.com/belian-earth/spacelaser/tree/main/benchmarks" class="external-link"><code>benchmarks/</code></a>.</p>
+<p>In practice this is roughly 15-20× quicker than downloading whole granules. See <a href="https://github.com/belian-earth/spacelaser/tree/main/benchmarks" class="external-link"><code>benchmarks/</code></a> for methodology and comparisons with other approaches.</p>
 </div>
 <div class="section level2">
 <h2 id="acknowledgements">Acknowledgements<a class="anchor" aria-label="anchor" href="#acknowledgements"></a>
 </h2>
-<p>spacelaser is a Rust reimplementation of the partial-HDF5 reading approach pioneered by <strong><a href="https://github.com/SlideRuleEarth/h5coro" class="external-link">h5coro</a></strong> (NASA SlideRule Earth). The core idea underpinning this package, targeted HTTP Range requests against cloud-hosted HDF5 granules instead of downloading the full files, is theirs. This package brings that idea to R with a GEDI/ICESat-2-specific API and a ground-up Rust parser.</p>
+<p>spacelaser is a Rust reimplementation of the partial-HDF5 reading approach pioneered by <strong><a href="https://github.com/SlideRuleEarth/h5coro" class="external-link">h5coro</a></strong> (NASA SlideRule Earth). The core idea is theirs: targeted HTTP range requests against cloud-hosted HDF5 granules rather than downloading whole files. This package brings that idea to R with a GEDI/ICESat-2-specific API and a ground-up Rust parser.</p>
 <div class="section level3">
 <h3 id="data">Data<a class="anchor" aria-label="anchor" href="#data"></a>
 </h3>

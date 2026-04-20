@@ -175,6 +175,40 @@ include orthometric / ellipsoidal / surface heights, photon class and
 confidence, and the THU / TVU positional uncertainty pair. Geometry uses
 photon coordinates (`lat_ph`, `lon_ph`).
 
+### Performance tuning
+
+The default read path scans every beam's full lat/lon dataset to build
+each beam's spatial filter — a safe, simple strategy that works for
+every product and every orbit geometry.
+
+An opt-in **cross-beam scan** optimisation is available for workloads
+where one beam's shot-index range can predict the others' (GEDI and most
+ICESat-2 products). Instead of scanning all 8 beams per granule, one
+reference beam scans an inflated latitude band and the other beams
+dense-read the resulting shot-index range. Output is bitwise identical;
+HTTP request and byte counts drop by ~50 %.
+
+**Wall-time impact is DAAC-dependent:**
+
+- ORNL-DAAC (hosts L4A / L4C): ~23 % faster on a typical small bbox
+
+- LP.DAAC (hosts L1B / L2A / L2B): slightly slower (~10 %) because
+  LP.DAAC's CloudFront distribution rate-limits aggressively and
+  cross-beam's serial critical path pays more in underutilised pool
+  capacity than it saves in bytes
+
+Enable per session:
+
+    options(spacelaser.cross_beam_scan = TRUE)
+
+Or persistently for every R session by adding that line to your
+`.Rprofile`.
+
+The option is off by default. Consider enabling it when your workload is
+dominated by L4A / L4C reads, or when you care more about NASA server
+load (both byte and request counts halve) than about marginal wall-time
+differences on LP.DAAC.
+
 ## See also
 
 [`sl_search()`](https://belian-earth.github.io/spacelaser/reference/sl_search.md),

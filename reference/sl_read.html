@@ -215,6 +215,34 @@ and confidence, and the THU / TVU positional uncertainty pair.
 Geometry uses photon coordinates (<code>lat_ph</code>, <code>lon_ph</code>).</p>
 </div>
 
+<div class="section">
+<h3 id="performance-tuning">Performance tuning<a class="anchor" aria-label="anchor" href="#performance-tuning"></a></h3>
+
+
+<p>The default read path scans every beam's full lat/lon dataset to
+build each beam's spatial filter — a safe, simple strategy that
+works for every product and every orbit geometry.</p>
+<p>An opt-in <strong>cross-beam scan</strong> optimisation is available for
+workloads where one beam's shot-index range can predict the others'
+(GEDI and most ICESat-2 products). Instead of scanning all 8 beams
+per granule, one reference beam scans an inflated latitude band and
+the other beams dense-read the resulting shot-index range. Output
+is bitwise identical; HTTP request and byte counts drop by ~50 %.</p>
+<p><strong>Wall-time impact is DAAC-dependent:</strong></p><ul><li><p>ORNL-DAAC (hosts L4A / L4C): ~23 % faster on a typical small bbox</p></li>
+<li><p>LP.DAAC (hosts L1B / L2A / L2B): slightly slower (~10 %) because
+LP.DAAC's CloudFront distribution rate-limits aggressively and
+cross-beam's serial critical path pays more in underutilised
+pool capacity than it saves in bytes</p></li>
+</ul><p>Enable per session:</p>
+<p></p><div class="sourceCode r"><pre><code><span><span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">options</a></span><span class="op">(</span>spacelaser.cross_beam_scan <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre><p></p></div>
+<p>Or persistently for every R session by adding that line to your
+<code>.Rprofile</code>.</p>
+<p>The option is off by default. Consider enabling it when your
+workload is dominated by L4A / L4C reads, or when you care more
+about NASA server load (both byte and request counts halve) than
+about marginal wall-time differences on LP.DAAC.</p>
+</div>
+
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>

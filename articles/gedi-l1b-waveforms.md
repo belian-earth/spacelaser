@@ -54,22 +54,22 @@ the vignette snappy; remove the `[1L, ]` for the full pipeline.
 g_l1b <- sl_search(bbox, product = "L1B",
                    date_start = dates$start, date_end = dates$end)
 #> ℹ Searching CMR for GEDI L1B granules
-#> ✔ Searching CMR for GEDI L1B granules [6.7s]
+#> ✔ Searching CMR for GEDI L1B granules [6.9s]
 #> 
 #> ✔ Found 1 GEDI L1B granule.
 g_l2a <- sl_search(bbox, product = "L2A",
                    date_start = dates$start, date_end = dates$end)
 #> ℹ Searching CMR for GEDI L2A granules
-#> ✔ Searching CMR for GEDI L2A granules [214ms]
+#> ✔ Searching CMR for GEDI L2A granules [475ms]
 #> 
 #> ✔ Found 1 GEDI L2A granule.
 
 l1b <- sl_read(g_l1b[1L, ], bbox = bbox)
 #> ℹ Reading L1B from 1 granule
-#> ✔ Read 140 footprints from 5 beams.✔ Reading L1B from 1 granule [18.9s]
+#> ✔ Read 140 footprints from 5 beams.✔ Reading L1B from 1 granule [22s]
 l2a <- sl_read(g_l2a[1L, ], bbox = bbox)
 #> ℹ Reading L2A from 1 granule
-#> ✔ Read 138 footprints from 5 beams.✔ Reading L2A from 1 granule [13.6s]
+#> ✔ Read 138 footprints from 5 beams.✔ Reading L2A from 1 granule [14s]
 ```
 
 `l1b` carries the waveform (`rxwaveform`, already Gaussian-smoothed at

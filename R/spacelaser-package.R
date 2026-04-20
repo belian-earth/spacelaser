@@ -43,6 +43,11 @@
 #' Register at <https://urs.earthdata.nasa.gov/> and set up with
 #' `earthdatalogin::edl_netrc()` if preferred.
 #'
+#' @section Options:
+#' - `spacelaser.cross_beam_scan` (default `FALSE`) --- enable the
+#'   cross-beam spatial-filter optimization. See `?sl_read` under
+#'   "Performance tuning" for the DAAC-dependent tradeoff.
+#'
 #' @keywords internal
 "_PACKAGE"
 

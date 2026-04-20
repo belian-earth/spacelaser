@@ -7,3 +7,5 @@ BENCHMARK-RESULT.html
 
 # uv-managed Python environment (committed: pyproject.toml + uv.lock).
 python/.venv/
+
+/.quarto/

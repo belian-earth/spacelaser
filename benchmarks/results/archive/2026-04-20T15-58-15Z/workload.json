@@ -1,0 +1,28 @@
+{
+  "_comment": "Single source of truth for the benchmark workload. All bench-* scripts and BENCHMARK-RESULT.Rmd read from here. Mondah forest, Gabon — well-known GEDI calibration site, dense tropical canopy. 0.03° × 0.03° at this location and date range yields ~11 granules, small enough for ~30 GB cold-cache downloads on a typical dev machine while still producing a meaningful spatial subset (~1200 shots).",
+
+  "bbox":       { "xmin": 9.32, "ymin": 0.55, "xmax": 9.35, "ymax": 0.58 },
+  "date_start": "2020-01-01",
+  "date_end":   "2021-12-31",
+  "product":    "L2A",
+
+  "_columns_comment": "Ecologist-realistic mix — 1D scalars, 2D (rh → rh0..rh100), and nested-subgroup columns (land_cover_data/*). shot_number is excluded because it's uint64 and the three pipelines widen it differently; row alignment uses (beam, lat, lon) which is unique per shot in this bbox.",
+
+  "columns": [
+    "quality_flag", "degrade_flag", "sensitivity",
+    "elev_lowestmode", "elev_highestreturn", "solar_elevation",
+    "rh",
+    "landsat_treecover", "modis_treecover"
+  ],
+  "column_paths": {
+    "quality_flag":      "quality_flag",
+    "degrade_flag":      "degrade_flag",
+    "sensitivity":       "sensitivity",
+    "elev_lowestmode":   "elev_lowestmode",
+    "elev_highestreturn":"elev_highestreturn",
+    "solar_elevation":   "solar_elevation",
+    "rh":                "rh",
+    "landsat_treecover": "land_cover_data/landsat_treecover",
+    "modis_treecover":   "land_cover_data/modis_treecover"
+  }
+}

@@ -30,6 +30,7 @@ read_timing <- function(p) {
 t_hdf5r  <- read_timing("hdf5r")
 t_sl     <- read_timing("spacelaser")
 t_h5coro <- read_timing("h5coro")
+t_gedidb <- read_timing("gedidb")
 
 equiv <- if (file.exists(paths$equiv))
   as.data.frame(arrow::read_parquet(paths$equiv)) else
@@ -46,7 +47,7 @@ fmt_int <- function(x) if (is.na(x)) "—" else format(x, big.mark = ",")
 # Benchmark result
 
 ```{r provenance}
-frames <- Filter(Negate(is.null), list(t_hdf5r, t_sl, t_h5coro))
+frames <- Filter(Negate(is.null), list(t_hdf5r, t_sl, t_h5coro, t_gedidb))
 if (length(frames) == 0L) {
   cat("*No benchmark data yet. Run `benchmarks/run.sh`.*\n")
 } else {
@@ -66,7 +67,8 @@ have_data <- length(frames) > 0L
 pipelines <- list(
   list(label = "Spacelaser (Rust, partial HTTP range reads)", t = t_sl),
   list(label = "h5coro (Python, partial HTTP range reads)",    t = t_h5coro),
-  list(label = "Status quo (curl + hdf5r, full download)",     t = t_hdf5r)
+  list(label = "Download + hdf5r (full granule download, then read)", t = t_hdf5r),
+  list(label = "gedidb (Python, GFZ-hosted TileDB query)",     t = t_gedidb)
 )
 pipelines <- Filter(function(x) !is.null(x$t), pipelines)
 
@@ -86,31 +88,38 @@ knitr::kable(tab, align = "lrrrrr")
 
 ```{r speedups, eval = have_data}
 lines <- character(0)
+bullets <- character(0)
 if (!is.null(t_hdf5r) && !is.null(t_sl)) {
-  lines <- c(lines, sprintf(
-    "**Spacelaser: %.1f×** faster than status quo.",
+  bullets <- c(bullets, sprintf(
+    "* spacelaser is %.1f× quicker",
     t_hdf5r$seconds_total / t_sl$seconds_total
   ))
 }
 if (!is.null(t_hdf5r) && !is.null(t_h5coro)) {
-  lines <- c(lines, sprintf(
-    "**h5coro: %.1f×** faster than status quo.",
+  bullets <- c(bullets, sprintf(
+    "* h5coro is %.1f× quicker",
     t_hdf5r$seconds_total / t_h5coro$seconds_total
   ))
 }
+if (length(bullets) > 0L) {
+  lines <- c(lines,
+    "### Wall-time ratio vs the download+hdf5r pipeline:",
+    "",
+    bullets)
+}
 if (!is.null(t_sl) && !is.null(t_h5coro)) {
   rel <- t_h5coro$seconds_total / t_sl$seconds_total
-  lines <- c(lines, sprintf(
-    "Spacelaser is **%.2f×** %s h5coro.",
+  lines <- c(lines, "", sprintf(
+    "Between the two partial-read pipelines, spacelaser completes **%.2f×** %s h5coro on this workload.",
     if (rel >= 1) rel else 1 / rel,
-    if (rel >= 1) "faster than" else "slower than"
+    if (rel >= 1) "quicker than" else "slower than"
   ))
 }
-if (length(lines) > 0L) cat("\n", paste(lines, collapse = "  \n"), "\n", sep = "")
+if (length(lines) > 0L) cat("\n", paste(lines, collapse = "\n"), "\n", sep = "")
 
 if (!is.null(t_hdf5r) && !is.na(t_hdf5r$seconds_download)) {
   cat(sprintf(
-    "\n\nStatus-quo phase split: **%s downloading** vs **%s reading** — the bottleneck is data transfer, not HDF5 parsing.\n",
+    "\n\nDownload+hdf5r phase split: **%s downloading** vs **%s reading** — wall time on this workload is dominated by the file transfer, which is where partial-read pipelines (spacelaser, h5coro) save their time.\n",
     fmt_s(t_hdf5r$seconds_download), fmt_s(t_hdf5r$seconds_read)
   ))
 }
@@ -134,10 +143,70 @@ if (nrow(equiv) > 0L) {
 ```
 
 spacelaser and hdf5r agree on every shared column. h5coro matches on
-row count and coordinates but returns zeros on the science columns
-(rh0–100, quality_flag, sensitivity, elev_*); pending investigation,
-likely a hyperslice or fill-value handling issue in our h5coro driver
-rather than h5coro itself. Timing comparison remains valid.
+row count and coordinates, and our driver currently shows zeros on
+the science columns (rh0–100, quality_flag, sensitivity, elev_*) —
+this is a known issue in our h5coro-side code (hyperslice or
+fill-value handling), not in h5coro itself; tracked for follow-up.
+gedidb is reported alongside rather than inside the equivalence
+matrix because it exposes a different slice of the catalogue — see
+the next section. Timing comparison remains valid.
+
+## gedidb: a different architecture
+
+gedidb takes a meaningfully different approach to serving GEDI data,
+and the comparison below is intended to characterise the differences
+rather than adjudicate. A summary of what each pipeline exposes:
+
+| | spacelaser / h5coro / hdf5r | gedidb |
+|---|---|---|
+| Data source | NASA DAAC granules (live) | Pre-indexed TileDB on GFZ-Potsdam Ceph |
+| Auth | NASA Earthdata required | None (public S3) |
+| Currency | Always matches NASA's latest processing | Depends on GFZ reprocessing cadence |
+| Products | GEDI L1B/L2A/L2B/L4A/L4C + ICESat-2 | L2A/L2B/L4A/L4C only |
+| Waveforms (rxwaveform / txwaveform) | Available (L1B) | Not ingested |
+| 2D profiles (rh, pai_z, cover_z, pavd_z) | Available | Available |
+| `elev_highestreturn` | Native column | Only `_a1`/`_a2` variants |
+| Polygon queries | Bbox only | Shapely geometry supported |
+| Push-down quality filters | Post-hoc in R | SQL-like kwargs |
+| Output | `tibble` / DataFrame | `xarray.Dataset` or DataFrame |
+
+gedidb's timing reflects "query pre-indexed L2A summary metrics from
+a European-hosted TileDB", whereas the other pipelines measure
+"range-read live NASA granules". Where the products overlap
+(L2A/L2B/L4A/L4C, no waveforms), gedidb's TileDB architecture is
+latency-efficient by design — the shots are already ingested,
+indexed, and filtered — so comparing wall-clock against a live-CMR
+pipeline isn't apples-to-apples.
+
+**Row counts reflect different data slices, not equivalent results.**
+The other three pipelines return every shot in the bbox (1,246 in
+this workload). gedidb returns 241 rows — the subset that passes
+its ingest-time quality filter, which is deliberate and documented
+in gedidb's [filter documentation](https://gedidb.readthedocs.io/en/latest/user/fundamentals.filters.html).
+
+These filters reflect sensible defaults for the canopy-focused
+workflows gedidb is primarily designed for, and are clearly
+documented. For a like-for-like row comparison, applying the same
+filter set to the other pipelines brings them in line. For users
+whose work depends on shots that don't pass those filters —
+hydrology / water surfaces, urban / coastal research, or anyone
+who wants unfiltered raw shots — spacelaser or direct DAAC access
+is the path; gedidb is explicit about its filtering choices so
+users can pick the approach that fits.
+
+**When each is a great fit:**
+
+- **gedidb** is ideal for pre-cooked summary metrics with SQL-like
+  filtering and no auth setup — especially for canopy / vegetation
+  work at scale, where the ingest filters reflect community
+  practice.
+- **spacelaser** is a good fit when you want L1B waveforms,
+  ICESat-2 breadth (ATL03/06/07/08/10/13/24 vs ATL08-only via
+  icesat2db), shots that fall outside gedidb's default filters, or
+  NASA-live reprocessed data.
+- **curl + hdf5r (full download + read)** remains a solid choice
+  when you want the full granule locally, or when your workflow
+  depends on other hdf5r features.
 
 ---
 

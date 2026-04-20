@@ -8,13 +8,15 @@
 # archives the timing parquets to a timestamped directory.
 #
 # Pipeline order:
-#   0. search.R          one CMR call -> granules.parquet (shared input)
+#   0. search.R          one CMR call -> granules.parquet (shared input
+#                        for pipelines 1-3; gedidb does its own query)
 #   1. bench-spacelaser  Rust, partial HTTP range reads
 #   2. bench-hdf5r       Status quo: curl::multi_download + hdf5r
 #   3. bench-h5coro      Python via uv, partial HTTP range reads
-#   4. equivalence       cross-pipeline comparison
-#   5. render            BENCHMARK-RESULT.Rmd -> .md
-#   6. archive           timing parquets -> archive/<timestamp>/
+#   4. bench-gedidb      Python via uv, query pre-indexed GFZ TileDB
+#   5. equivalence       cross-pipeline comparison
+#   6. render            BENCHMARK-RESULT.Rmd -> .md
+#   7. archive           timing parquets -> archive/<timestamp>/
 #
 # Usage (from package root):
 #   benchmarks/run.sh
@@ -57,15 +59,27 @@ else
 fi
 echo
 
-# 4. Equivalence (handles whichever subset of pipelines produced data)
+# 4. gedidb (Python via uv). Queries the public GFZ TileDB; no NASA
+# Earthdata credentials required. Soft-skip on failure so one pipeline
+# going down doesn't block the others.
+if command -v uv >/dev/null 2>&1; then
+  uv run --project benchmarks/python-gedidb --quiet \
+    benchmarks/python-gedidb/bench_gedidb.py || \
+    echo "(gedidb pipeline failed — see stderr above; benchmark continues)"
+else
+  echo "(uv not found on PATH — skipping gedidb pipeline)"
+fi
+echo
+
+# 5. Equivalence (handles whichever subset of pipelines produced data)
 Rscript benchmarks/equivalence.R
 echo
 
-# 5. Render results document
+# 6. Render results document
 Rscript -e 'rmarkdown::render("benchmarks/BENCHMARK-RESULT.Rmd", quiet = TRUE)'
 echo "rendered benchmarks/BENCHMARK-RESULT.md"
 
-# 6. Archive timing parquets (data parquets are gitignored, not archived)
+# 7. Archive timing parquets (data parquets are gitignored, not archived)
 archive_dir="benchmarks/results/archive/${stamp}"
 mkdir -p "${archive_dir}"
 for f in benchmarks/results/latest/*-timing.parquet \

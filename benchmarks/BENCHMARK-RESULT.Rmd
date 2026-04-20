@@ -30,6 +30,7 @@ read_timing <- function(p) {
 t_hdf5r  <- read_timing("hdf5r")
 t_sl     <- read_timing("spacelaser")
 t_h5coro <- read_timing("h5coro")
+t_gedidb <- read_timing("gedidb")
 
 equiv <- if (file.exists(paths$equiv))
   as.data.frame(arrow::read_parquet(paths$equiv)) else
@@ -46,7 +47,7 @@ fmt_int <- function(x) if (is.na(x)) "—" else format(x, big.mark = ",")
 # Benchmark result
 
 ```{r provenance}
-frames <- Filter(Negate(is.null), list(t_hdf5r, t_sl, t_h5coro))
+frames <- Filter(Negate(is.null), list(t_hdf5r, t_sl, t_h5coro, t_gedidb))
 if (length(frames) == 0L) {
   cat("*No benchmark data yet. Run `benchmarks/run.sh`.*\n")
 } else {
@@ -66,7 +67,8 @@ have_data <- length(frames) > 0L
 pipelines <- list(
   list(label = "Spacelaser (Rust, partial HTTP range reads)", t = t_sl),
   list(label = "h5coro (Python, partial HTTP range reads)",    t = t_h5coro),
-  list(label = "Status quo (curl + hdf5r, full download)",     t = t_hdf5r)
+  list(label = "Status quo (curl + hdf5r, full download)",     t = t_hdf5r),
+  list(label = "gedidb (Python, GFZ-hosted TileDB query)",     t = t_gedidb)
 )
 pipelines <- Filter(function(x) !is.null(x$t), pipelines)
 
@@ -137,7 +139,63 @@ spacelaser and hdf5r agree on every shared column. h5coro matches on
 row count and coordinates but returns zeros on the science columns
 (rh0–100, quality_flag, sensitivity, elev_*); pending investigation,
 likely a hyperslice or fill-value handling issue in our h5coro driver
-rather than h5coro itself. Timing comparison remains valid.
+rather than h5coro itself. gedidb is excluded from the equivalence
+matrix — see the next section for why. Timing comparison remains valid.
+
+## gedidb: different architecture, not a drop-in competitor
+
+gedidb is included as a timing reference point but solves a different
+problem to the other three pipelines. A quick summary:
+
+| | spacelaser / h5coro / hdf5r | gedidb |
+|---|---|---|
+| Data source | NASA DAAC granules (live) | Pre-indexed TileDB on GFZ-Potsdam Ceph |
+| Auth | NASA Earthdata required | None (public S3) |
+| Currency | Always matches NASA's latest processing | Depends on GFZ reprocessing cadence |
+| Products | GEDI L1B/L2A/L2B/L4A/L4C + ICESat-2 | L2A/L2B/L4A/L4C only |
+| Waveforms (rxwaveform / txwaveform) | Available (L1B) | Not ingested |
+| 2D profiles (rh, pai_z, cover_z, pavd_z) | Available | Available |
+| `elev_highestreturn` | Native column | Only `_a1`/`_a2` variants |
+| Polygon queries | Bbox only | Shapely geometry supported |
+| Push-down quality filters | Post-hoc in R | SQL-like kwargs |
+| Output | `tibble` / DataFrame | `xarray.Dataset` or DataFrame |
+
+gedidb's timing represents "how fast can you query pre-indexed L2A
+summary metrics from a European-hosted TileDB?" — not "how fast can
+you range-read live NASA granules?" Where the products overlap
+(L2A/L2B/L4A/L4C, non-polar, no waveforms), gedidb's TileDB architecture
+will generally win on pure latency because spacelaser still has to go
+via CMR → DAAC. That's the expected shape of the comparison, not a loss.
+
+**Row-count comparison needs care.** The other three pipelines return
+every shot in the bbox (spacelaser / hdf5r / h5coro all return 1,246
+rows on our workload). gedidb returns 241 rows — the subset that
+survived their ingest-time filter routine, which is broader than a
+single quality flag. From gedidb's own
+[filter documentation](https://gedidb.readthedocs.io/en/latest/user/fundamentals.filters.html),
+L2A ingest enforces all of: `quality_flag == 1`, `0.5 ≤ sensitivity_a0 ≤ 1.0`,
+`0.7 < sensitivity_a2 ≤ 1.0`, excluded `degrade_flag`, `surface_flag == 1`,
+and `|elev_lowestmode - DEM| ≤ 150 m`. L2B adds
+`landsat_water_persistence < 10` and `urban_proportion ≤ 50` — **water
+bodies and urban surfaces are explicitly removed** and cannot be
+recovered from gedidb queries. L4A and L4C inherit these filters via
+inner-join on `shot_number`.
+
+For a direct raw-vs-raw comparison, apply the same filter set to the
+other pipelines. For hydrology, coastal, cryosphere, or urban work,
+gedidb is the wrong tool — those shots were dropped at ingest and
+there is no query flag to recover them.
+
+Minor schema difference: gedidb's `rh` expands to `rh0..rh101`
+(102 bins) vs NASA's 101 (`rh0..rh100`). Origin unclear; spot-check
+against L2A spec before relying on `rh101`.
+
+Use gedidb when you want pre-cooked summary metrics with SQL-like
+filters and no auth setup. Use spacelaser when you want L1B waveforms,
+ICESat-2 breadth (ATL03/06/07/08/10/13/24 vs ATL08-only via icesat2db),
+access to shots that fail GEDI's built-in quality flag (non-vegetated
+surfaces, water bodies, bare earth — filtered out by gedidb's ingest),
+or NASA-live granules.
 
 ---
 

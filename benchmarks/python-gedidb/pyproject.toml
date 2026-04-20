@@ -1,0 +1,13 @@
+[project]
+name = "spacelaser-bench-gedidb"
+version = "0.1.0"
+description = "gedidb pipeline for the spacelaser benchmark"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "gedidb>=1.0",
+    "geopandas>=0.14",
+    "shapely>=2.0",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "pyarrow>=15",
+]

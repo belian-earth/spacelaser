@@ -21,6 +21,7 @@ benchmarks/
 ├── bench-h5coro.R         h5coro (Python via uv) pipeline
 ├── equivalence.R          cross-pipeline equivalence check
 ├── python/                uv-managed Python env for h5coro
+├── python-gedidb/         uv-managed Python env for gedidb (TileDB query)
 └── results/
     ├── latest/            most recent run's outputs
     │   ├── *-timing.parquet   1-row records per pipeline  (tracked)
@@ -37,13 +38,14 @@ the same two artefacts.
 ## Run
 
 ```sh
-# Full three-pipeline run + render + archive
+# Full four-pipeline run + render + archive
 benchmarks/run.sh
 
 # Or each step individually
 Rscript benchmarks/bench-hdf5r.R
 Rscript benchmarks/bench-spacelaser.R
-Rscript benchmarks/bench-h5coro.R
+uv run --project benchmarks/python         benchmarks/python/bench_h5coro.py
+uv run --project benchmarks/python-gedidb  benchmarks/python-gedidb/bench_gedidb.py
 Rscript benchmarks/equivalence.R
 Rscript -e 'rmarkdown::render("benchmarks/BENCHMARK-RESULT.Rmd")'
 

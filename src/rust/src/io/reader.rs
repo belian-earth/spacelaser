@@ -3,9 +3,29 @@ use crate::io::cache::BlockCache;
 use crate::io::source::DataSource;
 use futures::stream::{self, StreamExt};
 use std::ops::Range;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 use thiserror::Error;
+
+/// Process-wide HTTP range-request counter. Used by diagnostic
+/// instrumentation to report how many distinct HTTP calls a given
+/// `sl_read` incurred. Reset with [`reset_request_counter`] at the
+/// start of an operation; query with [`request_counter`] at the end.
+static TOTAL_REQUESTS: AtomicU64 = AtomicU64::new(0);
+static TOTAL_BYTES: AtomicU64 = AtomicU64::new(0);
+
+pub fn reset_request_counter() {
+    TOTAL_REQUESTS.store(0, Ordering::Relaxed);
+    TOTAL_BYTES.store(0, Ordering::Relaxed);
+}
+
+pub fn request_counter() -> (u64, u64) {
+    (
+        TOTAL_REQUESTS.load(Ordering::Relaxed),
+        TOTAL_BYTES.load(Ordering::Relaxed),
+    )
+}
 
 #[derive(Error, Debug)]
 pub enum IoError {
@@ -36,6 +56,16 @@ fn is_retriable(status: u16) -> bool {
     matches!(status, 429 | 500 | 502 | 503 | 504)
 }
 
+/// Identify URLs in the Earthdata OAuth redirect chain that must NOT
+/// receive a Range header. These are session-establishment endpoints
+/// (URS OAuth authorize/login callbacks) that either ignore Range or
+/// — in ORNL-DAAC's case — hang indefinitely when given one.
+fn is_auth_callback_url(url: &str) -> bool {
+    url.contains("urs.earthdata.nasa.gov")
+        || url.contains("/oauth/")
+        || url.contains("/login?code=")
+}
+
 /// Configuration for the I/O reader.
 #[derive(Debug, Clone)]
 pub struct ReaderConfig {
@@ -63,7 +93,7 @@ impl Default for ReaderConfig {
             max_cache_blocks: 512,           // 128 MiB total cache
             coalesce_gap_blocks: 4,          // bridge gaps up to 1 MiB
             initial_prefetch_blocks: 4,      // fetch 1 MiB on cold start
-            max_concurrent_fetches: 8,       // parallel HTTP requests
+            max_concurrent_fetches: 32,      // parallel HTTP requests
         }
     }
 }
@@ -100,6 +130,13 @@ impl Reader {
         let client = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(60))
+            // Stay on HTTP/1.1 only. Letting reqwest negotiate H/2 via
+            // ALPN with NASA's CloudFront distribution surfaces a
+            // correctness regression: some Range responses are silently
+            // truncated or dropped, yielding fewer rows than the H/1.1
+            // path. Likely interaction between our manual URS redirect
+            // handling and H/2 stream lifecycle. Not chasing it until
+            // we're ready to refactor the redirect flow.
             .http1_only()
             .no_gzip()
             .no_brotli()
@@ -250,8 +287,18 @@ impl Reader {
         for _ in 0..MAX_REDIRECTS {
             let mut request = self.client.get(&current_url);
 
+            // Send Range only on data hops, not on auth-callback hops.
+            // Auth callbacks (URS OAuth, DAAC /login, /oauth/...) are
+            // session-establishment endpoints that don't serve file
+            // bytes; ORNL-DAAC's /login callback hangs indefinitely
+            // when a Range header is present. LP.DAAC's chain
+            // terminates at a CloudFront presigned URL which handles
+            // Range fine, so keeping Range on data hops preserves the
+            // 206 response the caller depends on for partial content.
             if let Some(range) = range_header {
-                request = request.header("Range", range);
+                if !is_auth_callback_url(&current_url) {
+                    request = request.header("Range", range);
+                }
             }
 
             // Send Basic auth only at the URS OAuth endpoint.
@@ -441,7 +488,11 @@ impl Reader {
             // Body download can also fail (connection reset, timeout).
             // Retry these as well.
             match response.bytes().await {
-                Ok(bytes) => return Ok(bytes),
+                Ok(bytes) => {
+                    TOTAL_REQUESTS.fetch_add(1, Ordering::Relaxed);
+                    TOTAL_BYTES.fetch_add(bytes.len() as u64, Ordering::Relaxed);
+                    return Ok(bytes);
+                }
                 Err(e) if attempt < MAX_RETRIES => {
                     log::debug!("Body read failed (attempt {}): {}", attempt + 1, e);
                     last_error = Some(IoError::Http(e));

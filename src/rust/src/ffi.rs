@@ -532,6 +532,9 @@ fn rust_read_gedi_multi(
     let user = match username { Nullable::NotNull(u) => Some(u.to_string()), Nullable::Null => None };
     let pass = match password { Nullable::NotNull(p) => Some(p.to_string()), Nullable::Null => None };
 
+    crate::io::reader::reset_request_counter();
+    let t_start = std::time::Instant::now();
+
     // Process granules with bounded concurrency (4 at a time) to avoid
     // overwhelming the server.  Each granule internally runs its beams and
     // columns concurrently, so 4 granules is already a high request fan-out.
@@ -573,6 +576,17 @@ fn rust_read_gedi_multi(
         }
         all_groups
     });
+
+    let (req_count, byte_count) = crate::io::reader::request_counter();
+    log::info!(
+        "http summary: {} requests, {:.1} MB, {:.2}s wall, \
+         {:.1} req/s, {:.2} MB/req",
+        req_count,
+        byte_count as f64 / 1_048_576.0,
+        t_start.elapsed().as_secs_f64(),
+        req_count as f64 / t_start.elapsed().as_secs_f64(),
+        (byte_count as f64 / 1_048_576.0) / req_count.max(1) as f64,
+    );
 
     let fill_vals = fill_values_for_product(product);
     let lists: Vec<List> = all_groups.into_iter().map(|gd| group_data_to_list(gd, &fill_vals)).collect();

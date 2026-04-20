@@ -137,6 +137,39 @@
 #' and confidence, and the THU / TVU positional uncertainty pair.
 #' Geometry uses photon coordinates (`lat_ph`, `lon_ph`).
 #'
+#' ## Performance tuning
+#'
+#' The default read path scans every beam's full lat/lon dataset to
+#' build each beam's spatial filter — a safe, simple strategy that
+#' works for every product and every orbit geometry.
+#'
+#' An opt-in **cross-beam scan** optimisation is available for
+#' workloads where one beam's shot-index range can predict the others'
+#' (GEDI and most ICESat-2 products). Instead of scanning all 8 beams
+#' per granule, one reference beam scans an inflated latitude band and
+#' the other beams dense-read the resulting shot-index range. Output
+#' is bitwise identical; HTTP request and byte counts drop by ~50 %.
+#'
+#' **Wall-time impact is DAAC-dependent:**
+#' * ORNL-DAAC (hosts L4A / L4C): ~23 % faster on a typical small bbox
+#' * LP.DAAC (hosts L1B / L2A / L2B): slightly slower (~10 %) because
+#'   LP.DAAC's CloudFront distribution rate-limits aggressively and
+#'   cross-beam's serial critical path pays more in underutilised
+#'   pool capacity than it saves in bytes
+#'
+#' Enable per session:
+#' ```r
+#' options(spacelaser.cross_beam_scan = TRUE)
+#' ```
+#'
+#' Or persistently for every R session by adding that line to your
+#' `.Rprofile`.
+#'
+#' The option is off by default. Consider enabling it when your
+#' workload is dominated by L4A / L4C reads, or when you care more
+#' about NASA server load (both byte and request counts halve) than
+#' about marginal wall-time differences on LP.DAAC.
+#'
 #' @seealso [sl_search()], [sl_columns()], [sl_extract_waveforms()]
 #' @export
 sl_read <- function(x, bbox, ...) {
@@ -468,6 +501,17 @@ prepare_read_params <- function(product, bbox, columns, lat_col, lon_col,
 #' @noRd
 is_remote_url <- function(x) {
   grepl("^https?://", x, ignore.case = TRUE)
+}
+
+#' Is the cross-beam spatial-filter optimization enabled?
+#'
+#' Checks the `spacelaser.cross_beam_scan` option. The env var
+#' `SPACELASER_CROSS_BEAM_SCAN` is the internal transport — the R
+#' wrapper sets it from the option before calling Rust and restores
+#' afterwards — and is not intended as a user-facing knob.
+#' @noRd
+sl_cross_beam_enabled <- function() {
+  isTRUE(getOption("spacelaser.cross_beam_scan", default = FALSE))
 }
 
 #' Call the Rust FFI reader with the prepared parameters.
@@ -803,6 +847,23 @@ read_product_multi <- function(
 
   params <- prepare_read_params(product, bbox, columns, lat_col, lon_col,
                                 needs_creds = any(is_remote_url(urls)))
+
+  # If the cross-beam optimization is enabled via option or env var,
+  # set SPACELASER_CROSS_BEAM_SCAN=1 for the duration of the Rust call
+  # and restore afterwards. The Rust side reads the env var on each
+  # sl_read, so this scoping keeps the effect local and predictable.
+  if (sl_cross_beam_enabled()) {
+    prev <- Sys.getenv("SPACELASER_CROSS_BEAM_SCAN", unset = NA)
+    Sys.setenv(SPACELASER_CROSS_BEAM_SCAN = "1")
+    on.exit({
+      if (is.na(prev)) {
+        Sys.unsetenv("SPACELASER_CROSS_BEAM_SCAN")
+      } else {
+        Sys.setenv(SPACELASER_CROSS_BEAM_SCAN = prev)
+      }
+    }, add = TRUE)
+  }
+
   cli::cli_progress_step("Reading {product} from {length(urls)} granule{?s}")
   raw_result <- call_rust_reader(rust_multi_fn, urls, product, params)
   assemble_read_result(

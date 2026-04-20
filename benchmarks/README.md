@@ -1,8 +1,9 @@
 # Benchmarks
 
-End-to-end comparison of spacelaser against competitor pipelines for a
-GEDI L2A spatial subset query. All pipelines given the same CMR search
-result, the same column set, the same equivalence tolerance.
+End-to-end comparison of spacelaser alongside several alternative
+approaches for a GEDI L2A spatial subset query. All pipelines given
+the same CMR search result, the same column set, the same equivalence
+tolerance.
 
 **For results, see [`BENCHMARK-RESULT.md`](BENCHMARK-RESULT.md)** —
 auto-generated from the latest run.
@@ -16,7 +17,7 @@ benchmarks/
 ├── BENCHMARK-RESULT.md    rendered output, tracked
 ├── run.sh                 orchestrator: runs all three pipelines + renders
 ├── setup.R                shared workload constants (bbox, dates, columns)
-├── bench-hdf5r.R          status quo: curl::multi_download + hdf5r
+├── bench-hdf5r.R          download + read: curl::multi_download + hdf5r
 ├── bench-spacelaser.R     spacelaser (Rust) pipeline
 ├── bench-h5coro.R         h5coro (Python via uv) pipeline
 ├── equivalence.R          cross-pipeline equivalence check

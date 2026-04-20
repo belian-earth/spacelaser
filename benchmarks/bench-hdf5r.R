@@ -1,9 +1,9 @@
 # ---------------------------------------------------------------------------
-# Status-quo pipeline: download + hdf5r
+# Download-then-read pipeline: curl::multi_download + hdf5r
 # ---------------------------------------------------------------------------
 #
-# What a competent R user would write today to get a spatial subset
-# of GEDI data:
+# A well-engineered R implementation of the classic download-then-read
+# approach to GEDI spatial subsetting:
 #   - curl::multi_download()  — concurrent authenticated HTTPS fetches
 #     (netrc + follow-location + cookie jar for URS OAuth)
 #   - hdf5r                   — standard HDF5 reader for R
@@ -199,7 +199,7 @@ run_hdf5r_pipeline <- function(granules, bbox, columns, dest_dir) {
 if (sys.nframe() == 0L || !exists(".bench_sourced", inherits = FALSE)) {
   paths <- bench_paths()
 
-  cli::cli_h2("Status quo: curl::multi_download + hdf5r")
+  cli::cli_h2("curl::multi_download + hdf5r (download-then-read)")
 
   # Granule list comes from results/latest/granules.parquet, written by
   # search.R. Same input for all three pipelines, no per-pipeline CMR.

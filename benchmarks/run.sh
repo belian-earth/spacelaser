@@ -11,7 +11,7 @@
 #   0. search.R          one CMR call -> granules.parquet (shared input
 #                        for pipelines 1-3; gedidb does its own query)
 #   1. bench-spacelaser  Rust, partial HTTP range reads
-#   2. bench-hdf5r       Status quo: curl::multi_download + hdf5r
+#   2. bench-hdf5r       Download-then-read: curl::multi_download + hdf5r
 #   3. bench-h5coro      Python via uv, partial HTTP range reads
 #   4. bench-gedidb      Python via uv, query pre-indexed GFZ TileDB
 #   5. equivalence       cross-pipeline comparison
@@ -22,8 +22,9 @@
 #   benchmarks/run.sh
 #
 # Optional env vars:
-#   SPACELASER_BENCH_DIR  persistent download dir for the status-quo
-#                         pipeline (defaults to a cold-cache tempdir)
+#   SPACELASER_BENCH_DIR  persistent download dir for the download-
+#                         then-read pipeline (defaults to a cold-
+#                         cache tempdir)
 #   EARTHDATA_TOKEN       EDL user token for h5coro (skips if unset)
 
 set -euo pipefail
@@ -43,7 +44,7 @@ echo
 Rscript benchmarks/bench-spacelaser.R
 echo
 
-# 2. Status quo
+# 2. Download-then-read
 Rscript benchmarks/bench-hdf5r.R
 echo
 

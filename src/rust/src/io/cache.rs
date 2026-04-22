@@ -37,11 +37,14 @@ impl BlockCache {
         self.blocks.len()
     }
 
-    /// Determine which blocks are needed to cover a byte range, and which
-    /// are already cached.
+    /// Determine which blocks are needed to cover a byte range. Cached
+    /// blocks are returned as `(idx, bytes)` pairs with the data taken
+    /// by Bytes clone (cheap Arc bump) so the caller owns them for the
+    /// rest of the read — this prevents a concurrent reader from
+    /// evicting a block between our query and extract phases.
     ///
-    /// Returns `(cached_block_indices, missing_block_indices)`.
-    pub fn query(&mut self, offset: u64, length: usize) -> (Vec<u64>, Vec<u64>) {
+    /// Returns `(cached_blocks, missing_block_indices)`.
+    pub fn query(&mut self, offset: u64, length: usize) -> (Vec<(u64, Bytes)>, Vec<u64>) {
         let start_block = offset / self.block_size as u64;
         let end_block = (offset + length as u64).saturating_sub(1) / self.block_size as u64;
 
@@ -49,8 +52,8 @@ impl BlockCache {
         let mut missing = Vec::new();
 
         for block_idx in start_block..=end_block {
-            if self.blocks.contains(&block_idx) {
-                cached.push(block_idx);
+            if let Some(data) = self.blocks.get(&block_idx) {
+                cached.push((block_idx, data.clone()));
             } else {
                 missing.push(block_idx);
             }
@@ -145,6 +148,31 @@ impl BlockCache {
     }
 }
 
+/// Coalesce arbitrary byte ranges into merged ranges. Two ranges are
+/// merged when the gap between them is ≤ `max_gap` bytes; overlapping
+/// ranges always merge. Used to batch many small chunk fetches across
+/// parallel column reads into a few large HTTP range requests.
+pub fn coalesce_byte_ranges(mut ranges: Vec<Range<u64>>, max_gap: u64) -> Vec<Range<u64>> {
+    if ranges.is_empty() {
+        return Vec::new();
+    }
+    ranges.sort_by_key(|r| r.start);
+    let mut out = Vec::with_capacity(ranges.len());
+    let mut current = ranges[0].clone();
+    for r in ranges.into_iter().skip(1) {
+        if r.start <= current.end.saturating_add(max_gap) {
+            if r.end > current.end {
+                current.end = r.end;
+            }
+        } else {
+            out.push(current);
+            current = r;
+        }
+    }
+    out.push(current);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -190,10 +218,35 @@ mod tests {
         let (cached, missing) = cache.query(0, 2048);
         assert_eq!(cached.len(), 2);
         assert!(missing.is_empty());
+        assert_eq!(cached[0].0, 0);
+        assert_eq!(cached[0].1[0], 0);
+        assert_eq!(cached[1].0, 1);
+        assert_eq!(cached[1].1[0], 1);
 
         let (cached, missing) = cache.query(0, 3072);
         assert_eq!(cached.len(), 2);
         assert_eq!(missing, vec![2]);
+    }
+
+    /// Covers the fix for a data-loss race: a block reported "cached"
+    /// by query() must be returned by value so a subsequent eviction
+    /// can't truncate the caller's read.
+    #[test]
+    fn test_query_survives_eviction() {
+        let mut cache = BlockCache::new(1024, 2);
+        cache.insert(0, Bytes::from(vec![7u8; 1024]));
+        cache.insert(1, Bytes::from(vec![8u8; 1024]));
+
+        let (cached, _missing) = cache.query(0, 1024);
+        // Evict block 0 by pushing two fresh blocks
+        cache.insert(2, Bytes::from(vec![9u8; 1024]));
+        cache.insert(3, Bytes::from(vec![9u8; 1024]));
+
+        // Block 0 is gone from the cache, but our captured clone still
+        // holds the data.
+        assert!(cache.get(&0).is_none());
+        assert_eq!(cached.len(), 1);
+        assert_eq!(cached[0].1[0], 7);
     }
 
     #[test]
@@ -207,6 +260,25 @@ mod tests {
         // Read bytes 2..6
         let result = cache.extract_range(2, 4, &blocks);
         assert_eq!(result, vec![2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn test_coalesce_byte_ranges_merges_with_gap() {
+        // gap of 50 bytes between 0..100 and 150..200 → merged at max_gap=100
+        let r = coalesce_byte_ranges(vec![0..100, 150..200, 1000..1100], 100);
+        assert_eq!(r, vec![0..200, 1000..1100]);
+    }
+
+    #[test]
+    fn test_coalesce_byte_ranges_handles_overlap_and_sorting() {
+        // unsorted + overlapping; max_gap=0 still merges overlaps
+        let r = coalesce_byte_ranges(vec![200..300, 50..250, 0..60], 0);
+        assert_eq!(r, vec![0..300]);
+    }
+
+    #[test]
+    fn test_coalesce_byte_ranges_empty() {
+        assert!(coalesce_byte_ranges(Vec::new(), 1024).is_empty());
     }
 
     #[test]

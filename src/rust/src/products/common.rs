@@ -9,11 +9,21 @@
 //! This module contains the types and functions common to that workflow,
 //! eliminating duplication between `gedi.rs` and `icesat2.rs`.
 
+use crate::hdf5::dataset::Dataset;
 use crate::hdf5::file::Hdf5File;
 use crate::hdf5::types::Hdf5Error;
+use crate::io::cache::coalesce_byte_ranges;
 use futures::stream::{self, StreamExt};
 use std::collections::HashMap;
+use std::ops::Range;
 use std::time::Instant;
+
+/// Gap tolerance for coalescing science-phase byte ranges across
+/// concurrent column reads. Each bridged gap converts one avoided
+/// HTTP round-trip (≈100-200ms at NASA RTT) for the cost of
+/// downloading at most this many extra bytes. Set large enough that
+/// nearby column chunks in a beam group merge into a single fetch.
+const COLUMN_COALESCE_GAP_BYTES: u64 = 1_048_576;
 
 // ---------------------------------------------------------------------------
 // Bounding box
@@ -329,30 +339,94 @@ async fn read_single_group(
         };
     let spatial_elapsed = t_spatial_start.elapsed();
 
-    // 4. Read all requested columns concurrently (buffered to limit
-    //    the number of in-flight HTTP requests).
+    // 4. Read all requested columns. Done in three phases so we can
+    //    coalesce chunk fetches across columns:
+    //      A. Plan: resolve each dataset (object header) and determine
+    //         the file byte-ranges its row-reads would touch. Parallel.
+    //      B. Prefetch: coalesce all the per-column byte-ranges into a
+    //         minimal set of HTTP range reads (bridging gaps ≤
+    //         COLUMN_COALESCE_GAP_BYTES) and fetch them once. The
+    //         block cache now holds every byte the column reads will
+    //         need.
+    //      C. Execute: per-column `read_rows` calls run from cache.
+    //         The B-tree is re-parsed but from cached bytes, and
+    //         chunk fetches are served from the prefetched blocks.
+    //
+    //    Without this, each column fired independent HTTP range reads
+    //    through the Reader. Concurrent reads don't see each other's
+    //    missing blocks, so dozens of near-adjacent chunks produced
+    //    dozens of round-trips instead of one. The science phase was
+    //    RTT-bound even when the total bytes were tiny.
     let t_cols_start = Instant::now();
     let row_ranges_ref = &row_ranges;
-    let col_results: Vec<_> = stream::iter(columns.iter())
-        .map(|col_name| {
-            let col_path = format!("{}/{}", group_path, col_name);
-            let col_name = col_name.clone();
-            async move {
-                match file.read_dataset_rows(&col_path, row_ranges_ref).await {
-                    Ok((meta, bytes)) => Ok(Some((col_name, meta, bytes))),
-                    Err(Hdf5Error::PathNotFound(_)) => Ok(None),
-                    Err(e) => Err(e),
+    let offset_size = file.superblock().offset_size;
+
+    // Phase A: plan per-column reads (resolve dataset + gather byte ranges)
+    type ColPlan = (String, Dataset, Vec<Range<u64>>);
+    let plan_results: Vec<Result<Option<ColPlan>, Hdf5Error>> =
+        stream::iter(columns.iter())
+            .map(|col_name| {
+                let col_path = format!("{}/{}", group_path, col_name);
+                let col_name = col_name.clone();
+                async move {
+                    let ds = match file.dataset(&col_path).await {
+                        Ok(d) => d,
+                        Err(Hdf5Error::PathNotFound(_)) => return Ok(None),
+                        Err(e) => return Err(e),
+                    };
+                    let ranges = ds
+                        .row_byte_ranges(file.reader(), offset_size, row_ranges_ref)
+                        .await?;
+                    Ok(Some((col_name, ds, ranges)))
                 }
-            }
-        })
-        // Up from 16. Per-beam column reads are network-bound: each
-        // column is a handful of small Range requests that overlap
-        // naturally when concurrency is high. With 8 beams × 32 cols
-        // in flight, an 8-granule wave can have hundreds of in-flight
-        // requests, which is appropriate for a high-bandwidth link.
-        .buffer_unordered(32)
-        .collect()
-        .await;
+            })
+            .buffer_unordered(32)
+            .collect()
+            .await;
+
+    let mut plans: Vec<ColPlan> = Vec::with_capacity(columns.len());
+    for p in plan_results {
+        if let Some(cp) = p? {
+            plans.push(cp);
+        }
+    }
+
+    // Phase B: coalesce byte ranges and prefetch into the block cache.
+    // Discard the returned bytes — we only care that the cache is
+    // populated; Phase C will re-read these regions via read_rows and
+    // hit the cache.
+    let mut all_ranges: Vec<Range<u64>> = Vec::new();
+    for (_, _, rngs) in &plans {
+        all_ranges.extend(rngs.iter().cloned());
+    }
+    let coalesced = coalesce_byte_ranges(all_ranges, COLUMN_COALESCE_GAP_BYTES);
+    let n_prefetch = coalesced.len();
+    let prefetch_bytes: u64 = coalesced.iter().map(|r| r.end - r.start).sum();
+    if !coalesced.is_empty() {
+        let prefetch_futs: Vec<_> = coalesced
+            .into_iter()
+            .map(|r| {
+                let reader = file.reader();
+                async move { reader.read(r.start, (r.end - r.start) as usize).await }
+            })
+            .collect();
+        let _ = futures::future::try_join_all(prefetch_futs)
+            .await
+            .map_err(Hdf5Error::Io)?;
+    }
+
+    // Phase C: execute per-column reads (hit cache from Phase B).
+    let col_results: Vec<Result<Option<(String, crate::hdf5::types::DatasetMeta, Vec<u8>)>, Hdf5Error>> =
+        stream::iter(plans.into_iter())
+            .map(|(col_name, ds, _)| async move {
+                let data = ds
+                    .read_rows(file.reader(), offset_size, row_ranges_ref)
+                    .await?;
+                Ok(Some((col_name, ds.meta, data)))
+            })
+            .buffer_unordered(32)
+            .collect()
+            .await;
     let cols_elapsed = t_cols_start.elapsed();
     let total_cols_bytes: usize = col_results.iter()
         .filter_map(|r| r.as_ref().ok())
@@ -362,11 +436,12 @@ async fn read_single_group(
 
     log::info!(
         "timing {}: spatial={:.3}s ({} B, {} shots, bounded={}) \
-         cols={:.3}s ({} B, {} cols) total={:.3}s",
+         cols={:.3}s ({} B, {} cols, prefetch={} ranges / {} B) total={:.3}s",
         group_name,
         spatial_elapsed.as_secs_f64(), spatial_bytes, n_selected,
         shared_scan_range.is_some(),
         cols_elapsed.as_secs_f64(), total_cols_bytes, columns.len(),
+        n_prefetch, prefetch_bytes,
         t_total_start.elapsed().as_secs_f64(),
     );
 

@@ -121,6 +121,11 @@ pub struct Reader {
     /// Typically a CloudFront presigned URL that can be used directly
     /// for subsequent Range requests without re-authenticating.
     resolved_url: Mutex<Option<String>>,
+    /// Serializes OAuth-chain resolution so a fleet of concurrent
+    /// readers doesn't fire N parallel redirect chains for the same
+    /// granule. Held only across the resolve operation, never across
+    /// the main Range-request path.
+    resolve_guard: tokio::sync::Mutex<()>,
 }
 
 impl Reader {
@@ -155,6 +160,7 @@ impl Reader {
             cache: Mutex::new(cache),
             config,
             resolved_url: Mutex::new(None),
+            resolve_guard: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -169,21 +175,36 @@ impl Reader {
 
         match &self.source {
             DataSource::Local { path } => {
-                use std::io::{Read, Seek, SeekFrom};
-                let mut file = std::fs::File::open(path)?;
-                let file_len = file.metadata()?.len();
-                if offset >= file_len {
-                    return Ok(Vec::new());
-                }
-                // Clamp read length to EOF so speculative oversized reads
-                // (common during HDF5 navigation) succeed the same way they
-                // do for HTTP — the HDF5 parser handles short reads itself.
-                let available = (file_len - offset) as usize;
-                let read_len = length.min(available);
-                file.seek(SeekFrom::Start(offset))?;
-                let mut buf = vec![0u8; read_len];
-                file.read_exact(&mut buf)?;
-                Ok(buf)
+                // Offload blocking file I/O so we don't stall the
+                // current-thread runtime. HDF5 navigation fires many
+                // small reads concurrently; blocking them serially
+                // would defeat the concurrency model.
+                let path = path.clone();
+                tokio::task::spawn_blocking(move || -> Result<Vec<u8>, IoError> {
+                    use std::io::{Read, Seek, SeekFrom};
+                    let mut file = std::fs::File::open(&path)?;
+                    let file_len = file.metadata()?.len();
+                    if offset >= file_len {
+                        return Ok(Vec::new());
+                    }
+                    // Clamp read length to EOF so speculative oversized
+                    // reads (common during HDF5 navigation) succeed the
+                    // same way they do for HTTP — the HDF5 parser
+                    // handles short reads itself.
+                    let available = (file_len - offset) as usize;
+                    let read_len = length.min(available);
+                    file.seek(SeekFrom::Start(offset))?;
+                    let mut buf = vec![0u8; read_len];
+                    file.read_exact(&mut buf)?;
+                    Ok(buf)
+                })
+                .await
+                .map_err(|e| {
+                    IoError::LocalIo(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        e.to_string(),
+                    ))
+                })?
             }
             DataSource::Http { .. } => self.read_cached(offset, length).await,
         }
@@ -193,12 +214,14 @@ impl Reader {
     async fn read_cached(&self, offset: u64, length: usize) -> Result<Vec<u8>, IoError> {
         let block_size = self.config.block_size as u64;
 
-        // Determine which blocks we need and which are already cached
-        let (cache_is_cold, mut missing_blocks) = {
-            let mut cache = self.cache.lock().unwrap();
+        // Determine which blocks we need and capture the cached ones'
+        // bytes now. Holding the Bytes locally prevents a concurrent
+        // reader from evicting those blocks before we extract below.
+        let (cache_is_cold, mut cached_blocks, mut missing_blocks) = {
+            let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
             let is_cold = cache.len() == 0;
-            let (_cached, missing) = cache.query(offset, length);
-            (is_cold, missing)
+            let (cached, missing) = cache.query(offset, length);
+            (is_cold, cached, missing)
         };
 
         // On cold start, prefetch extra blocks to capture metadata in one request
@@ -216,7 +239,7 @@ impl Reader {
         // Fetch missing blocks (coalesced into minimal range requests, in parallel)
         if !missing_blocks.is_empty() {
             let ranges = {
-                let cache = self.cache.lock().unwrap();
+                let cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
                 cache.coalesce_ranges(missing_blocks, self.config.coalesce_gap_blocks)
             };
 
@@ -230,8 +253,10 @@ impl Reader {
                 .collect()
                 .await;
 
-            // Insert fetched data into cache
-            let mut cache = self.cache.lock().unwrap();
+            // Insert fetched data into cache AND accumulate it into
+            // cached_blocks so extract_range gets a complete picture
+            // regardless of whether it's still in the LRU later.
+            let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
             for result in results {
                 let (range, data) = result?;
                 let range_start_block = range.start / block_size;
@@ -240,26 +265,20 @@ impl Reader {
                 while pos < data.len() {
                     let chunk_len = (block_size as usize).min(data.len() - pos);
                     // Zero-copy slice from the fetched Bytes
-                    cache.insert(block_idx, data.slice(pos..pos + chunk_len));
+                    let block = data.slice(pos..pos + chunk_len);
+                    cache.insert(block_idx, block.clone());
+                    cached_blocks.push((block_idx, block));
                     pos += chunk_len;
                     block_idx += 1;
                 }
             }
         }
 
-        // Now all blocks should be in cache -- extract the requested range
-        let mut cache = self.cache.lock().unwrap();
-        let start_block = offset / block_size;
-        let end_block = (offset + length as u64).saturating_sub(1) / block_size;
-
-        let mut all_blocks: Vec<(u64, Bytes)> = Vec::new();
-        for idx in start_block..=end_block {
-            if let Some(data) = cache.get(&idx) {
-                all_blocks.push((idx, data));
-            }
-        }
-
-        Ok(cache.extract_range(offset, length, &all_blocks))
+        // Extract from the collected blocks. extract_range walks them
+        // in order, so sort by block index first.
+        cached_blocks.sort_by_key(|(idx, _)| *idx);
+        let cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+        Ok(cache.extract_range(offset, length, &cached_blocks))
     }
 
     /// Send a GET request following redirects manually.
@@ -342,7 +361,7 @@ impl Reader {
     async fn get_resolved_url(&self) -> Result<String, IoError> {
         // Fast path: return cached URL
         {
-            let resolved = self.resolved_url.lock().unwrap();
+            let resolved = self.resolved_url.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(url) = resolved.as_ref() {
                 return Ok(url.clone());
             }
@@ -356,6 +375,18 @@ impl Reader {
         // If no auth credentials, no redirect dance needed
         if !has_auth {
             return Ok(url.to_string());
+        }
+
+        // Serialize concurrent resolutions. The first task runs the
+        // redirect chain and populates the cache; any task that
+        // acquires the guard afterwards returns from the re-check
+        // below without a second network chain.
+        let _resolve = self.resolve_guard.lock().await;
+        {
+            let resolved = self.resolved_url.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(url) = resolved.as_ref() {
+                return Ok(url.clone());
+            }
         }
 
         // Follow the full OAuth redirect chain with a small Range request
@@ -373,7 +404,7 @@ impl Reader {
 
         // Cache the resolved URL (CloudFront presigned)
         {
-            let mut resolved = self.resolved_url.lock().unwrap();
+            let mut resolved = self.resolved_url.lock().unwrap_or_else(|e| e.into_inner());
             *resolved = Some(final_url.clone());
         }
 
@@ -382,7 +413,7 @@ impl Reader {
 
     /// Clear the cached resolved URL (e.g., if the presigned URL expired).
     fn invalidate_resolved_url(&self) {
-        let mut resolved = self.resolved_url.lock().unwrap();
+        let mut resolved = self.resolved_url.lock().unwrap_or_else(|e| e.into_inner());
         *resolved = None;
     }
 
@@ -398,8 +429,6 @@ impl Reader {
 
         let range_header = format!("bytes={}-{}", range.start, range.end.saturating_sub(1));
 
-        // Resolve the URL (follows OAuth chain once, then caches)
-        let resolved = self.get_resolved_url().await?;
         let mut last_error: Option<IoError> = None;
 
         for attempt in 0..=MAX_RETRIES {
@@ -414,7 +443,22 @@ impl Reader {
                     range_header
                 );
                 tokio::time::sleep(delay).await;
-            } else {
+            }
+
+            // Re-resolve each iteration. get_resolved_url has a fast
+            // path that returns the cached URL immediately; after a
+            // 403/401 the cache is cleared via invalidate_resolved_url
+            // so the next iteration follows the OAuth chain afresh.
+            let resolved = match self.get_resolved_url().await {
+                Ok(u) => u,
+                Err(IoError::Http(e)) if attempt < MAX_RETRIES => {
+                    last_error = Some(IoError::Http(e));
+                    continue;
+                }
+                Err(e) => return Err(e),
+            };
+
+            if attempt == 0 {
                 log::debug!("HTTP GET {} Range: {}", resolved, range_header);
             }
 
@@ -506,14 +550,6 @@ impl Reader {
             status: 500,
             url: orig_url.to_string(),
         }))
-    }
-
-    /// Read bytes and return as a fixed-size array (convenience for parsing headers).
-    pub async fn read_exact<const N: usize>(&self, offset: u64) -> Result<[u8; N], IoError> {
-        let data = self.read(offset, N).await?;
-        let mut arr = [0u8; N];
-        arr.copy_from_slice(&data[..N]);
-        Ok(arr)
     }
 
     /// Get the total file size via a HEAD request (for HTTP) or file metadata (for local).

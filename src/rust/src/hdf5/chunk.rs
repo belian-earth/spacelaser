@@ -46,6 +46,15 @@ pub async fn read_chunk(
     filters: &[Filter],
     element_size: usize,
 ) -> Result<Vec<u8>, Hdf5Error> {
+    // Sanity cap to avoid allocating gigabytes on a corrupted size
+    // field. Real GEDI/ICESat-2 chunks run a few MB compressed.
+    const MAX_CHUNK_BYTES: u32 = 256 * 1024 * 1024;
+    if chunk.size > MAX_CHUNK_BYTES {
+        return Err(Hdf5Error::InvalidStructure(format!(
+            "Chunk at 0x{:x} claims {} bytes; exceeds sanity cap",
+            chunk.address, chunk.size
+        )));
+    }
     let raw = reader.read(chunk.address, chunk.size as usize).await?;
 
     if filters.is_empty() || chunk.filter_mask == u32::MAX {
@@ -111,22 +120,34 @@ pub fn extract_rows_from_chunks(
     let total_rows: u64 = row_ranges.iter().map(|(s, e)| e - s).sum();
     let mut result = Vec::with_capacity(total_rows as usize * row_size);
 
+    // Sort chunks by their first-dim offset once, then binary-search
+    // per row. Turns the hot inner loop from O(rows * chunks) into
+    // O(rows * log chunks).
+    let mut sorted: Vec<(u64, &ChunkInfo, &Vec<u8>)> = chunks
+        .iter()
+        .map(|(ci, d)| (ci.offsets.first().copied().unwrap_or(0), ci, d))
+        .collect();
+    sorted.sort_by_key(|e| e.0);
+    let starts: Vec<u64> = sorted.iter().map(|e| e.0).collect();
+
     for &(range_start, range_end) in row_ranges {
         for row in range_start..range_end {
-            // Find the chunk containing this row
-            for (chunk_info, chunk_data) in chunks {
-                let chunk_start = chunk_info.offsets.first().copied().unwrap_or(0);
-                let chunk_end = chunk_start + chunk_size_dim0;
-
-                if row >= chunk_start && row < chunk_end {
-                    let local_row = (row - chunk_start) as usize;
-                    let byte_offset = local_row * row_size;
-                    let byte_end = byte_offset + row_size;
-
-                    if byte_end <= chunk_data.len() {
-                        result.extend_from_slice(&chunk_data[byte_offset..byte_end]);
-                    }
-                    break;
+            // binary_search returns Ok(exact match) or Err(insertion point).
+            // The chunk whose range contains `row` is at idx-1 when
+            // starts[idx-1] <= row < starts[idx-1] + chunk_size_dim0.
+            let idx = match starts.binary_search(&row) {
+                Ok(i) => i,
+                Err(0) => continue,
+                Err(i) => i - 1,
+            };
+            let (chunk_start, _chunk_info, chunk_data) = sorted[idx];
+            let chunk_end = chunk_start + chunk_size_dim0;
+            if row >= chunk_start && row < chunk_end {
+                let local_row = (row - chunk_start) as usize;
+                let byte_offset = local_row * row_size;
+                let byte_end = byte_offset + row_size;
+                if byte_end <= chunk_data.len() {
+                    result.extend_from_slice(&chunk_data[byte_offset..byte_end]);
                 }
             }
         }

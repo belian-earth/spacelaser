@@ -60,14 +60,28 @@ pub async fn read_group_btree(
     offset_size: u8,
     length_size: u8,
 ) -> Result<Vec<SymbolTableEntry>, Hdf5Error> {
-    // Read the B-tree node header
-    let header = reader.read(btree_address, 512).await?;
+    // Two-phase read: tiny header to learn entries_used, then a
+    // correctly-sized fetch. The Reader caches at block granularity,
+    // so the second read costs no extra network I/O.
+    let prefix_size = 8 + 2 * offset_size as usize;
+    let prefix = reader.read(btree_address, prefix_size).await?;
+    if prefix.len() < 8 || prefix[0..4] != BTREE_SIGNATURE {
+        return Err(Hdf5Error::InvalidStructure(format!(
+            "Expected TREE signature at 0x{:x}",
+            btree_address
+        )));
+    }
+    let entries_used_u16 = u16::from_le_bytes([prefix[6], prefix[7]]) as usize;
+    let entry_pair = length_size as usize + offset_size as usize;
+    let node_size = prefix_size + entries_used_u16 * entry_pair + length_size as usize;
 
-    if header[0..4] != BTREE_SIGNATURE {
+    let header = reader.read(btree_address, node_size).await?;
+
+    if header.len() < node_size || header[0..4] != BTREE_SIGNATURE {
         return Err(Hdf5Error::InvalidStructure(format!(
             "Expected TREE signature at 0x{:x}, found {:?}",
             btree_address,
-            &header[0..4]
+            &header[0..4.min(header.len())]
         )));
     }
 
@@ -152,10 +166,21 @@ async fn read_symbol_table_node(
     address: u64,
     offset_size: u8,
 ) -> Result<Vec<SymbolTableEntry>, Hdf5Error> {
-    // SNOD can be quite large; read enough for typical cases
-    let data = reader.read(address, 2048).await?;
+    // Two-phase read: tiny header for num_symbols, then a sized fetch.
+    let prefix = reader.read(address, 8).await?;
+    if prefix.len() < 8 || prefix[0..4] != SNOD_SIGNATURE {
+        return Err(Hdf5Error::InvalidStructure(format!(
+            "Expected SNOD signature at 0x{:x}",
+            address
+        )));
+    }
+    let num_symbols_prefix = u16::from_le_bytes([prefix[6], prefix[7]]) as usize;
+    let entry_size = 2 * offset_size as usize + 24;
+    let node_size = 8 + num_symbols_prefix * entry_size;
 
-    if data[0..4] != SNOD_SIGNATURE {
+    let data = reader.read(address, node_size).await?;
+
+    if data.len() < node_size || data[0..4] != SNOD_SIGNATURE {
         return Err(Hdf5Error::InvalidStructure(format!(
             "Expected SNOD signature at 0x{:x}",
             address
@@ -176,53 +201,15 @@ async fn read_symbol_table_node(
     //   reserved (4 bytes)
     //   scratch pad (16 bytes)
     // Total: 2*offset_size + 24 bytes per entry
-    let entry_size = 2 * offset_size as usize + 24;
 
     for _ in 0..num_symbols {
         if pos + entry_size > data.len() {
-            // Need more data
-            let extra = reader.read(address + pos as u64, entry_size).await?;
-            let name_offset = read_offset(&extra, &mut 0, offset_size);
-            let oh_addr = read_offset(&extra, &mut (offset_size as usize), offset_size);
-            let ct_off = 2 * offset_size as usize;
-            let cache_type = u32::from_le_bytes([
-                extra[ct_off],
-                extra[ct_off + 1],
-                extra[ct_off + 2],
-                extra[ct_off + 3],
-            ]);
-
-            let sp_off = ct_off + 8;
-            let (sbt, shp, link) = match cache_type {
-                1 => {
-                    let mut sp_pos = sp_off;
-                    let bt = read_offset(&extra, &mut sp_pos, offset_size);
-                    let hp = read_offset(&extra, &mut sp_pos, offset_size);
-                    (Some(bt), Some(hp), None)
-                }
-                2 => {
-                    // First 4 bytes of scratch pad = link name offset
-                    let link_off = u32::from_le_bytes([
-                        extra[sp_off],
-                        extra[sp_off + 1],
-                        extra[sp_off + 2],
-                        extra[sp_off + 3],
-                    ]);
-                    (None, None, Some(link_off))
-                }
-                _ => (None, None, None),
-            };
-
-            entries.push(SymbolTableEntry {
-                name_offset,
-                object_header_address: oh_addr,
-                cache_type,
-                scratch_btree_address: sbt,
-                scratch_heap_address: shp,
-                scratch_link_name_offset: link,
-            });
-            pos += entry_size;
-            continue;
+            return Err(Hdf5Error::InvalidStructure(format!(
+                "SNOD at 0x{:x} truncated: need {} bytes, have {}",
+                address,
+                pos + entry_size,
+                data.len()
+            )));
         }
 
         let name_offset = read_offset(&data, &mut pos, offset_size);
@@ -283,9 +270,24 @@ pub async fn read_chunk_btree(
     row_bounds: Option<(u64, u64)>,
     chunk_row_dim: u64,
 ) -> Result<Vec<ChunkInfo>, Hdf5Error> {
-    let header = reader.read(btree_address, 4096).await?;
+    let prefix_size = 8 + 2 * offset_size as usize;
+    let prefix = reader.read(btree_address, prefix_size).await?;
+    if prefix.len() < 8 || prefix[0..4] != BTREE_SIGNATURE {
+        return Err(Hdf5Error::InvalidStructure(format!(
+            "Expected TREE signature at 0x{:x} for chunk B-tree",
+            btree_address
+        )));
+    }
+    let entries_used_u16 = u16::from_le_bytes([prefix[6], prefix[7]]) as usize;
+    let key_size = 4 + 4 + (ndims + 1) * 8;
+    // Internal + leaf nodes share the same encoding: entries_used *
+    // (key + child_addr) plus one trailing key.
+    let node_size =
+        prefix_size + entries_used_u16 * (key_size + offset_size as usize) + key_size;
 
-    if header[0..4] != BTREE_SIGNATURE {
+    let header = reader.read(btree_address, node_size).await?;
+
+    if header.len() < node_size || header[0..4] != BTREE_SIGNATURE {
         return Err(Hdf5Error::InvalidStructure(format!(
             "Expected TREE signature at 0x{:x} for chunk B-tree",
             btree_address
@@ -460,6 +462,16 @@ pub async fn read_local_heap(
     let data_size = read_length(&header, &mut pos, length_size) as usize;
     let _free_list_offset = read_length(&header, &mut pos, length_size);
     let data_address = read_offset(&header, &mut pos, offset_size);
+
+    // Cap oversized heaps so a corrupt length can't request a
+    // multi-gigabyte read.
+    const MAX_LOCAL_HEAP_BYTES: usize = 64 * 1024 * 1024;
+    if data_size > MAX_LOCAL_HEAP_BYTES {
+        return Err(Hdf5Error::InvalidStructure(format!(
+            "Local heap at 0x{:x} claims {} bytes; exceeds sanity cap",
+            address, data_size
+        )));
+    }
 
     // Read the heap data segment
     let data = reader.read(data_address, data_size).await?;

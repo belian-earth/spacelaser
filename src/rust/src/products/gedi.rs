@@ -55,17 +55,20 @@ use crate::hdf5::types::Hdf5Error;
 // Re-export common types so existing callers still find them here.
 pub use super::common::ColumnData;
 
-/// The 8 GEDI beam group names.
+/// The 8 GEDI beam group names. GEDI's beams are numbered 0, 1, 2, 3,
+/// 5, 6, 8, 11 (4, 7, 9, 10 do not exist), named by the 4-bit binary
+/// representation. Previous versions listed BEAM0100 (a non-existent
+/// beam) instead of BEAM1000, which silently skipped beam 8.
 pub const BEAM_NAMES: [&str; 8] = [
     "BEAM0000", "BEAM0001", "BEAM0010", "BEAM0011",
-    "BEAM0100", "BEAM0101", "BEAM0110", "BEAM1011",
+    "BEAM0101", "BEAM0110", "BEAM1000", "BEAM1011",
 ];
 
-/// Full-power beams (higher signal-to-noise).
-pub const FULL_POWER_BEAMS: [&str; 4] = ["BEAM0101", "BEAM0110", "BEAM1011", "BEAM0010"];
+/// Full-power beams (higher signal-to-noise): beams 5, 6, 8, 11.
+pub const FULL_POWER_BEAMS: [&str; 4] = ["BEAM0101", "BEAM0110", "BEAM1000", "BEAM1011"];
 
-/// Coverage beams (lower power).
-pub const COVERAGE_BEAMS: [&str; 4] = ["BEAM0000", "BEAM0001", "BEAM0011", "BEAM0100"];
+/// Coverage beams (lower power): beams 0, 1, 2, 3.
+pub const COVERAGE_BEAMS: [&str; 4] = ["BEAM0000", "BEAM0001", "BEAM0010", "BEAM0011"];
 
 /// GEDI product type.
 #[derive(Debug, Clone, Copy)]

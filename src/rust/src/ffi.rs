@@ -144,10 +144,15 @@ fn columns_to_typed_list(
     cols: std::collections::HashMap<String, crate::products::common::ColumnData>,
     fill_values: &[f64],
 ) -> List {
-    let mut names: Vec<String> = Vec::new();
-    let mut values: Vec<Robj> = Vec::new();
+    // Sort by full key so output column order is deterministic across
+    // runs; HashMap iteration order is randomised per process.
+    let mut entries: Vec<_> = cols.into_iter().collect();
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
 
-    for (name, cdata) in cols {
+    let mut names: Vec<String> = Vec::with_capacity(entries.len());
+    let mut values: Vec<Robj> = Vec::with_capacity(entries.len());
+
+    for (name, cdata) in entries {
         // Strip subgroup prefix (e.g. "geolocation/solar_elevation" → "solar_elevation")
         let short_name = match name.rfind('/') {
             Some(pos) => name[pos + 1..].to_string(),
@@ -247,10 +252,15 @@ fn column_data_to_robj(
                 }).collect()
             }
             _ => {
-                // 3 or 4 bytes, signed → i32
+                // 3 or 4 bytes, signed → i32. For 3-byte values the
+                // top byte must be sign-extended, otherwise negatives
+                // deserialise to large positive i32.
                 b.chunks_exact(s).take(n).map(|chunk| {
                     let mut buf = [0u8; 4];
                     buf[..s].copy_from_slice(chunk);
+                    if s == 3 && is_signed && (chunk[2] & 0x80) != 0 {
+                        buf[3] = 0xFF;
+                    }
                     let val = i32::from_le_bytes(buf);
                     if fill_ints.contains(&val) { Rint::na() } else { Rint::from(val) }
                 }).collect()
@@ -291,11 +301,14 @@ fn column_data_to_robj(
 fn columns_to_raw_lists(
     cols: std::collections::HashMap<String, crate::products::common::ColumnData>,
 ) -> (List, List) {
-    let mut names: Vec<String> = Vec::new();
-    let mut bytes: Vec<Raw> = Vec::new();
-    let mut info_strs: Vec<String> = Vec::new();
+    let mut entries: Vec<_> = cols.into_iter().collect();
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
 
-    for (name, cdata) in cols {
+    let mut names: Vec<String> = Vec::with_capacity(entries.len());
+    let mut bytes: Vec<Raw> = Vec::with_capacity(entries.len());
+    let mut info_strs: Vec<String> = Vec::with_capacity(entries.len());
+
+    for (name, cdata) in entries {
         names.push(name);
         bytes.push(Raw::from_bytes(&cdata.bytes));
         info_strs.push(
@@ -362,6 +375,7 @@ fn rust_read_gedi(
     let pool = match pool_columns { Nullable::NotNull(p) => Some(p), Nullable::Null => None };
     let trans = match transposed_columns { Nullable::NotNull(t) => Some(t), Nullable::Null => None };
 
+    crate::io::reader::reset_request_counter();
     let result = rt.block_on(async {
         let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
         gedi::read_gedi(&file, product_type, bbox, cols, bms, pool, trans)
@@ -416,6 +430,7 @@ fn rust_read_icesat2(
     let pool = match pool_columns { Nullable::NotNull(p) => Some(p), Nullable::Null => None };
     let trans = match transposed_columns { Nullable::NotNull(t) => Some(t), Nullable::Null => None };
 
+    crate::io::reader::reset_request_counter();
     let result = rt.block_on(async {
         let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
         icesat2::read_icesat2(&file, product_type, bbox, cols, trks, pool, trans)
@@ -445,6 +460,7 @@ fn rust_hdf5_groups(
     let rt = runtime();
     let source = make_source(url, username, password);
 
+    crate::io::reader::reset_request_counter();
     let result = rt.block_on(async {
         let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
         file.list_group(path).await.map_err(|e| e.to_string())
@@ -468,6 +484,7 @@ fn rust_hdf5_dataset(
     let rt = runtime();
     let source = make_source(url, username, password);
 
+    crate::io::reader::reset_request_counter();
     let result = rt.block_on(async {
         let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
         file.read_dataset(dataset_path)
@@ -632,6 +649,7 @@ fn rust_read_icesat2_multi(
     let user = match username { Nullable::NotNull(u) => Some(u.to_string()), Nullable::Null => None };
     let pass = match password { Nullable::NotNull(p) => Some(p.to_string()), Nullable::Null => None };
 
+    crate::io::reader::reset_request_counter();
     let all_groups = rt.block_on(async {
         use futures::stream::{self, StreamExt};
 

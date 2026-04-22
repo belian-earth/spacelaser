@@ -113,13 +113,29 @@ pub async fn read_fractal_heap_objects(
         return Ok(objects);
     }
 
-    // Root block is an indirect block -- read direct blocks from it
+    // Root block is an indirect block -- read direct blocks from it.
+    // Size the read from current_rows × table_width so oversized
+    // directories don't silently truncate.
     let mut all_objects = Vec::new();
-    let indirect_data = reader.read(root_block_address, 4096).await?;
+    let block_offset_size = ((max_heap_size as usize) + 7) / 8;
+    let header_bytes = 4 + 1 + offset_size as usize + block_offset_size;
+    let entry_bytes = offset_size as usize
+        + if io_filter_len > 0 {
+            length_size as usize + 4
+        } else {
+            0
+        };
+    let indirect_size = header_bytes
+        + current_rows
+            .saturating_mul(table_width)
+            .saturating_mul(entry_bytes)
+        + 4; // trailing checksum
+    let indirect_data = reader
+        .read(root_block_address, indirect_size.max(4096))
+        .await?;
 
     // Indirect block header: FHIB signature(4) + version(1) + heap header addr(offset_size) + block offset(ceil(max_heap_size/8))
-    let block_offset_size = ((max_heap_size as usize) + 7) / 8;
-    let mut ipos = 4 + 1 + offset_size as usize + block_offset_size;
+    let mut ipos = header_bytes;
 
     // Direct block entries
     let _max_direct_rows = current_rows.min(table_width * 2);

@@ -2,11 +2,63 @@ use bytes::Bytes;
 use crate::io::cache::BlockCache;
 use crate::io::source::DataSource;
 use futures::stream::{self, StreamExt};
+use std::collections::HashMap;
 use std::ops::Range;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use thiserror::Error;
+use tokio::sync::Notify;
+
+/// One-shot signal used for per-block single-flight coordination.
+/// The fetcher calls [`BlockSignal::signal`] after the fetch attempt
+/// completes (regardless of outcome); waiters call
+/// [`BlockSignal::wait`] and, after returning, consult the cache to
+/// determine whether the fetch succeeded (hit) or failed (miss).
+///
+/// The AtomicBool + Notify combination avoids the classic
+/// miss-notification race of a bare `Notify`: `wait` registers a
+/// `Notified` future *before* checking `done`, so either the flag is
+/// already set (we return immediately) or the pending `notify_waiters`
+/// call will deliver to our registered future.
+struct BlockSignal {
+    done: AtomicBool,
+    notify: Notify,
+}
+
+impl BlockSignal {
+    fn new() -> Self {
+        Self {
+            done: AtomicBool::new(false),
+            notify: Notify::new(),
+        }
+    }
+
+    fn signal(&self) {
+        self.done.store(true, Ordering::Release);
+        self.notify.notify_waiters();
+    }
+
+    async fn wait(&self) {
+        loop {
+            let notified = self.notify.notified();
+            tokio::pin!(notified);
+            // Register the future with Notify before the flag check.
+            // Any subsequent signal() is guaranteed to wake us.
+            notified.as_mut().enable();
+            if self.done.load(Ordering::Acquire) {
+                return;
+            }
+            notified.await;
+            if self.done.load(Ordering::Acquire) {
+                return;
+            }
+            // Spurious wake-up (unlikely); loop and re-register.
+        }
+    }
+}
+
+type BlockSignalHandle = Arc<BlockSignal>;
 
 /// Process-wide HTTP range-request counter. Used by diagnostic
 /// instrumentation to report how many distinct HTTP calls a given
@@ -126,6 +178,10 @@ pub struct Reader {
     /// granule. Held only across the resolve operation, never across
     /// the main Range-request path.
     resolve_guard: tokio::sync::Mutex<()>,
+    /// Per-block single-flight map. A block index appears here while
+    /// one task is fetching it; other concurrent readers wait on the
+    /// signal instead of issuing a duplicate HTTP request.
+    in_flight: Mutex<HashMap<u64, BlockSignalHandle>>,
 }
 
 impl Reader {
@@ -161,6 +217,7 @@ impl Reader {
             config,
             resolved_url: Mutex::new(None),
             resolve_guard: tokio::sync::Mutex::new(()),
+            in_flight: Mutex::new(HashMap::new()),
         }
     }
 
@@ -211,6 +268,12 @@ impl Reader {
     }
 
     /// Read with block-level caching for HTTP sources.
+    ///
+    /// Uses per-block single-flight: if another task is already
+    /// fetching a block we need, we wait on its signal cell instead
+    /// of issuing a duplicate HTTP request. An RAII guard
+    /// ([`InFlightGuard`]) ensures our registered cells are always
+    /// released on success, error, or panic, so waiters can't hang.
     async fn read_cached(&self, offset: u64, length: usize) -> Result<Vec<u8>, IoError> {
         let block_size = self.config.block_size as u64;
 
@@ -236,14 +299,43 @@ impl Reader {
             missing_blocks.sort_unstable();
         }
 
-        // Fetch missing blocks (coalesced into minimal range requests, in parallel)
-        if !missing_blocks.is_empty() {
+        // Partition missing blocks into (we_fetch, we_wait). Blocks
+        // already registered by another task become waiters; new
+        // blocks we register and fetch ourselves.
+        let mut our_blocks: Vec<u64> = Vec::new();
+        let mut wait_cells: Vec<(u64, BlockSignalHandle)> = Vec::new();
+        let mut owned_cells: Vec<(u64, BlockSignalHandle)> = Vec::new();
+        {
+            let mut in_flight = self.in_flight.lock().unwrap_or_else(|e| e.into_inner());
+            for idx in missing_blocks {
+                if let Some(cell) = in_flight.get(&idx) {
+                    wait_cells.push((idx, cell.clone()));
+                } else {
+                    let cell: BlockSignalHandle = Arc::new(BlockSignal::new());
+                    in_flight.insert(idx, cell.clone());
+                    our_blocks.push(idx);
+                    owned_cells.push((idx, cell));
+                }
+            }
+        }
+
+        // Release our cells when this scope exits (success, error, or
+        // panic). Drop unregisters from the in_flight map and signals
+        // each block, so waiters never hang.
+        let _guard = InFlightGuard {
+            reader: self,
+            cells: &owned_cells,
+        };
+
+        // Fetch the blocks we own, coalesced into minimal range
+        // requests. Blocks another task is fetching are NOT included
+        // — we'll pick them up from cache once their signal fires.
+        if !our_blocks.is_empty() {
             let ranges = {
                 let cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
-                cache.coalesce_ranges(missing_blocks, self.config.coalesce_gap_blocks)
+                cache.coalesce_ranges(our_blocks, self.config.coalesce_gap_blocks)
             };
 
-            // Fetch all coalesced ranges in parallel with bounded concurrency
             let results: Vec<Result<(Range<u64>, Bytes), IoError>> = stream::iter(ranges)
                 .map(|range| async move {
                     let data = self.fetch_range(range.clone()).await?;
@@ -253,23 +345,61 @@ impl Reader {
                 .collect()
                 .await;
 
-            // Insert fetched data into cache AND accumulate it into
-            // cached_blocks so extract_range gets a complete picture
-            // regardless of whether it's still in the LRU later.
-            let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
-            for result in results {
-                let (range, data) = result?;
-                let range_start_block = range.start / block_size;
-                let mut pos = 0usize;
-                let mut block_idx = range_start_block;
-                while pos < data.len() {
-                    let chunk_len = (block_size as usize).min(data.len() - pos);
-                    // Zero-copy slice from the fetched Bytes
-                    let block = data.slice(pos..pos + chunk_len);
-                    cache.insert(block_idx, block.clone());
-                    cached_blocks.push((block_idx, block));
-                    pos += chunk_len;
-                    block_idx += 1;
+            // Insert fetched data into cache AND capture locally so
+            // extract_range sees a complete view regardless of later
+            // LRU eviction. Errors are collected and the first one is
+            // returned after the guard runs.
+            let mut fetch_err: Option<IoError> = None;
+            {
+                let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+                for result in results {
+                    match result {
+                        Ok((range, data)) => {
+                            let range_start_block = range.start / block_size;
+                            let mut pos = 0usize;
+                            let mut block_idx = range_start_block;
+                            while pos < data.len() {
+                                let chunk_len = (block_size as usize).min(data.len() - pos);
+                                let block = data.slice(pos..pos + chunk_len);
+                                cache.insert(block_idx, block.clone());
+                                cached_blocks.push((block_idx, block));
+                                pos += chunk_len;
+                                block_idx += 1;
+                            }
+                        }
+                        Err(e) => {
+                            if fetch_err.is_none() {
+                                fetch_err = Some(e);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let Some(e) = fetch_err {
+                return Err(e);
+            }
+        }
+
+        // Wait for blocks other tasks are fetching, then collect them
+        // from cache. A miss after the signal fires means that
+        // fetcher failed; propagate as an error.
+        for (idx, signal) in &wait_cells {
+            signal.wait().await;
+            let data = {
+                let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+                cache.get(idx)
+            };
+            match data {
+                Some(b) => cached_blocks.push((*idx, b)),
+                None => {
+                    return Err(IoError::HttpStatus {
+                        status: 503,
+                        url: format!(
+                            "single-flight peer failed to fetch block {}",
+                            idx
+                        ),
+                    });
                 }
             }
         }
@@ -576,5 +706,61 @@ impl Reader {
                 Ok(len)
             }
         }
+    }
+}
+
+/// RAII guard that unregisters in-flight block entries and signals
+/// waiters when the read scope ends. Running on Drop is what makes
+/// single-flight robust against errors and panics: even if the
+/// fetcher aborts mid-flight, every waiter gets unblocked and can
+/// decide for itself (by consulting the block cache) whether the
+/// fetch succeeded.
+struct InFlightGuard<'a> {
+    reader: &'a Reader,
+    cells: &'a [(u64, BlockSignalHandle)],
+}
+
+impl<'a> Drop for InFlightGuard<'a> {
+    fn drop(&mut self) {
+        let mut in_flight = self
+            .reader
+            .in_flight
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        for (idx, cell) in self.cells {
+            in_flight.remove(idx);
+            cell.signal();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Covers the core single-flight semantics: a concurrent waiter
+    /// that arrives after the fetcher but before it signals must
+    /// return promptly when the signal fires. Uses a plain
+    /// BlockSignal (no HTTP) to isolate the coordination primitive.
+    #[tokio::test(flavor = "current_thread")]
+    async fn block_signal_wakes_waiter() {
+        let signal = Arc::new(BlockSignal::new());
+        let s2 = signal.clone();
+        let waiter = tokio::spawn(async move { s2.wait().await });
+        // Yield so the waiter registers its Notified future before
+        // the signal fires.
+        tokio::task::yield_now().await;
+        signal.signal();
+        waiter.await.unwrap();
+    }
+
+    /// A signal that has already been fired before the waiter arrives
+    /// must short-circuit through the `done` flag rather than hang on
+    /// the missed notify_waiters call.
+    #[tokio::test(flavor = "current_thread")]
+    async fn block_signal_handles_pre_fired() {
+        let signal = Arc::new(BlockSignal::new());
+        signal.signal();
+        signal.wait().await; // returns immediately
     }
 }

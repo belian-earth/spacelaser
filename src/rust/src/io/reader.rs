@@ -191,13 +191,16 @@ impl Reader {
         let client = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(60))
-            // Stay on HTTP/1.1 only. Letting reqwest negotiate H/2 via
-            // ALPN with NASA's CloudFront distribution surfaces a
-            // correctness regression: some Range responses are silently
-            // truncated or dropped, yielding fewer rows than the H/1.1
-            // path. Likely interaction between our manual URS redirect
-            // handling and H/2 stream lifecycle. Not chasing it until
-            // we're ready to refactor the redirect flow.
+            // HTTP/1.1 only. H/2 via ALPN was retested after the
+            // Reader gained per-block single-flight and science-phase
+            // byte-range coalescing: on the Mondah Forest workload
+            // H/2 produced the same request pattern (130 req / 57MB
+            // per granule) but ran ~7% slower than H/1.1 across
+            // three runs each. The multiplexing win has nothing to
+            // amortise once duplicate fetches are already eliminated,
+            // and the previously-noted truncation risk with the
+            // manual redirect chain remains a concern. Stay on H/1.1
+            // until a workload actually benefits.
             .http1_only()
             .no_gzip()
             .no_brotli()

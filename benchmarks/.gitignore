@@ -2,6 +2,13 @@
 results/latest/*-data.parquet
 results/latest/granules.parquet
 
+# Auto-generated per-run archive snapshots. Historical archives that
+# are already committed stay tracked (gitignore rules only affect
+# untracked files), but new run.sh invocations produce silent archives
+# unless explicitly added with `git add -f`. Authoritative state lives
+# in results/latest/ (tracked) and git log captures the history.
+results/archive/
+
 # Rmd side-effects we don't want committed.
 BENCHMARK-RESULT.html
 

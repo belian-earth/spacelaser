@@ -179,8 +179,8 @@ indexed, and filtered — so comparing wall-clock against a live-CMR
 pipeline isn't apples-to-apples.
 
 **Row counts reflect different data slices, not equivalent results.**
-The other three pipelines return every shot in the bbox (1,246 in
-this workload). gedidb returns 241 rows — the subset that passes
+The other three pipelines return every shot in the bbox (`r fmt_int(t_sl$n_rows)` in
+this workload). gedidb returns `r if (!is.null(t_gedidb)) fmt_int(t_gedidb$n_rows) else "—"` rows — the subset that passes
 its ingest-time quality filter, which is deliberate and documented
 in gedidb's [filter documentation](https://gedidb.readthedocs.io/en/latest/user/fundamentals.filters.html).
 

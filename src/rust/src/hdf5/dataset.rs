@@ -197,14 +197,7 @@ impl Dataset {
         match &self.meta.layout {
             DataLayout::Compact { .. } => Ok(Vec::new()),
             DataLayout::Contiguous { address, .. } => {
-                let row_size = self.row_size() as u64;
-                Ok(row_ranges
-                    .iter()
-                    .map(|&(s, e)| {
-                        let off = *address + s * row_size;
-                        off..off + (e - s) * row_size
-                    })
-                    .collect())
+                contiguous_byte_ranges(*address, self.row_size() as u64, row_ranges)
             }
             DataLayout::Chunked {
                 btree_address,
@@ -358,5 +351,70 @@ impl Dataset {
     /// Get the element size in bytes.
     pub fn element_size(&self) -> usize {
         self.meta.datatype.size()
+    }
+}
+
+/// Compute file byte-ranges for a Contiguous-layout row read with
+/// overflow-checked arithmetic. Real HDF5 files use values small
+/// enough that overflow is unreachable (row_size is bytes per row,
+/// s/e are row indices), but a malformed file could encode dims that
+/// would wrap a plain `a + b * c`; fail cleanly with an error in that
+/// case instead of producing a garbage range.
+fn contiguous_byte_ranges(
+    address: u64,
+    row_size: u64,
+    row_ranges: &[(u64, u64)],
+) -> Result<Vec<Range<u64>>, Hdf5Error> {
+    let overflow = || {
+        Hdf5Error::InvalidStructure(format!(
+            "contiguous row-range byte arithmetic overflows u64 \
+             (address=0x{:x}, row_size={})",
+            address, row_size
+        ))
+    };
+    let mut out = Vec::with_capacity(row_ranges.len());
+    for &(s, e) in row_ranges {
+        let start_off = s
+            .checked_mul(row_size)
+            .and_then(|v| address.checked_add(v))
+            .ok_or_else(overflow)?;
+        let len = e
+            .checked_sub(s)
+            .and_then(|n| n.checked_mul(row_size))
+            .ok_or_else(overflow)?;
+        let end_off = start_off.checked_add(len).ok_or_else(overflow)?;
+        out.push(start_off..end_off);
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn contiguous_byte_ranges_ok() {
+        let r = contiguous_byte_ranges(1000, 8, &[(0, 10), (20, 30)]).unwrap();
+        assert_eq!(r, vec![1000..1080, 1160..1240]);
+    }
+
+    #[test]
+    fn contiguous_byte_ranges_empty() {
+        let r = contiguous_byte_ranges(1000, 8, &[]).unwrap();
+        assert!(r.is_empty());
+    }
+
+    #[test]
+    fn contiguous_byte_ranges_overflow_on_huge_rows() {
+        // s * row_size saturates u64 → should return an InvalidStructure
+        // error rather than panicking (debug) or silently wrapping (release).
+        let err = contiguous_byte_ranges(0, u64::MAX, &[(0, 2)]).unwrap_err();
+        assert!(matches!(err, Hdf5Error::InvalidStructure(_)));
+    }
+
+    #[test]
+    fn contiguous_byte_ranges_overflow_on_huge_address() {
+        let err = contiguous_byte_ranges(u64::MAX - 1, 10, &[(0, 2)]).unwrap_err();
+        assert!(matches!(err, Hdf5Error::InvalidStructure(_)));
     }
 }

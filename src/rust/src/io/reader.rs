@@ -443,11 +443,16 @@ impl Reader {
             match data {
                 Some(b) => cached_blocks.push((*idx, b)),
                 None => {
+                    let source_url = match &self.source {
+                        DataSource::Http { url, .. } => url.as_str(),
+                        DataSource::Local { .. } => "<local>",
+                    };
                     return Err(IoError::HttpStatus {
                         status: 503,
                         url: format!(
-                            "single-flight peer failed to fetch block {}",
-                            idx
+                            "single-flight peer failed to fetch block {} \
+                             (source: {})",
+                            idx, source_url
                         ),
                     });
                 }

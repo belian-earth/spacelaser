@@ -262,6 +262,25 @@ mod tests {
         assert_eq!(result, vec![2, 3, 4, 5]);
     }
 
+    /// Covers the M1 correctness hole: if `blocks` contains a block
+    /// index more than once, `extract_range` emits that block's bytes
+    /// once per occurrence — the caller is responsible for deduping
+    /// before extract. This test pins the invariant so the
+    /// read_cached call-site contract is explicit.
+    #[test]
+    fn test_extract_range_duplicated_block_double_emits() {
+        let cache = BlockCache::new(4, 10);
+        let blocks: Vec<(u64, Bytes)> = vec![
+            (0, Bytes::from(vec![0u8, 1, 2, 3])),
+            (1, Bytes::from(vec![4u8, 5, 6, 7])),
+            (1, Bytes::from(vec![4u8, 5, 6, 7])), // duplicate of block 1
+        ];
+        let result = cache.extract_range(0, 8, &blocks);
+        // Block 1's bytes appear twice → 12 bytes, not 8.
+        assert_eq!(result.len(), 12);
+        assert_eq!(result, vec![0, 1, 2, 3, 4, 5, 6, 7, 4, 5, 6, 7]);
+    }
+
     #[test]
     fn test_coalesce_byte_ranges_merges_with_gap() {
         // gap of 50 bytes between 0..100 and 150..200 → merged at max_gap=100

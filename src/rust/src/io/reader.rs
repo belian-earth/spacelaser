@@ -304,10 +304,21 @@ impl Reader {
 
         // Partition missing blocks into (we_fetch, we_wait). Blocks
         // already registered by another task become waiters; new
-        // blocks we register and fetch ourselves.
+        // blocks we register and fetch ourselves. Then — in the same
+        // lock scope — coalesce our blocks into byte ranges and
+        // claim any *bridge* blocks (blocks that our coalesced
+        // fetch will incidentally cover because `coalesce_gap_blocks`
+        // lets us merge across gaps). Registering bridges closes a
+        // single-flight hole: without it, a peer waiting on a bridge
+        // block could fetch it redundantly, and — worse — the
+        // bridge would end up pushed into cached_blocks from both
+        // our fetch path and the peer's wait-then-get path,
+        // producing a duplicate block in the extract. The sort+dedup
+        // at the end is the backstop; this is the proper fix.
         let mut our_blocks: Vec<u64> = Vec::new();
         let mut wait_cells: Vec<(u64, BlockSignalHandle)> = Vec::new();
         let mut owned_cells: Vec<(u64, BlockSignalHandle)> = Vec::new();
+        let ranges;
         {
             let mut in_flight = self.in_flight.lock().unwrap_or_else(|e| e.into_inner());
             for idx in missing_blocks {
@@ -320,6 +331,44 @@ impl Reader {
                     owned_cells.push((idx, cell));
                 }
             }
+
+            // Compute coalesced ranges over blocks we own. A short
+            // borrow of the cache lock inside the outer in_flight
+            // scope is safe because neither is held across .await.
+            ranges = {
+                let cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+                cache.coalesce_ranges(our_blocks.clone(), self.config.coalesce_gap_blocks)
+            };
+
+            // Claim bridge blocks: every block inside a coalesced
+            // range that isn't already accounted for by our primary
+            // partition. If it's already in_flight (another task is
+            // fetching it right now), don't register — just wait.
+            // Otherwise register as ours.
+            let mut seen: std::collections::HashSet<u64> =
+                our_blocks.iter().copied().collect();
+            for (idx, _) in &wait_cells {
+                seen.insert(*idx);
+            }
+            for r in &ranges {
+                let start_blk = r.start / block_size;
+                let end_blk = r.end / block_size; // exclusive, block-aligned
+                for blk in start_blk..end_blk {
+                    if !seen.insert(blk) {
+                        continue;
+                    }
+                    if let Some(cell) = in_flight.get(&blk) {
+                        wait_cells.push((blk, cell.clone()));
+                    } else {
+                        let cell: BlockSignalHandle = Arc::new(BlockSignal::new());
+                        in_flight.insert(blk, cell.clone());
+                        owned_cells.push((blk, cell));
+                        // Note: we don't add to `our_blocks` — the
+                        // coalesced `ranges` already covers this
+                        // block, and we don't want to re-coalesce.
+                    }
+                }
+            }
         }
 
         // Release our cells when this scope exits (success, error, or
@@ -330,14 +379,12 @@ impl Reader {
             cells: &owned_cells,
         };
 
-        // Fetch the blocks we own, coalesced into minimal range
-        // requests. Blocks another task is fetching are NOT included
-        // — we'll pick them up from cache once their signal fires.
-        if !our_blocks.is_empty() {
-            let ranges = {
-                let cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
-                cache.coalesce_ranges(our_blocks, self.config.coalesce_gap_blocks)
-            };
+        // Fetch the coalesced ranges. Blocks another task is fetching
+        // are NOT in these ranges except where they overlap a bridge
+        // we already moved to wait_cells above; in that rare case the
+        // peer's data wins in cache and the dedup backstop at the end
+        // guarantees we emit each block once.
+        if !ranges.is_empty() {
 
             let results: Vec<Result<(Range<u64>, Bytes), IoError>> = stream::iter(ranges)
                 .map(|range| async move {
@@ -408,8 +455,15 @@ impl Reader {
         }
 
         // Extract from the collected blocks. extract_range walks them
-        // in order, so sort by block index first.
+        // in order and emits each once, so sort by index and dedup
+        // before calling it. Dedup matters when a block is populated
+        // by more than one code path in the same read — notably:
+        // our coalesced fetch bridges a block that's already being
+        // fetched by another task, so the wait-loop also pushes it
+        // into cached_blocks. Without dedup the bytes would be
+        // emitted twice, producing a corrupt over-long output.
         cached_blocks.sort_by_key(|(idx, _)| *idx);
+        cached_blocks.dedup_by_key(|(idx, _)| *idx);
         let cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         Ok(cache.extract_range(offset, length, &cached_blocks))
     }

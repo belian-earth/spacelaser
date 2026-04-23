@@ -71,7 +71,7 @@
 </div>
 <!-- badges: start -->
 
-<p>Cloud-optimized partial reading of GEDI and ICESat-2 HDF5 data from R. Only the bytes needed for the requested spatial/temporal subset are fetched over HTTP, avoiding multi-gigabyte downloads.</p>
+<p>Fast Cloud-optimized partial reading of GEDI and ICESat-2 HDF5 data from R. Only the bytes needed for the requested spatial/temporal subset are fetched over HTTP, avoiding multi-gigabyte downloads.</p>
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
@@ -110,28 +110,28 @@
 <span>  date_end <span class="op">=</span> <span class="st">"2023-01-01"</span></span>
 <span><span class="op">)</span></span>
 <span><span class="co">#&gt; ℹ Searching CMR for GEDI L2A granules</span></span>
-<span><span class="co">#&gt; ✔ Searching CMR for GEDI L2A granules [13s]</span></span>
+<span><span class="co">#&gt; ✔ Searching CMR for GEDI L2A granules [2.9s]</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; ✔ Found 9 GEDI L2A granules.</span></span>
 <span><span class="va">gedi2a</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/sl_read.html">sl_read</a></span><span class="op">(</span><span class="va">granules</span><span class="op">)</span></span>
 <span><span class="co">#&gt; ℹ Reading L2A from 9 granules</span></span>
-<span><span class="co">#&gt; ✔ Read 579 footprints from 17 beams.✔ Reading L2A from 9 granules [1m 4.9s]</span></span>
+<span><span class="co">#&gt; ✔ Read 647 footprints from 20 beams.✔ Reading L2A from 9 granules [1m 2.3s]</span></span>
 <span></span>
 <span><span class="va">gedi2a</span></span>
-<span><span class="co">#&gt; # A tibble: 579 × 121</span></span>
+<span><span class="co">#&gt; # A tibble: 647 × 121</span></span>
 <span><span class="co">#&gt;    beam     shot_number time                lat_lowestmode lon_lowestmode</span></span>
 <span><span class="co">#&gt;    &lt;chr&gt;        &lt;int64&gt; &lt;dttm&gt;                       &lt;dbl&gt;          &lt;dbl&gt;</span></span>
-<span><span class="co">#&gt;  1 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
-<span><span class="co">#&gt;  2 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
-<span><span class="co">#&gt;  3 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
-<span><span class="co">#&gt;  4 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
-<span><span class="co">#&gt;  5 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
-<span><span class="co">#&gt;  6 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
-<span><span class="co">#&gt;  7 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
-<span><span class="co">#&gt;  8 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
-<span><span class="co">#&gt;  9 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
-<span><span class="co">#&gt; 10 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
-<span><span class="co">#&gt; # ℹ 569 more rows</span></span>
+<span><span class="co">#&gt;  1 BEAM1000       2.e17 2022-11-25 06:16:52           41.4          -124.</span></span>
+<span><span class="co">#&gt;  2 BEAM1000       2.e17 2022-11-25 06:16:52           41.4          -124.</span></span>
+<span><span class="co">#&gt;  3 BEAM1000       2.e17 2022-11-25 06:16:52           41.4          -124.</span></span>
+<span><span class="co">#&gt;  4 BEAM1000       2.e17 2022-11-25 06:16:52           41.4          -124.</span></span>
+<span><span class="co">#&gt;  5 BEAM1000       2.e17 2022-11-25 06:16:53           41.4          -124.</span></span>
+<span><span class="co">#&gt;  6 BEAM1011       2.e17 2022-11-25 06:16:52           41.4          -124.</span></span>
+<span><span class="co">#&gt;  7 BEAM1011       2.e17 2022-11-25 06:16:52           41.4          -124.</span></span>
+<span><span class="co">#&gt;  8 BEAM1011       2.e17 2022-11-25 06:16:52           41.4          -124.</span></span>
+<span><span class="co">#&gt;  9 BEAM1011       2.e17 2022-11-25 06:16:52           41.4          -124.</span></span>
+<span><span class="co">#&gt; 10 BEAM1011       2.e17 2022-11-25 06:16:52           41.4          -124.</span></span>
+<span><span class="co">#&gt; # ℹ 637 more rows</span></span>
 <span><span class="co">#&gt; # ℹ 116 more variables: degrade_flag &lt;int&gt;, quality_flag &lt;int&gt;,</span></span>
 <span><span class="co">#&gt; #   sensitivity &lt;dbl&gt;, solar_elevation &lt;dbl&gt;, elev_lowestmode &lt;dbl&gt;,</span></span>
 <span><span class="co">#&gt; #   elev_highestreturn &lt;dbl&gt;, energy_total &lt;dbl&gt;, num_detectedmodes &lt;int&gt;,</span></span>
@@ -250,7 +250,7 @@
 </h2>
 <p>The standard R workflow for GEDI / ICESat-2 data is to download whole HDF5 granules, then filter locally. For a typical spatial subset query that wastes minutes and gigabytes — the file you’re filtering is usually orders of magnitude larger than the answer you actually want.</p>
 <p>Spacelaser sends HTTP range requests against the remote files and returns just the rows that fall inside your bounding box, with no local caching needed.</p>
-<p>In practice this is roughly 15-20× quicker than downloading whole granules. See <a href="https://github.com/belian-earth/spacelaser/tree/main/benchmarks" class="external-link"><code>benchmarks/</code></a> for methodology and comparisons with other approaches.</p>
+<p>On a representative Mondah Forest workload (11 GEDI L2A granules, two years of coverage, 1,376 matching shots) spacelaser completes in ~60 s versus ~1,170 s for a full-granule download + hdf5r read — around <strong>19× quicker</strong> for the same 112 shared columns, bit-for-bit identical output. See <a href="https://github.com/belian-earth/spacelaser/tree/main/benchmarks" class="external-link"><code>benchmarks/</code></a> for methodology and comparisons with other partial-read and pre-indexed approaches.</p>
 </div>
 <div class="section level2">
 <h2 id="acknowledgements">Acknowledgements<a class="anchor" aria-label="anchor" href="#acknowledgements"></a>

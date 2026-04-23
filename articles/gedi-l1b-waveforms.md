@@ -54,22 +54,22 @@ the vignette snappy; remove the `[1L, ]` for the full pipeline.
 g_l1b <- sl_search(bbox, product = "L1B",
                    date_start = dates$start, date_end = dates$end)
 #> ℹ Searching CMR for GEDI L1B granules
-#> ✔ Searching CMR for GEDI L1B granules [6.9s]
+#> ✔ Searching CMR for GEDI L1B granules [2.1s]
 #> 
 #> ✔ Found 1 GEDI L1B granule.
 g_l2a <- sl_search(bbox, product = "L2A",
                    date_start = dates$start, date_end = dates$end)
 #> ℹ Searching CMR for GEDI L2A granules
-#> ✔ Searching CMR for GEDI L2A granules [475ms]
+#> ✔ Searching CMR for GEDI L2A granules [2s]
 #> 
 #> ✔ Found 1 GEDI L2A granule.
 
 l1b <- sl_read(g_l1b[1L, ], bbox = bbox)
 #> ℹ Reading L1B from 1 granule
-#> ✔ Read 140 footprints from 5 beams.✔ Reading L1B from 1 granule [22s]
+#> ✔ Read 161 footprints from 6 beams.✔ Reading L1B from 1 granule [19.1s]
 l2a <- sl_read(g_l2a[1L, ], bbox = bbox)
 #> ℹ Reading L2A from 1 granule
-#> ✔ Read 138 footprints from 5 beams.✔ Reading L2A from 1 granule [14s]
+#> ✔ Read 159 footprints from 6 beams.✔ Reading L2A from 1 granule [14.4s]
 ```
 
 `l1b` carries the waveform (`rxwaveform`, already Gaussian-smoothed at
@@ -100,7 +100,7 @@ l1b_joined <- l1b |>
   )
 
 nrow(l1b_joined)
-#> [1] 136
+#> [1] 157
 ```
 
 Quality filtering matters: L1B will happily hand you waveforms from
@@ -320,14 +320,14 @@ rh_custom <- wf |>
     rh95_ours = approx(cum_energy, height_above_ground, xout = 0.95)$y,
     .groups = "drop"
   )
-#> Warning: There were 2 warnings in `summarise()`.
+#> Warning: There were 4 warnings in `summarise()`.
 #> The first warning was:
 #> ℹ In argument: `rh50_ours = approx(cum_energy, height_above_ground, xout =
 #>   0.5)$y`.
 #> ℹ In group 100: `shot_number = 90690600300513532`.
 #> Caused by warning in `regularize.values()`:
 #> ! collapsing to unique 'x' values
-#> ℹ Run `dplyr::last_dplyr_warnings()` to see the 1 remaining warning.
+#> ℹ Run `dplyr::last_dplyr_warnings()` to see the 3 remaining warnings.
 
 comparison <- l1b_joined |>
   select(shot_number, rh50, rh95) |>

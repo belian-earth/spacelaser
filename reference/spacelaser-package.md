@@ -57,13 +57,6 @@ endpoint. spacelaser resolves them from, in order,
 [`earthdatalogin::edl_netrc()`](https://boettiger-lab.github.io/earthdatalogin/reference/edl_netrc.html)
 if preferred.
 
-## Options
-
-- `spacelaser.cross_beam_scan` (default `FALSE`) — enable the cross-beam
-  spatial-filter optimization. See
-  [`?sl_read`](https://belian-earth.github.io/spacelaser/reference/sl_read.md)
-  under "Performance tuning" for the DAAC-dependent tradeoff.
-
 ## See also
 
 Useful links:

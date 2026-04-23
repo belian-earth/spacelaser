@@ -127,22 +127,22 @@ for the full pipeline.</p>
 <code class="sourceCode R"><span><span class="va">g_l1b</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sl_search.html">sl_search</a></span><span class="op">(</span><span class="va">bbox</span>, product <span class="op">=</span> <span class="st">"L1B"</span>,</span>
 <span>                   date_start <span class="op">=</span> <span class="va">dates</span><span class="op">$</span><span class="va">start</span>, date_end <span class="op">=</span> <span class="va">dates</span><span class="op">$</span><span class="va">end</span><span class="op">)</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Searching CMR for GEDI L1B granules</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Searching CMR for GEDI L1B granules <span style="color: #B2B2B2;">[6.9s]</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Searching CMR for GEDI L1B granules <span style="color: #B2B2B2;">[2.1s]</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Found 1 GEDI L1B granule.</span></span>
 <span><span class="va">g_l2a</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sl_search.html">sl_search</a></span><span class="op">(</span><span class="va">bbox</span>, product <span class="op">=</span> <span class="st">"L2A"</span>,</span>
 <span>                   date_start <span class="op">=</span> <span class="va">dates</span><span class="op">$</span><span class="va">start</span>, date_end <span class="op">=</span> <span class="va">dates</span><span class="op">$</span><span class="va">end</span><span class="op">)</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Searching CMR for GEDI L2A granules</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Searching CMR for GEDI L2A granules <span style="color: #B2B2B2;">[475ms]</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Searching CMR for GEDI L2A granules <span style="color: #B2B2B2;">[2s]</span></span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Found 1 GEDI L2A granule.</span></span>
 <span></span>
 <span><span class="va">l1b</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sl_read.html">sl_read</a></span><span class="op">(</span><span class="va">g_l1b</span><span class="op">[</span><span class="fl">1L</span>, <span class="op">]</span>, bbox <span class="op">=</span> <span class="va">bbox</span><span class="op">)</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Reading L1B from 1 granule</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Read 140 footprints from 5 beams.<span style="color: #00BB00;">✔</span> Reading L1B from 1 granule <span style="color: #B2B2B2;">[22s]</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Read 161 footprints from 6 beams.<span style="color: #00BB00;">✔</span> Reading L1B from 1 granule <span style="color: #B2B2B2;">[19.1s]</span></span></span>
 <span><span class="va">l2a</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sl_read.html">sl_read</a></span><span class="op">(</span><span class="va">g_l2a</span><span class="op">[</span><span class="fl">1L</span>, <span class="op">]</span>, bbox <span class="op">=</span> <span class="va">bbox</span><span class="op">)</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Reading L2A from 1 granule</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Read 138 footprints from 5 beams.<span style="color: #00BB00;">✔</span> Reading L2A from 1 granule <span style="color: #B2B2B2;">[14s]</span></span></span></code></pre></div>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Read 159 footprints from 6 beams.<span style="color: #00BB00;">✔</span> Reading L2A from 1 granule <span style="color: #B2B2B2;">[14.4s]</span></span></span></code></pre></div>
 <p><code>l1b</code> carries the waveform (<code>rxwaveform</code>,
 already Gaussian-smoothed at the L1B processing stage) and its
 structural metadata (<code>elevation_bin0</code>,
@@ -175,7 +175,7 @@ side.</p>
 <span>  <span class="op">)</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">l1b_joined</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 136</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] 157</span></span></code></pre></div>
 <p>Quality filtering matters: L1B will happily hand you waveforms from
 shots L2A flagged as low-sensitivity (e.g. dense cloud cover, high solar
 contamination). Keep only the shots where L2A trusts its own ground
@@ -391,14 +391,14 @@ L2A.</p>
 <span>    rh95_ours <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/approxfun.html" class="external-link">approx</a></span><span class="op">(</span><span class="va">cum_energy</span>, <span class="va">height_above_ground</span>, xout <span class="op">=</span> <span class="fl">0.95</span><span class="op">)</span><span class="op">$</span><span class="va">y</span>,</span>
 <span>    .groups <span class="op">=</span> <span class="st">"drop"</span></span>
 <span>  <span class="op">)</span></span>
-<span><span class="co">#&gt; Warning: There were 2 warnings in `summarise()`.</span></span>
+<span><span class="co">#&gt; Warning: There were 4 warnings in `summarise()`.</span></span>
 <span><span class="co">#&gt; The first warning was:</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> In argument: `rh50_ours = approx(cum_energy, height_above_ground, xout =</span></span>
 <span><span class="co">#&gt;   0.5)$y`.</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> In group 100: `shot_number = 90690600300513532`.</span></span>
 <span><span class="co">#&gt; Caused by warning in `regularize.values()`:</span></span>
 <span><span class="co">#&gt; <span style="color: #BBBB00;">!</span> collapsing to unique 'x' values</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Run `dplyr::last_dplyr_warnings()` to see the 1 remaining warning.</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Run `dplyr::last_dplyr_warnings()` to see the 3 remaining warnings.</span></span>
 <span></span>
 <span><span class="va">comparison</span> <span class="op">&lt;-</span> <span class="va">l1b_joined</span> <span class="op">|&gt;</span></span>
 <span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/select.html" class="external-link">select</a></span><span class="op">(</span><span class="va">shot_number</span>, <span class="va">rh50</span>, <span class="va">rh95</span><span class="op">)</span> <span class="op">|&gt;</span></span>

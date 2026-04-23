@@ -288,40 +288,57 @@ async fn read_single_group(
     let row_ranges_ref = &row_ranges;
     let offset_size = file.superblock().offset_size;
 
-    // Phase A: plan per-column reads (resolve dataset + gather byte ranges)
+    // Phase A: plan per-column reads (resolve dataset + gather byte
+    // ranges). Per-column failures are warned and dropped, not fatal:
+    // one column's object-header or B-tree error shouldn't forfeit
+    // the rest of the beam's data. PathNotFound is the historically
+    // tolerated case (a product variant that lacks the requested
+    // column); other errors now degrade to the same silent-skip
+    // treatment, with a warn logged so the drop is observable.
     type ColPlan = (String, Dataset, Vec<Range<u64>>);
-    let plan_results: Vec<Result<Option<ColPlan>, Hdf5Error>> =
-        stream::iter(columns.iter())
-            .map(|col_name| {
-                let col_path = format!("{}/{}", group_path, col_name);
-                let col_name = col_name.clone();
-                async move {
-                    let ds = match file.dataset(&col_path).await {
-                        Ok(d) => d,
-                        Err(Hdf5Error::PathNotFound(_)) => return Ok(None),
-                        Err(e) => return Err(e),
-                    };
-                    let ranges = ds
-                        .row_byte_ranges(file.reader(), offset_size, row_ranges_ref)
-                        .await?;
-                    Ok(Some((col_name, ds, ranges)))
-                }
-            })
-            .buffer_unordered(32)
-            .collect()
-            .await;
+    let plan_results: Vec<Option<ColPlan>> = stream::iter(columns.iter())
+        .map(|col_name| {
+            let col_path = format!("{}/{}", group_path, col_name);
+            let col_name = col_name.clone();
+            async move {
+                let ds = match file.dataset(&col_path).await {
+                    Ok(d) => d,
+                    Err(Hdf5Error::PathNotFound(_)) => return None,
+                    Err(e) => {
+                        log::warn!(
+                            "column '{}' plan failed (header): {}",
+                            col_name, e
+                        );
+                        return None;
+                    }
+                };
+                let ranges = match ds
+                    .row_byte_ranges(file.reader(), offset_size, row_ranges_ref)
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(e) => {
+                        log::warn!(
+                            "column '{}' plan failed (btree): {}",
+                            col_name, e
+                        );
+                        return None;
+                    }
+                };
+                Some((col_name, ds, ranges))
+            }
+        })
+        .buffer_unordered(32)
+        .collect()
+        .await;
 
-    let mut plans: Vec<ColPlan> = Vec::with_capacity(columns.len());
-    for p in plan_results {
-        if let Some(cp) = p? {
-            plans.push(cp);
-        }
-    }
+    let plans: Vec<ColPlan> = plan_results.into_iter().flatten().collect();
 
     // Phase B: coalesce byte ranges and prefetch into the block cache.
     // Discard the returned bytes — we only care that the cache is
     // populated; Phase C will re-read these regions via read_rows and
-    // hit the cache.
+    // hit the cache. A prefetch failure is non-fatal: Phase C will
+    // just miss the cache for those ranges and refetch per-column.
     let mut all_ranges: Vec<Range<u64>> = Vec::new();
     for (_, _, rngs) in &plans {
         all_ranges.extend(rngs.iter().cloned());
@@ -337,36 +354,53 @@ async fn read_single_group(
                 async move { reader.read(r.start, (r.end - r.start) as usize).await }
             })
             .collect();
-        let _ = futures::future::try_join_all(prefetch_futs)
-            .await
-            .map_err(Hdf5Error::Io)?;
+        if let Err(e) = futures::future::try_join_all(prefetch_futs).await {
+            log::warn!(
+                "group '{}' science prefetch failed, falling back to \
+                 per-column fetch: {}",
+                group_name, e
+            );
+        }
     }
 
     // Phase C: execute per-column reads (hit cache from Phase B).
-    let col_results: Vec<Result<Option<(String, crate::hdf5::types::DatasetMeta, Vec<u8>)>, Hdf5Error>> =
+    // Same error policy as Phase A — a failed column is warned and
+    // skipped, the rest of the beam proceeds.
+    let n_planned = plans.len();
+    let col_results: Vec<Option<(String, crate::hdf5::types::DatasetMeta, Vec<u8>)>> =
         stream::iter(plans.into_iter())
             .map(|(col_name, ds, _)| async move {
-                let data = ds
+                match ds
                     .read_rows(file.reader(), offset_size, row_ranges_ref)
-                    .await?;
-                Ok(Some((col_name, ds.meta, data)))
+                    .await
+                {
+                    Ok(data) => Some((col_name, ds.meta, data)),
+                    Err(e) => {
+                        log::warn!("column '{}' read failed: {}", col_name, e);
+                        None
+                    }
+                }
             })
             .buffer_unordered(32)
             .collect()
             .await;
     let cols_elapsed = t_cols_start.elapsed();
-    let total_cols_bytes: usize = col_results.iter()
-        .filter_map(|r| r.as_ref().ok())
+    let n_succeeded = col_results.iter().filter(|r| r.is_some()).count();
+    let total_cols_bytes: usize = col_results
+        .iter()
         .filter_map(|o| o.as_ref())
         .map(|(_, _, b)| b.len())
         .sum();
 
     log::info!(
         "timing {}: spatial={:.3}s ({} B, {} shots) \
-         cols={:.3}s ({} B, {} cols, prefetch={} ranges / {} B) total={:.3}s",
+         cols={:.3}s ({} B, {}/{} cols ok, plan_dropped={}, \
+         prefetch={} ranges / {} B) total={:.3}s",
         group_name,
         spatial_elapsed.as_secs_f64(), spatial_bytes, n_selected,
-        cols_elapsed.as_secs_f64(), total_cols_bytes, columns.len(),
+        cols_elapsed.as_secs_f64(), total_cols_bytes,
+        n_succeeded, columns.len(),
+        columns.len() - n_planned,
         n_prefetch, prefetch_bytes,
         t_total_start.elapsed().as_secs_f64(),
     );
@@ -374,7 +408,7 @@ async fn read_single_group(
     // Process results: expand 2D datasets, build HashMap
     let mut col_data = HashMap::new();
     for result in col_results {
-        if let Some((col_name, meta, bytes)) = result? {
+        if let Some((col_name, meta, bytes)) = result {
             let elem_size = meta.datatype.size();
             let dims = &meta.dataspace.dims;
             let dtype_desc = format!("{:?}", meta.datatype);

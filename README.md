@@ -14,8 +14,8 @@ coverage](https://codecov.io/gh/belian-earth/spacelaser/graph/badge.svg)](https:
 [![R-CMD-check](https://github.com/belian-earth/spacelaser/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/belian-earth/spacelaser/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
-Cloud-optimized partial reading of GEDI and ICESat-2 HDF5 data from R.
-Only the bytes needed for the requested spatial/temporal subset are
+Fast Cloud-optimized partial reading of GEDI and ICESat-2 HDF5 data from
+R. Only the bytes needed for the requested spatial/temporal subset are
 fetched over HTTP, avoiding multi-gigabyte downloads.
 
 ## Installation
@@ -66,27 +66,27 @@ granules <- sl_search(
   date_end = "2023-01-01"
 )
 #> ℹ Searching CMR for GEDI L2A granules
-#> ✔ Searching CMR for GEDI L2A granules [6.2s]
+#> ✔ Searching CMR for GEDI L2A granules [2.9s]
 #> 
 #> ✔ Found 9 GEDI L2A granules.
 gedi2a <- sl_read(granules)
 #> ℹ Reading L2A from 9 granules
-#> ✔ Read 647 footprints from 20 beams.✔ Reading L2A from 9 granules [45.7s]
+#> ✔ Read 647 footprints from 20 beams.✔ Reading L2A from 9 granules [1m 2.3s]
 
 gedi2a
 #> # A tibble: 647 × 121
 #>    beam     shot_number time                lat_lowestmode lon_lowestmode
 #>    <chr>        <int64> <dttm>                       <dbl>          <dbl>
-#>  1 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
-#>  2 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
-#>  3 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
-#>  4 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
-#>  5 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
-#>  6 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
-#>  7 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
-#>  8 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
-#>  9 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
-#> 10 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
+#>  1 BEAM1000       2.e17 2022-11-25 06:16:52           41.4          -124.
+#>  2 BEAM1000       2.e17 2022-11-25 06:16:52           41.4          -124.
+#>  3 BEAM1000       2.e17 2022-11-25 06:16:52           41.4          -124.
+#>  4 BEAM1000       2.e17 2022-11-25 06:16:52           41.4          -124.
+#>  5 BEAM1000       2.e17 2022-11-25 06:16:53           41.4          -124.
+#>  6 BEAM1011       2.e17 2022-11-25 06:16:52           41.4          -124.
+#>  7 BEAM1011       2.e17 2022-11-25 06:16:52           41.4          -124.
+#>  8 BEAM1011       2.e17 2022-11-25 06:16:52           41.4          -124.
+#>  9 BEAM1011       2.e17 2022-11-25 06:16:52           41.4          -124.
+#> 10 BEAM1011       2.e17 2022-11-25 06:16:52           41.4          -124.
 #> # ℹ 637 more rows
 #> # ℹ 116 more variables: degrade_flag <int>, quality_flag <int>,
 #> #   sensitivity <dbl>, solar_elevation <dbl>, elev_lowestmode <dbl>,

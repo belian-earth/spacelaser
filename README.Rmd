@@ -23,7 +23,7 @@ knitr::opts_chunk$set(
 [![R-CMD-check](https://github.com/belian-earth/spacelaser/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/belian-earth/spacelaser/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
-Cloud-optimized partial reading of GEDI and ICESat-2 HDF5 data from R.
+Fast Cloud-optimized partial reading of GEDI and ICESat-2 HDF5 data from R.
 Only the bytes needed for the requested spatial/temporal subset are fetched over HTTP, avoiding multi-gigabyte downloads.
 
 

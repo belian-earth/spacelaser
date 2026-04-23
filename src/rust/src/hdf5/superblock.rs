@@ -31,6 +31,13 @@ impl Superblock {
 
         // Read a generous chunk starting at the signature
         let header = reader.read(sig_offset, 256).await?;
+        if header.len() < 16 {
+            return Err(Hdf5Error::InvalidStructure(format!(
+                "Superblock at 0x{:x} truncated ({} bytes)",
+                sig_offset,
+                header.len()
+            )));
+        }
 
         // Bytes 8: superblock version
         let version = header[8];
@@ -46,7 +53,7 @@ impl Superblock {
     async fn find_signature(reader: &Reader) -> Result<u64, Hdf5Error> {
         // Try offset 0 first (most common)
         let buf = reader.read(0, 8).await?;
-        if buf[..8] == HDF5_SIGNATURE {
+        if buf.len() >= 8 && buf[..8] == HDF5_SIGNATURE {
             return Ok(0);
         }
 
@@ -54,7 +61,7 @@ impl Superblock {
         for power in 9..20 {
             let offset = 1u64 << power;
             let buf = reader.read(offset, 8).await?;
-            if buf[..8] == HDF5_SIGNATURE {
+            if buf.len() >= 8 && buf[..8] == HDF5_SIGNATURE {
                 return Ok(offset);
             }
         }
@@ -180,8 +187,14 @@ pub fn read_length(data: &[u8], pos: &mut usize, size: u8) -> u64 {
     val
 }
 
-/// Read n bytes as a little-endian unsigned integer.
+/// Read n bytes as a little-endian unsigned integer. Returns 0 if the
+/// buffer is too short — callers are expected to validate lengths up
+/// front; this guard is a belt-and-braces against malformed inputs
+/// slipping past a missed check.
 fn read_n_bytes_le(data: &[u8], offset: usize, n: usize) -> u64 {
+    if offset.saturating_add(n) > data.len() {
+        return 0;
+    }
     let mut val: u64 = 0;
     for i in 0..n {
         val |= (data[offset + i] as u64) << (8 * i);
@@ -191,6 +204,12 @@ fn read_n_bytes_le(data: &[u8], offset: usize, n: usize) -> u64 {
 
 /// The "undefined address" sentinel in HDF5 (all 1-bits for the address size).
 pub fn is_undefined_address(addr: u64, offset_size: u8) -> bool {
+    // offset_size must be in [1, 8] for a valid HDF5 file. Anything
+    // else is treated as "not undefined" so a malformed value can't
+    // make real addresses look like sentinels.
+    if offset_size == 0 || offset_size > 8 {
+        return false;
+    }
     let mask = if offset_size == 8 {
         u64::MAX
     } else {

@@ -23,7 +23,7 @@ knitr::opts_chunk$set(
 [![R-CMD-check](https://github.com/belian-earth/spacelaser/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/belian-earth/spacelaser/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
-Cloud-optimized partial reading of GEDI and ICESat-2 HDF5 data from R.
+Fast Cloud-optimized partial reading of GEDI and ICESat-2 HDF5 data from R.
 Only the bytes needed for the requested spatial/temporal subset are fetched over HTTP, avoiding multi-gigabyte downloads.
 
 
@@ -138,7 +138,7 @@ Spacelaser sends HTTP range requests against the remote files and
 returns just the rows that fall inside your bounding box, with no
 local caching needed.
 
-In practice this is roughly 15-20× quicker than downloading whole granules. See [`benchmarks/`](https://github.com/belian-earth/spacelaser/tree/main/benchmarks) for methodology and comparisons with other approaches.
+On a representative Mondah Forest workload (11 GEDI L2A granules, two years of coverage, 1,376 matching shots) spacelaser completes in ~60 s versus ~1,170 s for a full-granule download + hdf5r read — around **19× quicker** for the same 112 shared columns, bit-for-bit identical output. See [`benchmarks/`](https://github.com/belian-earth/spacelaser/tree/main/benchmarks) for methodology and comparisons with other partial-read and pre-indexed approaches.
 
 ## Acknowledgements
 

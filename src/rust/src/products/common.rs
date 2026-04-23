@@ -9,11 +9,21 @@
 //! This module contains the types and functions common to that workflow,
 //! eliminating duplication between `gedi.rs` and `icesat2.rs`.
 
+use crate::hdf5::dataset::Dataset;
 use crate::hdf5::file::Hdf5File;
 use crate::hdf5::types::Hdf5Error;
+use crate::io::cache::coalesce_byte_ranges;
 use futures::stream::{self, StreamExt};
 use std::collections::HashMap;
+use std::ops::Range;
 use std::time::Instant;
+
+/// Gap tolerance for coalescing science-phase byte ranges across
+/// concurrent column reads. Each bridged gap converts one avoided
+/// HTTP round-trip (≈100-200ms at NASA RTT) for the cost of
+/// downloading at most this many extra bytes. Set large enough that
+/// nearby column chunks in a beam group merge into a single fetch.
+const COLUMN_COALESCE_GAP_BYTES: u64 = 1_048_576;
 
 // ---------------------------------------------------------------------------
 // Bounding box
@@ -114,17 +124,6 @@ pub trait SatelliteProduct {
     fn segment_index(&self) -> Option<SegmentIndex> {
         None
     }
-
-    /// Cross-track swath half-width (degrees) used to inflate the query
-    /// bbox when running the cross-beam spatial-filter optimization.
-    /// A reference beam scans this inflated bbox; other beams then
-    /// dense-read lat/lon over the same shot-index range with the
-    /// original bbox. Must exceed the worst-case beam-to-beam
-    /// cross-track offset in the group — roughly 4 km for GEDI,
-    /// 7 km for ICESat-2.
-    fn swath_inflation_deg(&self) -> f64 {
-        0.08 // ≈9 km, covers both GEDI (~4 km) and ICESat-2 (~7 km)
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -167,27 +166,6 @@ pub async fn read_product_groups(
         product.group_names().into_iter().map(String::from).collect()
     });
 
-    // Cross-beam optimization: scan a reference beam's lat/lon against
-    // an inflated bbox (accounting for cross-track beam separation),
-    // then pass the resulting shot-index range to every other beam so
-    // they can dense-read just that sub-range instead of the full
-    // dataset. Opt-in during development, default off.
-    //
-    // Correctness: GEDI's 8 beams fire synchronously within ~4.2 km of
-    // each other cross-track, so if ANY beam at time t is in the bbox,
-    // the reference beam at time t is within bbox + 4.2 km (the
-    // inflated bbox). Inflating the resulting index range further
-    // absorbs per-beam shot-count drift (~0.1% of beams miss individual
-    // shots due to masking, saturation, etc.).
-    let shared_scan_range = if std::env::var("SPACELASER_CROSS_BEAM_SCAN").ok().as_deref() == Some("1")
-        && product.segment_index().is_none()
-        && group_list.len() > 1
-    {
-        compute_cross_beam_range(file, &group_list, product, bbox).await?
-    } else {
-        None
-    };
-
     // Process all beams/tracks concurrently.
     let beam_futures: Vec<_> = group_list.iter().map(|group_name| {
         let columns = &columns;
@@ -198,7 +176,6 @@ pub async fn read_product_groups(
             read_single_group(
                 file, &group_name, product, bbox,
                 columns, pool_columns, transposed_columns,
-                shared_scan_range,
             ).await
         }
     }).collect();
@@ -218,12 +195,6 @@ pub async fn read_product_groups(
 }
 
 /// Read a single beam/track with spatial subsetting and concurrent column reads.
-///
-/// When `shared_scan_range` is `Some((start, end))`, the lat/lon scan is
-/// restricted to that shot-index range (used by the cross-beam
-/// optimization — a reference beam computes the range, other beams
-/// dense-read only within it). When `None`, the full lat/lon dataset is
-/// scanned.
 async fn read_single_group(
     file: &Hdf5File,
     group_name: &str,
@@ -232,7 +203,6 @@ async fn read_single_group(
     columns: &[String],
     pool_columns: &[String],
     transposed_columns: &[String],
-    shared_scan_range: Option<(u64, u64)>,
 ) -> Result<Option<GroupData>, Hdf5Error> {
     let group_path = format!("/{}", group_name);
     let t_total_start = Instant::now();
@@ -245,83 +215,50 @@ async fn read_single_group(
         if let Some(seg_idx) = product.segment_index() {
             // Segment-index path: read small segment-level arrays,
             // filter, then compute photon row ranges.
-            // Cross-beam optimization does not apply to ATL03 because
-            // the segment filter already narrows to a tiny fraction.
             match segment_spatial_filter(file, &group_path, &seg_idx, &bbox).await? {
                 Some(v) => v,
                 None => return Ok(None),
             }
         } else {
-            // Direct lat/lon scan (standard path for all other products).
-            // If shared_scan_range is provided, only read that range.
+            // Direct lat/lon scan: every product without a segment
+            // index reads the full per-beam lat/lon, filters to
+            // shots inside the bbox, and turns those indices into
+            // contiguous row ranges for the science-phase column
+            // reads.
             let lat_path = format!("{}/{}", group_path, product.lat_dataset());
             let lon_path = format!("{}/{}", group_path, product.lon_dataset());
 
-            let (lat_bytes, lon_bytes, num_elements, elem_size, base_offset) =
-                if let Some((start, end)) = shared_scan_range {
-                    // Bounded scan: dense-read just the shared range
-                    let ranges = vec![(start, end)];
-                    let (lat_result, lon_result) = tokio::join!(
-                        file.read_dataset_rows(&lat_path, &ranges),
-                        file.read_dataset_rows(&lon_path, &ranges),
-                    );
-                    let (lat_meta, lat_bytes) = match lat_result {
-                        Ok(v) => v,
-                        Err(Hdf5Error::PathNotFound(_)) => return Ok(None),
-                        Err(e) => return Err(e),
-                    };
-                    let (_, lon_bytes) = match lon_result {
-                        Ok(v) => v,
-                        Err(Hdf5Error::PathNotFound(_)) => return Ok(None),
-                        Err(e) => return Err(e),
-                    };
-                    let elem_size = lat_meta.datatype.size();
-                    let n = (end - start) as usize;
-                    (lat_bytes, lon_bytes, n, elem_size, start)
-                } else {
-                    // Full-dataset scan (current default)
-                    let (lat_result, lon_result) = tokio::join!(
-                        file.read_dataset(&lat_path),
-                        file.read_dataset(&lon_path),
-                    );
-                    let (lat_meta, lat_bytes) = match lat_result {
-                        Ok(v) => v,
-                        Err(Hdf5Error::PathNotFound(_)) => return Ok(None),
-                        Err(e) => return Err(e),
-                    };
-                    let (_, lon_bytes) = match lon_result {
-                        Ok(v) => v,
-                        Err(Hdf5Error::PathNotFound(_)) => return Ok(None),
-                        Err(e) => return Err(e),
-                    };
-                    let elem_size = lat_meta.datatype.size();
-                    let n = lat_meta.dataspace.dims[0] as usize;
-                    (lat_bytes, lon_bytes, n, elem_size, 0)
-                };
+            let (lat_result, lon_result) = tokio::join!(
+                file.read_dataset(&lat_path),
+                file.read_dataset(&lon_path),
+            );
+            let (lat_meta, lat_bytes) = match lat_result {
+                Ok(v) => v,
+                Err(Hdf5Error::PathNotFound(_)) => return Ok(None),
+                Err(e) => return Err(e),
+            };
+            let (_, lon_bytes) = match lon_result {
+                Ok(v) => v,
+                Err(Hdf5Error::PathNotFound(_)) => return Ok(None),
+                Err(e) => return Err(e),
+            };
+            let elem_size = lat_meta.datatype.size();
+            let num_elements = lat_meta.dataspace.dims[0] as usize;
             spatial_bytes = lat_bytes.len() + lon_bytes.len();
 
-            let local_indices =
+            let selected_indices =
                 find_matching_indices(&lat_bytes, &lon_bytes, elem_size, num_elements, &bbox);
 
-            if local_indices.is_empty() {
+            if selected_indices.is_empty() {
                 log::info!(
-                    "timing {}: spatial={:.3}s ({} B decompressed, bounded={}), \
+                    "timing {}: spatial={:.3}s ({} B decompressed), \
                      no matches, skipping",
                     group_name,
                     t_spatial_start.elapsed().as_secs_f64(),
                     spatial_bytes,
-                    shared_scan_range.is_some(),
                 );
                 return Ok(None);
             }
-
-            // Map local → global indices (base_offset is 0 for full scan,
-            // = range start for bounded scan).
-            let selected_indices: Vec<u64> = if base_offset == 0 {
-                local_indices
-            } else {
-                local_indices.into_iter().map(|i| i + base_offset).collect()
-            };
 
             let row_ranges = indices_to_ranges(&selected_indices);
             let n_selected = selected_indices.len();
@@ -329,51 +266,149 @@ async fn read_single_group(
         };
     let spatial_elapsed = t_spatial_start.elapsed();
 
-    // 4. Read all requested columns concurrently (buffered to limit
-    //    the number of in-flight HTTP requests).
+    // 4. Read all requested columns. Done in three phases so we can
+    //    coalesce chunk fetches across columns:
+    //      A. Plan: resolve each dataset (object header) and determine
+    //         the file byte-ranges its row-reads would touch. Parallel.
+    //      B. Prefetch: coalesce all the per-column byte-ranges into a
+    //         minimal set of HTTP range reads (bridging gaps ≤
+    //         COLUMN_COALESCE_GAP_BYTES) and fetch them once. The
+    //         block cache now holds every byte the column reads will
+    //         need.
+    //      C. Execute: per-column `read_rows` calls run from cache.
+    //         The B-tree is re-parsed but from cached bytes, and
+    //         chunk fetches are served from the prefetched blocks.
+    //
+    //    Without this, each column fired independent HTTP range reads
+    //    through the Reader. Concurrent reads don't see each other's
+    //    missing blocks, so dozens of near-adjacent chunks produced
+    //    dozens of round-trips instead of one. The science phase was
+    //    RTT-bound even when the total bytes were tiny.
     let t_cols_start = Instant::now();
     let row_ranges_ref = &row_ranges;
-    let col_results: Vec<_> = stream::iter(columns.iter())
+    let offset_size = file.superblock().offset_size;
+
+    // Phase A: plan per-column reads (resolve dataset + gather byte
+    // ranges). Per-column failures are warned and dropped, not fatal:
+    // one column's object-header or B-tree error shouldn't forfeit
+    // the rest of the beam's data. PathNotFound is the historically
+    // tolerated case (a product variant that lacks the requested
+    // column); other errors now degrade to the same silent-skip
+    // treatment, with a warn logged so the drop is observable.
+    type ColPlan = (String, Dataset, Vec<Range<u64>>);
+    let plan_results: Vec<Option<ColPlan>> = stream::iter(columns.iter())
         .map(|col_name| {
             let col_path = format!("{}/{}", group_path, col_name);
             let col_name = col_name.clone();
             async move {
-                match file.read_dataset_rows(&col_path, row_ranges_ref).await {
-                    Ok((meta, bytes)) => Ok(Some((col_name, meta, bytes))),
-                    Err(Hdf5Error::PathNotFound(_)) => Ok(None),
-                    Err(e) => Err(e),
-                }
+                let ds = match file.dataset(&col_path).await {
+                    Ok(d) => d,
+                    Err(Hdf5Error::PathNotFound(_)) => return None,
+                    Err(e) => {
+                        log::warn!(
+                            "column '{}' plan failed (header): {}",
+                            col_name, e
+                        );
+                        return None;
+                    }
+                };
+                let ranges = match ds
+                    .row_byte_ranges(file.reader(), offset_size, row_ranges_ref)
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(e) => {
+                        log::warn!(
+                            "column '{}' plan failed (btree): {}",
+                            col_name, e
+                        );
+                        return None;
+                    }
+                };
+                Some((col_name, ds, ranges))
             }
         })
-        // Up from 16. Per-beam column reads are network-bound: each
-        // column is a handful of small Range requests that overlap
-        // naturally when concurrency is high. With 8 beams × 32 cols
-        // in flight, an 8-granule wave can have hundreds of in-flight
-        // requests, which is appropriate for a high-bandwidth link.
         .buffer_unordered(32)
         .collect()
         .await;
+
+    let plans: Vec<ColPlan> = plan_results.into_iter().flatten().collect();
+
+    // Phase B: coalesce byte ranges and prefetch into the block cache.
+    // Discard the returned bytes — we only care that the cache is
+    // populated; Phase C will re-read these regions via read_rows and
+    // hit the cache. A prefetch failure is non-fatal: Phase C will
+    // just miss the cache for those ranges and refetch per-column.
+    let mut all_ranges: Vec<Range<u64>> = Vec::new();
+    for (_, _, rngs) in &plans {
+        all_ranges.extend(rngs.iter().cloned());
+    }
+    let coalesced = coalesce_byte_ranges(all_ranges, COLUMN_COALESCE_GAP_BYTES);
+    let n_prefetch = coalesced.len();
+    let prefetch_bytes: u64 = coalesced.iter().map(|r| r.end - r.start).sum();
+    if !coalesced.is_empty() {
+        let prefetch_futs: Vec<_> = coalesced
+            .into_iter()
+            .map(|r| {
+                let reader = file.reader();
+                async move { reader.read(r.start, (r.end - r.start) as usize).await }
+            })
+            .collect();
+        if let Err(e) = futures::future::try_join_all(prefetch_futs).await {
+            log::warn!(
+                "group '{}' science prefetch failed, falling back to \
+                 per-column fetch: {}",
+                group_name, e
+            );
+        }
+    }
+
+    // Phase C: execute per-column reads (hit cache from Phase B).
+    // Same error policy as Phase A — a failed column is warned and
+    // skipped, the rest of the beam proceeds.
+    let n_planned = plans.len();
+    let col_results: Vec<Option<(String, crate::hdf5::types::DatasetMeta, Vec<u8>)>> =
+        stream::iter(plans.into_iter())
+            .map(|(col_name, ds, _)| async move {
+                match ds
+                    .read_rows(file.reader(), offset_size, row_ranges_ref)
+                    .await
+                {
+                    Ok(data) => Some((col_name, ds.meta, data)),
+                    Err(e) => {
+                        log::warn!("column '{}' read failed: {}", col_name, e);
+                        None
+                    }
+                }
+            })
+            .buffer_unordered(32)
+            .collect()
+            .await;
     let cols_elapsed = t_cols_start.elapsed();
-    let total_cols_bytes: usize = col_results.iter()
-        .filter_map(|r| r.as_ref().ok())
+    let n_succeeded = col_results.iter().filter(|r| r.is_some()).count();
+    let total_cols_bytes: usize = col_results
+        .iter()
         .filter_map(|o| o.as_ref())
         .map(|(_, _, b)| b.len())
         .sum();
 
     log::info!(
-        "timing {}: spatial={:.3}s ({} B, {} shots, bounded={}) \
-         cols={:.3}s ({} B, {} cols) total={:.3}s",
+        "timing {}: spatial={:.3}s ({} B, {} shots) \
+         cols={:.3}s ({} B, {}/{} cols ok, plan_dropped={}, \
+         prefetch={} ranges / {} B) total={:.3}s",
         group_name,
         spatial_elapsed.as_secs_f64(), spatial_bytes, n_selected,
-        shared_scan_range.is_some(),
-        cols_elapsed.as_secs_f64(), total_cols_bytes, columns.len(),
+        cols_elapsed.as_secs_f64(), total_cols_bytes,
+        n_succeeded, columns.len(),
+        columns.len() - n_planned,
+        n_prefetch, prefetch_bytes,
         t_total_start.elapsed().as_secs_f64(),
     );
 
     // Process results: expand 2D datasets, build HashMap
     let mut col_data = HashMap::new();
     for result in col_results {
-        if let Some((col_name, meta, bytes)) = result? {
+        if let Some((col_name, meta, bytes)) = result {
             let elem_size = meta.datatype.size();
             let dims = &meta.dataspace.dims;
             let dtype_desc = format!("{:?}", meta.datatype);
@@ -825,104 +860,6 @@ fn indices_to_ranges(indices: &[u64]) -> Vec<(u64, u64)> {
     }
     ranges.push((start, end));
     ranges
-}
-
-/// Slack (in shots) added around the reference beam's in-bbox range
-/// when propagating to other beams. Covers small per-beam shot-count
-/// drift (missing shots due to masking, saturation, etc.) and
-/// along-track beam timing offsets. GEDI beams fire synchronously so
-/// shot-count drift is typically < 0.1 % of total shots.
-const CROSS_BEAM_INDEX_SLACK: u64 = 500;
-
-/// Full-scan the reference beam's lat/lon against an inflated bbox,
-/// returning the shot-index range that every other beam should
-/// dense-read. `None` means no beam in the granule can have matches
-/// (reference beam didn't intersect the inflated bbox) — caller
-/// should still run the per-beam scan as a safety net in case the
-/// reference beam is completely absent from the file.
-///
-/// Correctness: all beams fire synchronously within a cross-track
-/// swath width of ~4 km (GEDI) or ~7 km (ICESat-2). Inflating the
-/// bbox by `product.swath_inflation_deg()` (≥ half the swath) ensures
-/// the reference beam is in the inflated bbox whenever ANY beam at
-/// the same time is in the original bbox. The returned index range
-/// is further padded by `CROSS_BEAM_INDEX_SLACK` to absorb per-beam
-/// shot-count drift.
-async fn compute_cross_beam_range(
-    file: &Hdf5File,
-    group_list: &[String],
-    product: &dyn SatelliteProduct,
-    bbox: BBox,
-) -> Result<Option<(u64, u64)>, Hdf5Error> {
-    let ref_group = &group_list[0];
-    let ref_path = format!("/{}", ref_group);
-    let lat_path = format!("{}/{}", ref_path, product.lat_dataset());
-
-    // Lat-only reference scan: CMR has already filtered granules to
-    // those whose footprint intersects the bbox, so for every granule
-    // we process the orbit passes through (or near) the bbox's
-    // latitude band. Scanning latitude alone identifies the shot-
-    // index range where the orbit crosses that latitude band; any
-    // false positives (shots with lat in band but lon outside bbox)
-    // just widen the range a little, which is within the existing
-    // CROSS_BEAM_INDEX_SLACK budget. The other beams re-apply the
-    // full (lat, lon) filter on their bounded dense reads so the
-    // final in-bbox selection is still exact.
-    //
-    // Cuts the reference-scan bytes in half vs reading both lat and
-    // lon, and since the ref scan sits on the serial critical path
-    // (phase 1 → phase 2 per granule), halving it directly reduces
-    // wall time.
-    let inflation = product.swath_inflation_deg();
-    let ymin_inflated = bbox.ymin - inflation;
-    let ymax_inflated = bbox.ymax + inflation;
-
-    let (lat_meta, lat_bytes) = match file.read_dataset(&lat_path).await {
-        Ok(v) => v,
-        Err(Hdf5Error::PathNotFound(_)) => return Ok(None),
-        Err(e) => return Err(e),
-    };
-
-    let num_elements = lat_meta.dataspace.dims[0] as usize;
-    let elem_size = lat_meta.datatype.size();
-
-    // Filter by latitude only. We reuse find_matching_indices by
-    // constructing a bbox with world-covering longitude bounds.
-    let lat_only_bbox = BBox {
-        xmin: -180.0,
-        ymin: ymin_inflated,
-        xmax: 180.0,
-        ymax: ymax_inflated,
-    };
-    let matches = find_matching_indices(
-        &lat_bytes, &lat_bytes,   // same buffer twice — lon check is always true
-        elem_size, num_elements, &lat_only_bbox,
-    );
-
-    if matches.is_empty() {
-        log::info!(
-            "cross_beam ref={}: inflated lat band yielded zero matches, \
-             no beam in granule can have in-bbox shots",
-            ref_group,
-        );
-        return Ok(None);
-    }
-
-    let min_idx = *matches.first().unwrap();
-    let max_idx = *matches.last().unwrap();
-    let total = num_elements as u64;
-    let start = min_idx.saturating_sub(CROSS_BEAM_INDEX_SLACK);
-    let end = (max_idx + 1 + CROSS_BEAM_INDEX_SLACK).min(total);
-
-    log::info!(
-        "cross_beam ref={}: inflated lat band {} shots in [{}, {}], \
-         dense range [{}, {}) ({} shots, {:.2}% of beam)",
-        ref_group, matches.len(), min_idx, max_idx, start, end,
-        end - start,
-        100.0 * (end - start) as f64 / total as f64,
-    );
-
-    Ok(Some((start, end)))
 }
 
 /// Parse a `ColumnData` (raw bytes from an HDF5 integer or float dataset)

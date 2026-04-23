@@ -34,7 +34,7 @@ suppressPackageStartupMessages({
 
 GEDI_BEAMS <- c(
   "BEAM0000", "BEAM0001", "BEAM0010", "BEAM0011",
-  "BEAM0100", "BEAM0101", "BEAM0110", "BEAM1011"
+  "BEAM0101", "BEAM0110", "BEAM1000", "BEAM1011"
 )
 
 check_netrc <- function() {

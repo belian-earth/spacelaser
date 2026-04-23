@@ -70,15 +70,6 @@ Register at \url{https://urs.earthdata.nasa.gov/} and set up with
 \code{earthdatalogin::edl_netrc()} if preferred.
 }
 
-\section{Options}{
-
-\itemize{
-\item \code{spacelaser.cross_beam_scan} (default \code{FALSE}) --- enable the
-cross-beam spatial-filter optimization. See \code{?sl_read} under
-"Performance tuning" for the DAAC-dependent tradeoff.
-}
-}
-
 \seealso{
 Useful links:
 \itemize{

@@ -88,8 +88,32 @@ impl ObjectHeader {
         offset_size: u8,
         length_size: u8,
     ) -> Result<Self, Hdf5Error> {
-        // Read a generous initial chunk
-        let data = reader.read(address, 4096).await?;
+        // Two-phase: 12-byte prefix tells us header_size, then read
+        // exactly the fixed header + messages. Continuation messages
+        // (followed separately) still go through read_v1_continuation.
+        let prefix = reader.read(address, 12).await?;
+        if prefix.len() < 12 {
+            return Err(Hdf5Error::InvalidStructure(format!(
+                "Object header v1 at 0x{:x} truncated prefix ({} bytes)",
+                address,
+                prefix.len()
+            )));
+        }
+        let version = prefix[0];
+        if version != 1 {
+            return Err(Hdf5Error::UnsupportedObjectHeaderVersion(version));
+        }
+        let header_size_prefix =
+            u32::from_le_bytes([prefix[8], prefix[9], prefix[10], prefix[11]]) as usize;
+        let total_read = 12usize.saturating_add(header_size_prefix);
+
+        let data = reader.read(address, total_read).await?;
+        if data.len() < 12 {
+            return Err(Hdf5Error::InvalidStructure(format!(
+                "Object header v1 at 0x{:x} truncated",
+                address
+            )));
+        }
         let version = data[0];
 
         if version != 1 {
@@ -287,7 +311,63 @@ impl ObjectHeader {
         offset_size: u8,
         length_size: u8,
     ) -> Result<Self, Hdf5Error> {
-        let data = reader.read(address, 8192).await?;
+        // Two-phase: pull enough to read flags + chunk0 size field,
+        // then size the full read from chunk0_size. 32 bytes covers
+        // signature(4) + version(1) + flags(1) + optional times(16) +
+        // optional phase-change(4) + up to an 8-byte size field.
+        let prefix = reader.read(address, 32).await?;
+        if prefix.len() < 8 {
+            return Err(Hdf5Error::InvalidStructure(format!(
+                "Object header v2 at 0x{:x} truncated prefix",
+                address
+            )));
+        }
+        let flags_prefix = prefix[5];
+        let mut p = 6usize;
+        if flags_prefix & 0x20 != 0 {
+            p += 16;
+        }
+        if flags_prefix & 0x10 != 0 {
+            p += 4;
+        }
+        let size_field_size = 1usize << (flags_prefix & 0x03);
+        let chunk0 = if p + size_field_size <= prefix.len() {
+            match size_field_size {
+                1 => prefix[p] as u64,
+                2 => u16::from_le_bytes([prefix[p], prefix[p + 1]]) as u64,
+                4 => u32::from_le_bytes([
+                    prefix[p],
+                    prefix[p + 1],
+                    prefix[p + 2],
+                    prefix[p + 3],
+                ]) as u64,
+                8 => u64::from_le_bytes([
+                    prefix[p],
+                    prefix[p + 1],
+                    prefix[p + 2],
+                    prefix[p + 3],
+                    prefix[p + 4],
+                    prefix[p + 5],
+                    prefix[p + 6],
+                    prefix[p + 7],
+                ]),
+                _ => 0,
+            }
+        } else {
+            0
+        };
+        let total_read = p
+            .saturating_add(size_field_size)
+            .saturating_add(chunk0 as usize)
+            .saturating_add(4); // trailing checksum
+
+        let data = reader.read(address, total_read).await?;
+        if data.len() < 8 {
+            return Err(Hdf5Error::InvalidStructure(format!(
+                "Object header v2 at 0x{:x} truncated",
+                address
+            )));
+        }
 
         let _version = data[4]; // should be 2
         let flags = data[5];
@@ -990,14 +1070,14 @@ fn parse_link_message(data: &[u8], offset_size: u8) -> Result<HeaderMessage, Hdf
     let name = String::from_utf8_lossy(&data[pos..pos + name_length]).to_string();
     pos += name_length;
 
-    // Link value depends on link type
-    let target_address = if link_type == 0 {
-        // Hard link: target is an object header address
-        read_offset(data, &mut pos, offset_size)
-    } else {
-        // Soft link, external link, etc. -- not supported for navigation
-        0
-    };
+    // Only hard links (type 0) have a resolvable object header
+    // address. Soft / external links would produce a garbage address
+    // that find_child would then dereference, so we surface them as
+    // Unknown and they drop out of resolution naturally.
+    if link_type != 0 {
+        return Ok(HeaderMessage::Unknown { msg_type: MSG_LINK });
+    }
+    let target_address = read_offset(data, &mut pos, offset_size);
 
     Ok(HeaderMessage::Link {
         name,

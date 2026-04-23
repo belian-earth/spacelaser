@@ -161,42 +161,6 @@ include orthometric / ellipsoidal / surface heights, photon class
 and confidence, and the THU / TVU positional uncertainty pair.
 Geometry uses photon coordinates (\code{lat_ph}, \code{lon_ph}).
 }
-
-\subsection{Performance tuning}{
-
-The default read path scans every beam's full lat/lon dataset to
-build each beam's spatial filter — a safe, simple strategy that
-works for every product and every orbit geometry.
-
-An opt-in \strong{cross-beam scan} optimisation is available for
-workloads where one beam's shot-index range can predict the others'
-(GEDI and most ICESat-2 products). Instead of scanning all 8 beams
-per granule, one reference beam scans an inflated latitude band and
-the other beams dense-read the resulting shot-index range. Output
-is bitwise identical; HTTP request and byte counts drop by ~50 \%.
-
-\strong{Wall-time impact is DAAC-dependent:}
-\itemize{
-\item ORNL-DAAC (hosts L4A / L4C): ~23 \% faster on a typical small bbox
-\item LP.DAAC (hosts L1B / L2A / L2B): slightly slower (~10 \%) because
-LP.DAAC's CloudFront distribution rate-limits aggressively and
-cross-beam's serial critical path pays more in underutilised
-pool capacity than it saves in bytes
-}
-
-Enable per session:
-
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{options(spacelaser.cross_beam_scan = TRUE)
-}\if{html}{\out{</div>}}
-
-Or persistently for every R session by adding that line to your
-\code{.Rprofile}.
-
-The option is off by default. Consider enabling it when your
-workload is dominated by L4A / L4C reads, or when you care more
-about NASA server load (both byte and request counts halve) than
-about marginal wall-time differences on LP.DAAC.
-}
 }
 \seealso{
 \code{\link[=sl_search]{sl_search()}}, \code{\link[=sl_columns]{sl_columns()}}, \code{\link[=sl_extract_waveforms]{sl_extract_waveforms()}}

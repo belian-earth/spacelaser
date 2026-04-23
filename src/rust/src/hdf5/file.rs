@@ -184,7 +184,7 @@ impl Hdf5File {
         }
 
         {
-            let cache = self.path_cache.lock().unwrap();
+            let cache = self.path_cache.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(&addr) = cache.get(path) {
                 return Ok(addr);
             }
@@ -206,7 +206,7 @@ impl Hdf5File {
             };
 
             {
-                let cache = self.path_cache.lock().unwrap();
+                let cache = self.path_cache.lock().unwrap_or_else(|e| e.into_inner());
                 if let Some(&cached_addr) = cache.get(&partial_path) {
                     current_addr = cached_addr;
                     continue;
@@ -233,14 +233,14 @@ impl Hdf5File {
                 .await?;
 
             {
-                let mut cache = self.path_cache.lock().unwrap();
+                let mut cache = self.path_cache.lock().unwrap_or_else(|e| e.into_inner());
                 cache.insert(partial_path, child_addr);
             }
             current_addr = child_addr;
         }
 
         {
-            let mut cache = self.path_cache.lock().unwrap();
+            let mut cache = self.path_cache.lock().unwrap_or_else(|e| e.into_inner());
             cache.insert(path.to_string(), current_addr);
         }
         Ok(current_addr)
@@ -447,10 +447,16 @@ fn parse_links_from_heap_block(
             break;
         }
         match parse_single_link(&data[pos..], offset_size) {
-            Some((name, addr, consumed)) => {
+            Some((name, Some(addr), consumed)) => {
                 if !name.is_empty() {
                     out.push((name, addr));
                 }
+                pos += consumed;
+            }
+            // Soft/external links consume bytes but carry no target
+            // address we can resolve. Advance past them without
+            // publishing a bogus address to find_child.
+            Some((_, None, consumed)) => {
                 pos += consumed;
             }
             None => break,
@@ -459,10 +465,13 @@ fn parse_links_from_heap_block(
 }
 
 /// Parse one link message from a byte slice, returning
-/// `(link_name, target_address, bytes_consumed)`.
+/// `(link_name, target_address, bytes_consumed)`. `target_address` is
+/// `Some(addr)` only for hard links; soft / external links return
+/// `None` so the caller can skip them instead of publishing a
+/// sentinel address like `u64::MAX`.
 ///
 /// Returns `None` if the bytes don't look like a valid link message.
-fn parse_single_link(data: &[u8], offset_size: u8) -> Option<(String, u64, usize)> {
+fn parse_single_link(data: &[u8], offset_size: u8) -> Option<(String, Option<u64>, usize)> {
     if data.len() < 4 {
         return None;
     }
@@ -536,7 +545,7 @@ fn parse_single_link(data: &[u8], offset_size: u8) -> Option<(String, u64, usize
         let mut rpos = pos;
         let addr = read_offset(data, &mut rpos, offset_size);
         pos = rpos;
-        Some((name, addr, pos))
+        Some((name, Some(addr), pos))
     } else if link_type == 1 {
         // Soft link: skip value-length (2 bytes) + value string
         if pos + 2 > data.len() {
@@ -544,7 +553,7 @@ fn parse_single_link(data: &[u8], offset_size: u8) -> Option<(String, u64, usize
         }
         let val_len = u16::from_le_bytes([data[pos], data[pos + 1]]) as usize;
         pos += 2 + val_len;
-        Some((name, u64::MAX, pos)) // soft link, undefined address
+        Some((name, None, pos))
     } else {
         None // external or unknown link type
     }

@@ -4,6 +4,7 @@ use crate::hdf5::object_header::ObjectHeader;
 use crate::hdf5::types::*;
 use crate::io::reader::Reader;
 use futures::future::try_join_all;
+use std::ops::Range;
 
 /// A handle to an HDF5 dataset, with all metadata parsed and ready for reading.
 pub struct Dataset {
@@ -76,7 +77,13 @@ impl Dataset {
             DataLayout::Compact { data } => Ok(data.clone()),
 
             DataLayout::Contiguous { address, size } => {
-                chunk::read_contiguous(reader, *address, *size, None, element_size).await
+                // v3 layout gives `size` in bytes; v1/v2 layout gives
+                // it in elements. Authoritative size is dataspace ×
+                // element_size regardless, so compute and use that.
+                let computed =
+                    self.meta.dataspace.num_elements() * element_size as u64;
+                let bytes = if *size >= computed { *size } else { computed };
+                chunk::read_contiguous(reader, *address, bytes, None, element_size).await
             }
 
             DataLayout::Chunked {
@@ -175,6 +182,59 @@ impl Dataset {
         }
     }
 
+    /// File byte-ranges that a `read_rows(row_ranges)` call would
+    /// fetch. Callers can prefetch these ranges via `Reader::read` to
+    /// warm the block cache before a batch of related row-reads, so
+    /// later reads hit cache instead of issuing independent HTTP
+    /// requests. For `Compact` layout the data is in the header and
+    /// no file I/O happens, so the returned vec is empty.
+    pub async fn row_byte_ranges(
+        &self,
+        reader: &Reader,
+        offset_size: u8,
+        row_ranges: &[(u64, u64)],
+    ) -> Result<Vec<Range<u64>>, Hdf5Error> {
+        match &self.meta.layout {
+            DataLayout::Compact { .. } => Ok(Vec::new()),
+            DataLayout::Contiguous { address, .. } => {
+                contiguous_byte_ranges(*address, self.row_size() as u64, row_ranges)
+            }
+            DataLayout::Chunked {
+                btree_address,
+                chunk_dims,
+                ..
+            } => {
+                let ndims = chunk_dims.len();
+                let chunk_row_dim = if ndims > 0 { chunk_dims[0] as u64 } else { 1 };
+                let total_elements = self.meta.dataspace.num_elements();
+                let row_bounds = if ndims == 1
+                    && total_elements > 1_000_000
+                    && !row_ranges.is_empty()
+                {
+                    let min_row = row_ranges.iter().map(|(s, _)| *s).min().unwrap();
+                    let max_row = row_ranges.iter().map(|(_, e)| *e).max().unwrap();
+                    Some((min_row, max_row))
+                } else {
+                    None
+                };
+                let all_chunks = btree::read_chunk_btree(
+                    reader,
+                    *btree_address,
+                    offset_size,
+                    ndims,
+                    row_bounds,
+                    chunk_row_dim,
+                )
+                .await?;
+                let needed = chunk::chunks_for_row_ranges(&all_chunks, row_ranges, chunk_dims);
+                Ok(needed
+                    .iter()
+                    .map(|c| c.address..c.address + c.size as u64)
+                    .collect())
+            }
+        }
+    }
+
     /// Read specific row ranges from a dataset.
     ///
     /// This is the key method for spatial subsetting: after determining which
@@ -202,17 +262,24 @@ impl Dataset {
             }
 
             DataLayout::Contiguous { address, size } => {
-                let mut result = Vec::new();
-                for &(start, end) in row_ranges {
-                    let data = chunk::read_contiguous(
-                        reader,
-                        *address,
-                        *size,
-                        Some((start, end)),
-                        row_size,
-                    )
-                    .await?;
-                    result.extend(data);
+                // Fetch ranges concurrently; they're independent HTTP
+                // reads at disjoint offsets.
+                let futs: Vec<_> = row_ranges
+                    .iter()
+                    .map(|&(start, end)| {
+                        chunk::read_contiguous(
+                            reader,
+                            *address,
+                            *size,
+                            Some((start, end)),
+                            row_size,
+                        )
+                    })
+                    .collect();
+                let parts = try_join_all(futs).await?;
+                let mut result = Vec::with_capacity(parts.iter().map(Vec::len).sum());
+                for p in parts {
+                    result.extend(p);
                 }
                 Ok(result)
             }
@@ -284,5 +351,70 @@ impl Dataset {
     /// Get the element size in bytes.
     pub fn element_size(&self) -> usize {
         self.meta.datatype.size()
+    }
+}
+
+/// Compute file byte-ranges for a Contiguous-layout row read with
+/// overflow-checked arithmetic. Real HDF5 files use values small
+/// enough that overflow is unreachable (row_size is bytes per row,
+/// s/e are row indices), but a malformed file could encode dims that
+/// would wrap a plain `a + b * c`; fail cleanly with an error in that
+/// case instead of producing a garbage range.
+fn contiguous_byte_ranges(
+    address: u64,
+    row_size: u64,
+    row_ranges: &[(u64, u64)],
+) -> Result<Vec<Range<u64>>, Hdf5Error> {
+    let overflow = || {
+        Hdf5Error::InvalidStructure(format!(
+            "contiguous row-range byte arithmetic overflows u64 \
+             (address=0x{:x}, row_size={})",
+            address, row_size
+        ))
+    };
+    let mut out = Vec::with_capacity(row_ranges.len());
+    for &(s, e) in row_ranges {
+        let start_off = s
+            .checked_mul(row_size)
+            .and_then(|v| address.checked_add(v))
+            .ok_or_else(overflow)?;
+        let len = e
+            .checked_sub(s)
+            .and_then(|n| n.checked_mul(row_size))
+            .ok_or_else(overflow)?;
+        let end_off = start_off.checked_add(len).ok_or_else(overflow)?;
+        out.push(start_off..end_off);
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn contiguous_byte_ranges_ok() {
+        let r = contiguous_byte_ranges(1000, 8, &[(0, 10), (20, 30)]).unwrap();
+        assert_eq!(r, vec![1000..1080, 1160..1240]);
+    }
+
+    #[test]
+    fn contiguous_byte_ranges_empty() {
+        let r = contiguous_byte_ranges(1000, 8, &[]).unwrap();
+        assert!(r.is_empty());
+    }
+
+    #[test]
+    fn contiguous_byte_ranges_overflow_on_huge_rows() {
+        // s * row_size saturates u64 → should return an InvalidStructure
+        // error rather than panicking (debug) or silently wrapping (release).
+        let err = contiguous_byte_ranges(0, u64::MAX, &[(0, 2)]).unwrap_err();
+        assert!(matches!(err, Hdf5Error::InvalidStructure(_)));
+    }
+
+    #[test]
+    fn contiguous_byte_ranges_overflow_on_huge_address() {
+        let err = contiguous_byte_ranges(u64::MAX - 1, 10, &[(0, 2)]).unwrap_err();
+        assert!(matches!(err, Hdf5Error::InvalidStructure(_)));
     }
 }

@@ -8,26 +8,26 @@
 # Benchmark result
 
 GEDI **L2A**, bbox `9.32,0.55,9.35,0.58`, 2020-01-01 → 2021-12-31, 11
-granules. Run at **2026-04-20T16:21:35Z**.
+granules. Run at **2026-04-22T22:43:52Z**.
 
 ## Headline
 
 | Pipeline | Wall time | Download | Read | Bytes on disk | Rows |
 |:---|---:|---:|---:|---:|---:|
-| Spacelaser (Rust, partial HTTP range reads) | 72.9 s | — | — | — | 1,246 |
-| h5coro (Python, partial HTTP range reads) | 174.1 s | — | — | — | 1,246 |
-| Download + hdf5r (full granule download, then read) | 1318.1 s | 1316.7 s | 1.4 s | 27.2 Gb | 1,246 |
+| Spacelaser (Rust, partial HTTP range reads) | 60.7 s | — | — | — | 1,376 |
+| h5coro (Python, partial HTTP range reads) | 152.2 s | — | — | — | 1,376 |
+| Download + hdf5r (full granule download, then read) | 1167.3 s | 1165.3 s | 2.0 s | 27.2 Gb | 1,376 |
 | gedidb (Python, GFZ-hosted TileDB query) | 55.5 s | — | — | — | 241 |
 
 ### Wall-time ratio vs the download+hdf5r pipeline:
 
-- spacelaser is 18.1× quicker
-- h5coro is 7.6× quicker
+- spacelaser is 19.2× quicker
+- h5coro is 7.7× quicker
 
-Between the two partial-read pipelines, spacelaser completes **2.39×**
+Between the two partial-read pipelines, spacelaser completes **2.51×**
 quicker than h5coro on this workload.
 
-Download+hdf5r phase split: **1316.7 s downloading** vs **1.4 s
+Download+hdf5r phase split: **1165.3 s downloading** vs **2.0 s
 reading** — wall time on this workload is dominated by the file
 transfer, which is where partial-read pipelines (spacelaser, h5coro)
 save their time.
@@ -76,7 +76,7 @@ waveforms), gedidb’s TileDB architecture is latency-efficient by design
 wall-clock against a live-CMR pipeline isn’t apples-to-apples.
 
 **Row counts reflect different data slices, not equivalent results.**
-The other three pipelines return every shot in the bbox (1,246 in this
+The other three pipelines return every shot in the bbox (1,376 in this
 workload). gedidb returns 241 rows — the subset that passes its
 ingest-time quality filter, which is deliberate and documented in
 gedidb’s [filter

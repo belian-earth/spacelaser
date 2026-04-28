@@ -30,7 +30,7 @@ Suggests:
     rmarkdown,
     testthat (>= 3.0.0),
     withr
-Config/rextendr/version: 0.4.2
+Config/rextendr/version: 0.5.0
 Config/testthat/edition: 3
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)

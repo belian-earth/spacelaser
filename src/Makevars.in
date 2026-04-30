@@ -3,14 +3,6 @@ LIBDIR = $(TARGET_DIR)/@LIBDIR@
 STATLIB = $(LIBDIR)/libspacelaser.a
 PKG_LIBS = -L$(LIBDIR) -lspacelaser
 
-# Pin the macOS deployment target for Rust's C/asm compilation. Without
-# this, cc-rs (used by ring's build script) inherits the host SDK's
-# default, which on recent macos-* runners is newer than R's link target
-# and produces ~21 ld: warning lines that R-CMD-check escalates.
-ifeq ($(shell uname),Darwin)
-export MACOSX_DEPLOYMENT_TARGET = 11.0
-endif
-
 all: $(SHLIB) rust_clean
 
 .PHONY: $(STATLIB)
@@ -44,11 +36,11 @@ $(STATLIB):
 
 	export CARGO_HOME=$(CARGOTMP) && \
 	export PATH="$(PATH):$(HOME)/.cargo/bin" && \
-	@PANIC_EXPORTS@RUSTFLAGS="$(RUSTFLAGS) --print=native-static-libs" cargo build @CRAN_FLAGS@ --lib @PROFILE@ --manifest-path=./rust/Cargo.toml --target-dir $(TARGET_DIR) @TARGET@
+	MACOSX_DEPLOYMENT_TARGET=11.0 @PANIC_EXPORTS@RUSTFLAGS="$(RUSTFLAGS) --print=native-static-libs" cargo build @CRAN_FLAGS@ --lib @PROFILE@ --manifest-path=./rust/Cargo.toml --target-dir $(TARGET_DIR) @TARGET@
 
 	export CARGO_HOME=$(CARGOTMP) && \
 	export PATH="$(PATH):$(HOME)/.cargo/bin" && \
-	cargo run @CRAN_FLAGS@ --bin document --manifest-path=./rust/Cargo.toml --target-dir $(TARGET_DIR) @TARGET@
+	MACOSX_DEPLOYMENT_TARGET=11.0 cargo run @CRAN_FLAGS@ --bin document --manifest-path=./rust/Cargo.toml --target-dir $(TARGET_DIR) @TARGET@
 
 	# Always clean up CARGOTMP
 	rm -Rf $(CARGOTMP);

@@ -1,6 +1,7 @@
 # GEDI L1B waveforms: from raw returns to height above ground
 
 ``` r
+
 library(spacelaser)
 suppressPackageStartupMessages(library(dplyr))
 library(ggplot2)
@@ -39,6 +40,7 @@ ellipsoid”, “height above SRTM”, and “height above detected ground” is
 dramatic enough to be visually obvious.
 
 ``` r
+
 bbox <- sl_bbox(-124.04, 41.39, -124.01, 41.42)
 
 dates <- list(start = "2020-06-01", end = "2020-09-01")
@@ -51,16 +53,17 @@ over the shared bbox. Restrict to a single granule per product to keep
 the vignette snappy; remove the `[1L, ]` for the full pipeline.
 
 ``` r
+
 g_l1b <- sl_search(bbox, product = "L1B",
                    date_start = dates$start, date_end = dates$end)
 #> ℹ Searching CMR for GEDI L1B granules
-#> ✔ Searching CMR for GEDI L1B granules [2.1s]
+#> ✔ Searching CMR for GEDI L1B granules [551ms]
 #> 
 #> ✔ Found 1 GEDI L1B granule.
 g_l2a <- sl_search(bbox, product = "L2A",
                    date_start = dates$start, date_end = dates$end)
 #> ℹ Searching CMR for GEDI L2A granules
-#> ✔ Searching CMR for GEDI L2A granules [2s]
+#> ✔ Searching CMR for GEDI L2A granules [249ms]
 #> 
 #> ✔ Found 1 GEDI L2A granule.
 
@@ -69,7 +72,7 @@ l1b <- sl_read(g_l1b[1L, ], bbox = bbox)
 #> ✔ Read 161 footprints from 6 beams.✔ Reading L1B from 1 granule [19.1s]
 l2a <- sl_read(g_l2a[1L, ], bbox = bbox)
 #> ℹ Reading L2A from 1 granule
-#> ✔ Read 159 footprints from 6 beams.✔ Reading L2A from 1 granule [14.4s]
+#> ✔ Read 159 footprints from 6 beams.✔ Reading L2A from 1 granule [15.2s]
 ```
 
 `l1b` carries the waveform (`rxwaveform`, already Gaussian-smoothed at
@@ -87,6 +90,7 @@ same bbox cover the same shots, so a plain inner join gives you
 waveforms and their detected ground elevations side by side.
 
 ``` r
+
 l1b_joined <- l1b |>
   inner_join(
     l2a |> select(shot_number, elev_lowestmode, quality_flag, sensitivity,
@@ -115,6 +119,7 @@ doesn’t know about L2A ground. Extract in ellipsoidal space (the
 default) and subtract `elev_lowestmode` per shot post-hoc.
 
 ``` r
+
 wf <- sl_extract_waveforms(
   l1b_joined,
   height_ref = "ellipsoid", 
@@ -154,6 +159,7 @@ what a single waveform actually contains. Pick a shot with a tall canopy
 L2A-derived structural metrics.
 
 ``` r
+
 tall_shot <- l1b_joined |>
   arrange(desc(rh95)) |>
   slice(5L) |>  # 5th tallest rh95 (avoids possible outliers at the very top)
@@ -212,6 +218,7 @@ The same machinery over a different shot looks very different. Pick one
 shot with low `rh95` and compare it to the tall one above.
 
 ``` r
+
 # tall_shot is already defined from the anatomy section above
 short_shot <- l1b_joined |>
   filter(rh95 < 15) |> slice(1L) |> pull(shot_number)
@@ -253,6 +260,7 @@ overlay the amplitude quantiles at each height so the composite reads as
 a structural profile rather than spaghetti.
 
 ``` r
+
 wf_quantiles <- wf |>
   filter(height_above_ground >= 0, height_above_ground <= 200) |>
   mutate(h_bin = round(height_above_ground)) |>
@@ -309,6 +317,7 @@ ground up) has been returned. With the waveforms zeroed on ground, we
 can compute it in-place and compare against L2A.
 
 ``` r
+
 # cumulative energy from ground up, per shot
 rh_custom <- wf |>
   filter(height_above_ground >= 0) |>       # ignore below-ground noise

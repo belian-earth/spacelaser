@@ -10,6 +10,7 @@ Requires a [Rust toolchain](https://www.rust-lang.org/tools/install)
 (cargo + rustc).
 
 ``` r
+
 # install.packages("pak")
 pak::pak("belian-earth/spacelaser")
 ```
@@ -31,6 +32,7 @@ Credentials can be supplied in any of the following ways:
   — the simplest option if you don’t already have a netrc set up:
 
 ``` r
+
 # install.packages("earthdatalogin")
 earthdatalogin::edl_netrc()
 ```
@@ -41,6 +43,7 @@ tools.
 ## Example with GEDI L2A
 
 ``` r
+
 library(spacelaser)
 
 bbox <- sl_bbox(-124.04, 41.39, -124.01, 41.42)
@@ -106,6 +109,7 @@ by spacelaser use the same two verbs
 only the product string and column names change.
 
 ``` r
+
 # ICESat-2 photon-level data — full column inventory
 sl_columns("ATL03", set = "all")
 #>                    lat_ph                    lon_ph                      h_ph 

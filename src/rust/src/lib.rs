@@ -10,6 +10,7 @@ pub mod products;
 
 mod ffi;
 
+pub use ffi::get_spacelaser_metadata;
 pub use hdf5::file::Hdf5File;
 pub use hdf5::types::Datatype;
 pub use io::source::DataSource;

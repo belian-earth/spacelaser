@@ -65,10 +65,14 @@ returning a typed R vector
 A NASA Earthdata bearer token is required for any read that hits a
 DAAC endpoint. spacelaser reads it from the \code{EARTHDATA_TOKEN}
 environment variable and sends it as \code{Authorization: Bearer} to the
-DAAC. Mint a token with \code{\link[=generate_ed_token]{generate_ed_token()}} (or at
-\url{https://urs.earthdata.nasa.gov/}, Generate Token) and set it in
-\verb{~/.Renviron} as \verb{EARTHDATA_TOKEN=<token>}. Tokens expire after 60
-days; an expired token surfaces a clear error at read time.
+DAAC. Set it in \verb{~/.Renviron} as \verb{EARTHDATA_TOKEN=<token>}. Tokens
+expire after 60 days; an expired token surfaces a clear error at read
+time.
+\itemize{
+\item \code{\link[=generate_ed_token]{generate_ed_token()}} --- mint (or reuse) an Earthdata token from
+your username and password, optionally persisting it to
+\verb{~/.Renviron}
+}
 }
 
 \seealso{

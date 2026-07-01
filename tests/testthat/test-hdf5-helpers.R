@@ -4,9 +4,8 @@
 #
 # Both helpers require credentials resolution to succeed even when the
 # URL is file:// (the Rust side ignores creds for local files but the
-# R wrapper still calls sl_earthdata_creds() before dispatch). We set
-# fake env creds per test and reset the session cache so the resolution
-# is deterministic.
+# R wrapper still calls sl_earthdata_creds() before dispatch). We set a
+# fake token per test so the resolution is deterministic.
 
 fixture_path <- function(name) testthat::test_path("fixtures", name)
 
@@ -18,17 +17,6 @@ local_fake_creds <- function(.local_envir = parent.frame()) {
   withr::local_envvar(
     EARTHDATA_TOKEN = "dummy-token",
     .local_envir = .local_envir
-  )
-  if (exists("earthdata_creds", envir = spacelaser:::.sl_env, inherits = FALSE)) {
-    rm("earthdata_creds", envir = spacelaser:::.sl_env)
-  }
-  withr::defer(
-    {
-      if (exists("earthdata_creds", envir = spacelaser:::.sl_env, inherits = FALSE)) {
-        rm("earthdata_creds", envir = spacelaser:::.sl_env)
-      }
-    },
-    envir = .local_envir
   )
 }
 

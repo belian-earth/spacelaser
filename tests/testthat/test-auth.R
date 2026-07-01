@@ -3,19 +3,13 @@
 # ---------------------------------------------------------------------------
 #
 # Token-only auth. Exercises:
-#   1. EARTHDATA_TOKEN present -> resolved and cached
+#   1. EARTHDATA_TOKEN present -> resolved (and trimmed)
 #   2. EARTHDATA_TOKEN absent  -> sl_earthdata_creds() aborts with guidance
-#   3. session cache + sl_reset_auth()
+#   3. the env var is re-read on every call (no session cache)
 #   4. the ~/.Renviron writer used by generate_ed_token()
 #
-# All tests isolate env + the session-level cache so they run
-# deterministically regardless of the developer's real credentials.
-
-clear_creds_cache <- function() {
-  if (exists("earthdata_creds", envir = spacelaser:::.sl_env, inherits = FALSE)) {
-    rm("earthdata_creds", envir = spacelaser:::.sl_env)
-  }
-}
+# All tests isolate env vars so they run deterministically regardless of
+# the developer's real credentials.
 
 local_isolated_auth <- function(.local_envir = parent.frame()) {
   scratch <- withr::local_tempdir(.local_envir = .local_envir)
@@ -24,8 +18,6 @@ local_isolated_auth <- function(.local_envir = parent.frame()) {
     HOME = scratch,
     .local_envir = .local_envir
   )
-  clear_creds_cache()
-  withr::defer(clear_creds_cache(), envir = .local_envir)
   scratch
 }
 
@@ -45,17 +37,14 @@ test_that("missing token aborts with setup guidance", {
   )
 })
 
-test_that("token is cached, and sl_reset_auth() forces a re-read", {
+test_that("the token is re-read from the environment on every call", {
   local_isolated_auth()
-  withr::local_envvar(EARTHDATA_TOKEN = "first-token")
 
-  first <- spacelaser:::sl_earthdata_creds()
-  # Flip the env var — a fresh resolve would pick this up, but the cache
-  # should stick to the original value until reset.
+  Sys.setenv(EARTHDATA_TOKEN = "first-token")
+  expect_equal(spacelaser:::sl_earthdata_creds()$token, "first-token")
+
+  # An updated env var is picked up immediately, with no reset step.
   Sys.setenv(EARTHDATA_TOKEN = "second-token")
-  expect_equal(spacelaser:::sl_earthdata_creds()$token, first$token)
-
-  sl_reset_auth()
   expect_equal(spacelaser:::sl_earthdata_creds()$token, "second-token")
 })
 

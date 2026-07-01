@@ -1,6 +1,3 @@
-# Package-level environment for caching credentials within a session.
-.sl_env <- new.env(parent = emptyenv())
-
 #' Resolve a NASA Earthdata bearer token for data access.
 #'
 #' Returns the bearer token the Rust reader sends to NASA Earthdata. The token
@@ -8,30 +5,22 @@
 #' redirects to a presigned CloudFront/S3 URL. This is the sole authentication
 #' mechanism: no username/password or `.netrc` is used at read time.
 #'
-#' The token is read from the `EARTHDATA_TOKEN` environment variable. Mint one
-#' at <https://urs.earthdata.nasa.gov> (Generate Token), or with
+#' The token is read from the `EARTHDATA_TOKEN` environment variable on every
+#' call, so a token updated mid-session (e.g. via [generate_ed_token()] or
+#' `Sys.setenv()`) is picked up on the next read. Mint one at
+#' <https://urs.earthdata.nasa.gov> (Generate Token), or with
 #' [generate_ed_token()], then set it in `~/.Renviron` as
 #' `EARTHDATA_TOKEN=<token>`.
 #'
 #' Earthdata tokens expire after 60 days. An expired token surfaces as a clear
 #' error at read time telling you to mint a new one.
 #'
-#' Cached for the session after first resolution.
-#'
 #' @returns A list with a single element `token`.
 #' @noRd
 sl_earthdata_creds <- function() {
-  cached <- .sl_env$earthdata_creds
-  if (!is.null(cached)) {
-    return(cached)
-  }
-
-  token <- Sys.getenv("EARTHDATA_TOKEN", unset = "")
-  token <- trimws(token)
+  token <- trimws(Sys.getenv("EARTHDATA_TOKEN", unset = ""))
   if (nzchar(token)) {
-    creds <- list(token = token)
-    .sl_env$earthdata_creds <- creds
-    return(creds)
+    return(list(token = token))
   }
 
   cli::cli_abort(c(
@@ -41,18 +30,6 @@ sl_earthdata_creds <- function() {
     "i" = "or at {.url https://urs.earthdata.nasa.gov/} (Generate Token).",
     "i" = "Then add {.code EARTHDATA_TOKEN=<token>} to your {.file ~/.Renviron}."
   ))
-}
-
-#' Clear the cached Earthdata token for the current session.
-#'
-#' Call after updating `EARTHDATA_TOKEN` (e.g. following an expiry) so the next
-#' read re-reads the environment instead of using the stale cached value.
-#'
-#' @returns Invisibly `NULL`.
-#' @export
-sl_reset_auth <- function() {
-  .sl_env$earthdata_creds <- NULL
-  invisible(NULL)
 }
 
 #' Generate a NASA Earthdata bearer token
@@ -102,7 +79,6 @@ generate_ed_token <- function(
   token <- ed_token_reuse_or_create(username, password, new = new)
 
   Sys.setenv(EARTHDATA_TOKEN = token)
-  sl_reset_auth()
 
   cli::cli_alert_success(
     "Retrieved a NASA Earthdata token and set {.envvar EARTHDATA_TOKEN} for this R session."

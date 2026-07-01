@@ -44,3 +44,7 @@ reference:
   contents:
   - sl_hdf5_groups
   - sl_hdf5_read
+- title: Authentication
+  desc: Mint a NASA Earthdata bearer token for authenticated reads.
+  contents:
+  - generate_ed_token

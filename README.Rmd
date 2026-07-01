@@ -61,10 +61,10 @@ EARTHDATA_TOKEN=<your token>
 ```
 
 Tokens are valid for 60 days. When one expires, reads fail with a clear
-message; run `generate_ed_token()` again to refresh it, then
-`sl_reset_auth()` (or restart R) to pick up the new value. By default an
-existing token is reused; pass `new = TRUE` to force a fresh one (NASA
-allows two tokens per account).
+message; run `generate_ed_token()` again to refresh it, and the new value
+is picked up on the next read. By default an existing token is reused;
+pass `new = TRUE` to force a fresh one (NASA allows two tokens per
+account).
 
 ## Example with GEDI L2A
 

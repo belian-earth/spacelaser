@@ -56,23 +56,11 @@ the vignette snappy; remove the `[1L, ]` for the full pipeline.
 
 g_l1b <- sl_search(bbox, product = "L1B",
                    date_start = dates$start, date_end = dates$end)
-#> ℹ Searching CMR for GEDI L1B granules
-#> ✔ Searching CMR for GEDI L1B granules [551ms]
-#> 
-#> ✔ Found 1 GEDI L1B granule.
 g_l2a <- sl_search(bbox, product = "L2A",
                    date_start = dates$start, date_end = dates$end)
-#> ℹ Searching CMR for GEDI L2A granules
-#> ✔ Searching CMR for GEDI L2A granules [249ms]
-#> 
-#> ✔ Found 1 GEDI L2A granule.
 
 l1b <- sl_read(g_l1b[1L, ], bbox = bbox)
-#> ℹ Reading L1B from 1 granule
-#> ✔ Read 161 footprints from 6 beams.✔ Reading L1B from 1 granule [19.1s]
 l2a <- sl_read(g_l2a[1L, ], bbox = bbox)
-#> ℹ Reading L2A from 1 granule
-#> ✔ Read 159 footprints from 6 beams.✔ Reading L2A from 1 granule [15.2s]
 ```
 
 `l1b` carries the waveform (`rxwaveform`, already Gaussian-smoothed at
@@ -104,7 +92,6 @@ l1b_joined <- l1b |>
   )
 
 nrow(l1b_joined)
-#> [1] 157
 ```
 
 Quality filtering matters: L1B will happily hand you waveforms from
@@ -195,8 +182,6 @@ ggplot(wf_one, aes(amplitude, height_above_ground)) +
   theme_minimal()
 ```
 
-![](gedi-l1b-waveforms_files/figure-html/single-shot-1.png)
-
 Things to notice:
 
 - The **strong peak at 0 m** is where L2A detected ground — that’s why
@@ -245,8 +230,6 @@ ggplot(wf_pair, aes(amplitude, height_above_ground)) +
   ) +
   theme_minimal()
 ```
-
-![](gedi-l1b-waveforms_files/figure-html/two-shots-1.png)
 
 The short shot (open ground or low vegetation) is dominated by a single
 ground peak with almost no energy above a 10 metres. The tall shot has
@@ -298,11 +281,7 @@ ggplot() +
     subtitle = "Individual shots (green paths), 10-90% amplitude range (ribbon), median (line)"
   ) +
   theme_minimal()
-#> Don't know how to automatically pick scale for object of type <integer64>.
-#> Defaulting to continuous.
 ```
-
-![](gedi-l1b-waveforms_files/figure-html/composite-1.png)
 
 The **median line** is the “typical” waveform for this bbox: a sharp
 peak at ground, a secondary peak near median canopy height, decaying
@@ -329,14 +308,6 @@ rh_custom <- wf |>
     rh95_ours = approx(cum_energy, height_above_ground, xout = 0.95)$y,
     .groups = "drop"
   )
-#> Warning: There were 4 warnings in `summarise()`.
-#> The first warning was:
-#> ℹ In argument: `rh50_ours = approx(cum_energy, height_above_ground, xout =
-#>   0.5)$y`.
-#> ℹ In group 100: `shot_number = 90690600300513532`.
-#> Caused by warning in `regularize.values()`:
-#> ! collapsing to unique 'x' values
-#> ℹ Run `dplyr::last_dplyr_warnings()` to see the 3 remaining warnings.
 
 comparison <- l1b_joined |>
   select(shot_number, rh50, rh95) |>
@@ -348,8 +319,6 @@ ggplot(comparison, aes(rh95, rh95_ours)) +
   coord_equal() +
   labs(x = "L2A rh95 (m)", y = "Custom rh95 (m)")
 ```
-
-![](gedi-l1b-waveforms_files/figure-html/rh-custom-1.png)
 
 If the points hug the 1:1 line, our simple-minded cumulative-energy RH95
 agrees with L2A’s more principled version. Disagreements identify shots

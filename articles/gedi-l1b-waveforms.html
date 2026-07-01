@@ -18,8 +18,8 @@
     }
   };
 </script><script src="../deps/jquery-3.6.0/jquery-3.6.0.min.js"></script><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-<link href="../deps/bootstrap-5.3.1/bootstrap.min.css" rel="stylesheet">
-<script src="../deps/bootstrap-5.3.1/bootstrap.bundle.min.js"></script><link href="../deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
+<link href="../deps/bootstrap-5.3.8/bootstrap.min.css" rel="stylesheet">
+<script src="../deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="../deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="../deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
 <script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="../pkgdown.js"></script><meta property="og:title" content="GEDI L1B waveforms: from raw returns to height above ground">
 </head>
@@ -126,23 +126,11 @@ for the full pipeline.</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">g_l1b</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sl_search.html">sl_search</a></span><span class="op">(</span><span class="va">bbox</span>, product <span class="op">=</span> <span class="st">"L1B"</span>,</span>
 <span>                   date_start <span class="op">=</span> <span class="va">dates</span><span class="op">$</span><span class="va">start</span>, date_end <span class="op">=</span> <span class="va">dates</span><span class="op">$</span><span class="va">end</span><span class="op">)</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Searching CMR for GEDI L1B granules</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Searching CMR for GEDI L1B granules <span style="color: #B2B2B2;">[551ms]</span></span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Found 1 GEDI L1B granule.</span></span>
 <span><span class="va">g_l2a</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sl_search.html">sl_search</a></span><span class="op">(</span><span class="va">bbox</span>, product <span class="op">=</span> <span class="st">"L2A"</span>,</span>
 <span>                   date_start <span class="op">=</span> <span class="va">dates</span><span class="op">$</span><span class="va">start</span>, date_end <span class="op">=</span> <span class="va">dates</span><span class="op">$</span><span class="va">end</span><span class="op">)</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Searching CMR for GEDI L2A granules</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Searching CMR for GEDI L2A granules <span style="color: #B2B2B2;">[249ms]</span></span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Found 1 GEDI L2A granule.</span></span>
 <span></span>
 <span><span class="va">l1b</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sl_read.html">sl_read</a></span><span class="op">(</span><span class="va">g_l1b</span><span class="op">[</span><span class="fl">1L</span>, <span class="op">]</span>, bbox <span class="op">=</span> <span class="va">bbox</span><span class="op">)</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Reading L1B from 1 granule</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Read 161 footprints from 6 beams.<span style="color: #00BB00;">✔</span> Reading L1B from 1 granule <span style="color: #B2B2B2;">[19.1s]</span></span></span>
-<span><span class="va">l2a</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sl_read.html">sl_read</a></span><span class="op">(</span><span class="va">g_l2a</span><span class="op">[</span><span class="fl">1L</span>, <span class="op">]</span>, bbox <span class="op">=</span> <span class="va">bbox</span><span class="op">)</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Reading L2A from 1 granule</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> Read 159 footprints from 6 beams.<span style="color: #00BB00;">✔</span> Reading L2A from 1 granule <span style="color: #B2B2B2;">[15.2s]</span></span></span></code></pre></div>
+<span><span class="va">l2a</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sl_read.html">sl_read</a></span><span class="op">(</span><span class="va">g_l2a</span><span class="op">[</span><span class="fl">1L</span>, <span class="op">]</span>, bbox <span class="op">=</span> <span class="va">bbox</span><span class="op">)</span></span></code></pre></div>
 <p><code>l1b</code> carries the waveform (<code>rxwaveform</code>,
 already Gaussian-smoothed at the L1B processing stage) and its
 structural metadata (<code>elevation_bin0</code>,
@@ -174,8 +162,7 @@ side.</p>
 <span>    <span class="va">solar_elevation</span> <span class="op">&lt;</span> <span class="fl">0</span>  <span class="co"># night shots for cleaner returns</span></span>
 <span>  <span class="op">)</span></span>
 <span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">l1b_joined</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 157</span></span></code></pre></div>
+<span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">l1b_joined</span><span class="op">)</span></span></code></pre></div>
 <p>Quality filtering matters: L1B will happily hand you waveforms from
 shots L2A flagged as low-sensitivity (e.g. dense cloud cover, high solar
 contamination). Keep only the shots where L2A trusts its own ground
@@ -259,7 +246,6 @@ height, annotated with the L2A-derived structural metrics.</p>
 <span>                    <span class="va">meta_one</span><span class="op">$</span><span class="va">rh95</span><span class="op">)</span></span>
 <span>  <span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
-<p><img src="gedi-l1b-waveforms_files/figure-html/single-shot-1.png" class="r-plt" alt="" width="480"></p>
 <p>Things to notice:</p>
 <ul>
 <li>The <strong>strong peak at 0 m</strong> is where L2A detected ground
@@ -312,7 +298,6 @@ above.</p>
 <span>    y <span class="op">=</span> <span class="st">"Height above detected ground (m)"</span></span>
 <span>  <span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
-<p><img src="gedi-l1b-waveforms_files/figure-html/two-shots-1.png" class="r-plt" alt="" width="672"></p>
 <p>The short shot (open ground or low vegetation) is dominated by a
 single ground peak with almost no energy above a 10 metres. The tall
 shot has clear canopy structure: a ground return at zero plus a broad
@@ -361,10 +346,7 @@ as a structural profile rather than spaghetti.</p>
 <span>    title    <span class="op">=</span> <span class="st">"L1B waveforms over PNW coastal redwood"</span>,</span>
 <span>    subtitle <span class="op">=</span> <span class="st">"Individual shots (green paths), 10-90% amplitude range (ribbon), median (line)"</span></span>
 <span>  <span class="op">)</span> <span class="op">+</span></span>
-<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Don't know how to automatically pick scale for object of type <span style="color: #0000BB;">&lt;integer64&gt;</span>.</span></span>
-<span><span class="co">#&gt; Defaulting to continuous.</span></span></code></pre></div>
-<p><img src="gedi-l1b-waveforms_files/figure-html/composite-1.png" class="r-plt" alt="" width="480"></p>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
 <p>The <strong>median line</strong> is the “typical” waveform for this
 bbox: a sharp peak at ground, a secondary peak near median canopy
 height, decaying returns above it. The <strong>10-90 % ribbon</strong>
@@ -391,14 +373,6 @@ L2A.</p>
 <span>    rh95_ours <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/approxfun.html" class="external-link">approx</a></span><span class="op">(</span><span class="va">cum_energy</span>, <span class="va">height_above_ground</span>, xout <span class="op">=</span> <span class="fl">0.95</span><span class="op">)</span><span class="op">$</span><span class="va">y</span>,</span>
 <span>    .groups <span class="op">=</span> <span class="st">"drop"</span></span>
 <span>  <span class="op">)</span></span>
-<span><span class="co">#&gt; Warning: There were 4 warnings in `summarise()`.</span></span>
-<span><span class="co">#&gt; The first warning was:</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> In argument: `rh50_ours = approx(cum_energy, height_above_ground, xout =</span></span>
-<span><span class="co">#&gt;   0.5)$y`.</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> In group 100: `shot_number = 90690600300513532`.</span></span>
-<span><span class="co">#&gt; Caused by warning in `regularize.values()`:</span></span>
-<span><span class="co">#&gt; <span style="color: #BBBB00;">!</span> collapsing to unique 'x' values</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Run `dplyr::last_dplyr_warnings()` to see the 3 remaining warnings.</span></span>
 <span></span>
 <span><span class="va">comparison</span> <span class="op">&lt;-</span> <span class="va">l1b_joined</span> <span class="op">|&gt;</span></span>
 <span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/select.html" class="external-link">select</a></span><span class="op">(</span><span class="va">shot_number</span>, <span class="va">rh50</span>, <span class="va">rh95</span><span class="op">)</span> <span class="op">|&gt;</span></span>
@@ -409,7 +383,6 @@ L2A.</p>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/geom_point.html" class="external-link">geom_point</a></span><span class="op">(</span>alpha <span class="op">=</span> <span class="fl">0.4</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/coord_fixed.html" class="external-link">coord_equal</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>x <span class="op">=</span> <span class="st">"L2A rh95 (m)"</span>, y <span class="op">=</span> <span class="st">"Custom rh95 (m)"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="gedi-l1b-waveforms_files/figure-html/rh-custom-1.png" class="r-plt" alt="" width="672"></p>
 <p>If the points hug the 1:1 line, our simple-minded cumulative-energy
 RH95 agrees with L2A’s more principled version. Disagreements identify
 shots where L2A’s noise thresholding, smoothing, or algorithm selection

@@ -38,3 +38,10 @@ Explore arbitrary datasets in a remote HDF5 file.
   : List groups in a remote HDF5 file
 - [`sl_hdf5_read()`](https://belian-earth.github.io/spacelaser/reference/sl_hdf5_read.md)
   : Read a single dataset from a remote HDF5 file
+
+## Authentication
+
+Mint a NASA Earthdata bearer token for authenticated reads.
+
+- [`generate_ed_token()`](https://belian-earth.github.io/spacelaser/reference/generate_ed_token.md)
+  : Generate a NASA Earthdata bearer token

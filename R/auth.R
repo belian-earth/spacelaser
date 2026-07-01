@@ -110,7 +110,7 @@ generate_ed_token <- function(
   if (isTRUE(set_renviron)) {
     path <- write_renviron_token(token)
     cli::cli_alert_success(
-      "Saved it to {.file {path}} — it will load automatically in new sessions."
+      "Saved it to {.file {path}}; it will load automatically in new sessions."
     )
   } else {
     cli::cli_alert_info(

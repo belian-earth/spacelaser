@@ -62,12 +62,13 @@ returning a typed R vector
 
 \section{Authentication}{
 
-NASA Earthdata credentials are required for any read that hits a
-DAAC endpoint. spacelaser resolves them from, in order,
-\code{EARTHDATA_USERNAME} + \code{EARTHDATA_PASSWORD} environment variables
-or a \code{.netrc} file (via \code{GDAL_HTTP_NETRC_FILE} or \verb{~/.netrc}).
-Register at \url{https://urs.earthdata.nasa.gov/} and set up with
-\code{earthdatalogin::edl_netrc()} if preferred.
+A NASA Earthdata bearer token is required for any read that hits a
+DAAC endpoint. spacelaser reads it from the \code{EARTHDATA_TOKEN}
+environment variable and sends it as \code{Authorization: Bearer} to the
+DAAC. Mint a token with \code{\link[=generate_ed_token]{generate_ed_token()}} (or at
+\url{https://urs.earthdata.nasa.gov/}, Generate Token) and set it in
+\verb{~/.Renviron} as \verb{EARTHDATA_TOKEN=<token>}. Tokens expire after 60
+days; an expired token surfaces a clear error at read time.
 }
 
 \seealso{
@@ -81,6 +82,11 @@ Useful links:
 }
 \author{
 \strong{Maintainer}: Hugh Graham \email{hugh@belian.earth}
+
+Authors:
+\itemize{
+  \item Hugh Graham \email{hugh@belian.earth}
+}
 
 Other contributors:
 \itemize{

@@ -23,7 +23,6 @@ Imports:
     wk
 Suggests:
     dplyr,
-    earthdatalogin,
     ggplot2,
     httptest2,
     knitr,
@@ -34,8 +33,8 @@ Config/rextendr/version: 0.5.0
 Config/testthat/edition: 3
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.3
 SystemRequirements: Cargo (Rust's package manager), rustc
 URL: https://github.com/belian-earth/spacelaser, https://belian-earth.github.io/spacelaser/
 BugReports: https://github.com/belian-earth/spacelaser/issues
 VignetteBuilder: knitr
+Config/roxygen2/version: 8.0.0

@@ -14,29 +14,29 @@ rust_is_debug <- function() .Call(wrap__rust_is_debug)
 
 #' Read GEDI data from a remote HDF5 file with spatial subsetting.
 #' @noRd
-rust_read_gedi <- function(url, product, xmin, ymin, xmax, ymax, columns, beams, username, password, pool_columns, transposed_columns) .Call(wrap__rust_read_gedi, url, product, xmin, ymin, xmax, ymax, columns, beams, username, password, pool_columns, transposed_columns)
+rust_read_gedi <- function(url, product, xmin, ymin, xmax, ymax, columns, beams, token, pool_columns, transposed_columns) .Call(wrap__rust_read_gedi, url, product, xmin, ymin, xmax, ymax, columns, beams, token, pool_columns, transposed_columns)
 
 #' Read ICESat-2 data from a remote HDF5 file with spatial subsetting.
 #' @noRd
-rust_read_icesat2 <- function(url, product, xmin, ymin, xmax, ymax, columns, tracks, username, password, pool_columns, transposed_columns) .Call(wrap__rust_read_icesat2, url, product, xmin, ymin, xmax, ymax, columns, tracks, username, password, pool_columns, transposed_columns)
+rust_read_icesat2 <- function(url, product, xmin, ymin, xmax, ymax, columns, tracks, token, pool_columns, transposed_columns) .Call(wrap__rust_read_icesat2, url, product, xmin, ymin, xmax, ymax, columns, tracks, token, pool_columns, transposed_columns)
 
 #' Read GEDI data from multiple remote HDF5 files concurrently.
 #'
 #' All files are processed in parallel within a single async runtime.
 #' Returns a list of per-file results (each is a list of beam data).
 #' @noRd
-rust_read_gedi_multi <- function(urls, product, xmin, ymin, xmax, ymax, columns, beams, username, password, pool_columns, transposed_columns) .Call(wrap__rust_read_gedi_multi, urls, product, xmin, ymin, xmax, ymax, columns, beams, username, password, pool_columns, transposed_columns)
+rust_read_gedi_multi <- function(urls, product, xmin, ymin, xmax, ymax, columns, beams, token, pool_columns, transposed_columns) .Call(wrap__rust_read_gedi_multi, urls, product, xmin, ymin, xmax, ymax, columns, beams, token, pool_columns, transposed_columns)
 
 #' Read ICESat-2 data from multiple remote HDF5 files concurrently.
 #' @noRd
-rust_read_icesat2_multi <- function(urls, product, xmin, ymin, xmax, ymax, columns, tracks, username, password, pool_columns, transposed_columns) .Call(wrap__rust_read_icesat2_multi, urls, product, xmin, ymin, xmax, ymax, columns, tracks, username, password, pool_columns, transposed_columns)
+rust_read_icesat2_multi <- function(urls, product, xmin, ymin, xmax, ymax, columns, tracks, token, pool_columns, transposed_columns) .Call(wrap__rust_read_icesat2_multi, urls, product, xmin, ymin, xmax, ymax, columns, tracks, token, pool_columns, transposed_columns)
 
 #' List available groups in an HDF5 file (for exploration).
 #' @noRd
-rust_hdf5_groups <- function(url, path, username, password) .Call(wrap__rust_hdf5_groups, url, path, username, password)
+rust_hdf5_groups <- function(url, path, token) .Call(wrap__rust_hdf5_groups, url, path, token)
 
 #' Read a single dataset from an HDF5 file and return raw bytes + metadata.
 #' @noRd
-rust_hdf5_dataset <- function(url, dataset_path, username, password) .Call(wrap__rust_hdf5_dataset, url, dataset_path, username, password)
+rust_hdf5_dataset <- function(url, dataset_path, token) .Call(wrap__rust_hdf5_dataset, url, dataset_path, token)
 
 # nolint end

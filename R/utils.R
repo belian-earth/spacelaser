@@ -485,8 +485,7 @@ call_rust_reader <- function(rust_fn, target, product, params) {
     params$bbox[["ymax"]],
     params$scalar_cols,
     NULL,
-    params$creds$username,
-    params$creds$password,
+    params$creds$token,
     if (length(params$pool_specs) > 0L) params$pool_specs else NULL,
     if (length(params$transposed_specs) > 0L) params$transposed_specs else NULL
   )

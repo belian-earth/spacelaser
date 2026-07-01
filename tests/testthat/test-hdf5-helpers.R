@@ -16,8 +16,7 @@ fixture_url <- function(name) {
 
 local_fake_creds <- function(.local_envir = parent.frame()) {
   withr::local_envvar(
-    EARTHDATA_USERNAME = "dummy",
-    EARTHDATA_PASSWORD = "dummy",
+    EARTHDATA_TOKEN = "dummy-token",
     .local_envir = .local_envir
   )
   if (exists("earthdata_creds", envir = spacelaser:::.sl_env, inherits = FALSE)) {

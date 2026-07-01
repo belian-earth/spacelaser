@@ -33,24 +33,28 @@ pak::pak("belian-earth/spacelaser")
 All reads go through NASA Earthdata, which requires a free account.
 Register at <https://urs.earthdata.nasa.gov/>.
 
-Credentials can be supplied in any of the following ways:
-
-- **Environment variables** — set `EARTHDATA_USERNAME` and
-  `EARTHDATA_PASSWORD`. Convenient for CI and shell sessions.
-
-- **A `.netrc` file** — add an entry for `urs.earthdata.nasa.gov` to
-  `~/.netrc` (or `_netrc` on Windows). spacelaser will read it directly.
-
-- [**`earthdatalogin`**](https://boettiger-lab.github.io/earthdatalogin/)
-  — the simplest option if you don’t already have a netrc set up:
+spacelaser authenticates with a **bearer token**, read from the
+`EARTHDATA_TOKEN` environment variable. Mint one with
+`generate_ed_token()`, which uses your Earthdata username and password
+to request a token from NASA and can persist it to `~/.Renviron`:
 
 ``` r
-# install.packages("earthdatalogin")
-earthdatalogin::edl_netrc()
+# One-time setup. Reads EARTHDATA_USERNAME / EARTHDATA_PASSWORD,
+# or pass username = / password = explicitly.
+spacelaser::generate_ed_token(set_renviron = TRUE)
 ```
 
-This writes a netrc for you and is interoperable with other R Earthdata
-tools.
+Alternatively, generate a token manually at
+<https://urs.earthdata.nasa.gov/> (Generate Token) and add it to
+`~/.Renviron`:
+
+    EARTHDATA_TOKEN=<your token>
+
+Tokens are valid for 60 days. When one expires, reads fail with a clear
+message; run `generate_ed_token()` again to refresh it, then
+`sl_reset_auth()` (or restart R) to pick up the new value. By default an
+existing token is reused; pass `new = TRUE` to force a fresh one (NASA
+allows two tokens per account).
 
 ## Example with GEDI L2A
 
@@ -66,27 +70,27 @@ granules <- sl_search(
   date_end = "2023-01-01"
 )
 #> ℹ Searching CMR for GEDI L2A granules
-#> ✔ Searching CMR for GEDI L2A granules [2.9s]
+#> ✔ Searching CMR for GEDI L2A granules [686ms]
 #> 
 #> ✔ Found 9 GEDI L2A granules.
 gedi2a <- sl_read(granules)
 #> ℹ Reading L2A from 9 granules
-#> ✔ Read 647 footprints from 20 beams.✔ Reading L2A from 9 granules [1m 2.3s]
+#> ✔ Read 647 footprints from 20 beams.✔ Reading L2A from 9 granules [42.9s]
 
 gedi2a
 #> # A tibble: 647 × 121
 #>    beam     shot_number time                lat_lowestmode lon_lowestmode
 #>    <chr>        <int64> <dttm>                       <dbl>          <dbl>
-#>  1 BEAM1000       2.e17 2022-11-25 06:16:52           41.4          -124.
-#>  2 BEAM1000       2.e17 2022-11-25 06:16:52           41.4          -124.
-#>  3 BEAM1000       2.e17 2022-11-25 06:16:52           41.4          -124.
-#>  4 BEAM1000       2.e17 2022-11-25 06:16:52           41.4          -124.
-#>  5 BEAM1000       2.e17 2022-11-25 06:16:53           41.4          -124.
-#>  6 BEAM1011       2.e17 2022-11-25 06:16:52           41.4          -124.
-#>  7 BEAM1011       2.e17 2022-11-25 06:16:52           41.4          -124.
-#>  8 BEAM1011       2.e17 2022-11-25 06:16:52           41.4          -124.
-#>  9 BEAM1011       2.e17 2022-11-25 06:16:52           41.4          -124.
-#> 10 BEAM1011       2.e17 2022-11-25 06:16:52           41.4          -124.
+#>  1 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
+#>  2 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
+#>  3 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
+#>  4 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
+#>  5 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
+#>  6 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
+#>  7 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
+#>  8 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
+#>  9 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
+#> 10 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
 #> # ℹ 637 more rows
 #> # ℹ 116 more variables: degrade_flag <int>, quality_flag <int>,
 #> #   sensitivity <dbl>, solar_elevation <dbl>, elev_lowestmode <dbl>,

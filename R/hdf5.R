@@ -23,8 +23,7 @@ sl_hdf5_groups <- function(url, path = "/") {
   rust_hdf5_groups(
     url = url,
     path = path,
-    username = creds$username,
-    password = creds$password
+    token = creds$token
   )
 }
 
@@ -58,8 +57,7 @@ sl_hdf5_read <- function(url, dataset) {
   result <- rust_hdf5_dataset(
     url = url,
     dataset_path = dataset,
-    username = creds$username,
-    password = creds$password
+    token = creds$token
   )
 
   parse_column(result$data, result$info)

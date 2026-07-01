@@ -29,9 +29,9 @@ skip_unless_integration <- function() {
   }
 }
 
-#' Same as `skip_unless_integration()`, but also requires Earthdata
-#' credentials. Use for tests that authenticate against URS/DAAC
-#' endpoints; pure CMR probes should call the base helper instead.
+#' Same as `skip_unless_integration()`, but also requires an Earthdata
+#' bearer token. Use for tests that authenticate against DAAC endpoints;
+#' pure CMR probes should call the base helper instead.
 #' @noRd
 skip_if_no_earthdata <- function() {
   skip_unless_integration()
@@ -41,7 +41,7 @@ skip_if_no_earthdata <- function() {
   )
   testthat::skip_if(
     is.null(creds),
-    "No Earthdata credentials (set EARTHDATA_USERNAME/PASSWORD or ~/.netrc)"
+    "No Earthdata token (set EARTHDATA_TOKEN)"
   )
 }
 

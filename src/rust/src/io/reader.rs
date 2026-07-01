@@ -87,6 +87,14 @@ pub enum IoError {
     #[error("HTTP {status}: {url}")]
     HttpStatus { status: u16, url: String },
 
+    #[error(
+        "NASA Earthdata rejected the bearer token (HTTP 401). \
+         The token in EARTHDATA_TOKEN is invalid or has expired \
+         (Earthdata tokens last 60 days). Mint a fresh one at \
+         https://urs.earthdata.nasa.gov (Generate Token) and update EARTHDATA_TOKEN."
+    )]
+    AuthExpired,
+
     #[error("Local file I/O error: {0}")]
     LocalIo(#[from] std::io::Error),
 
@@ -156,12 +164,10 @@ impl Default for ReaderConfig {
 /// Adjacent block fetches are coalesced into single HTTP requests, and
 /// multiple coalesced ranges are fetched in parallel.
 ///
-/// For NASA Earthdata URLs, the reader handles the multi-step OAuth
-/// redirect flow:
-///   1. GET data URL → 302 to `urs.earthdata.nasa.gov/oauth/authorize`
-///   2. GET URS with Basic auth → 302 back to data URL (sets cookies)
-///   3. GET data URL with cookies → 302 to CloudFront presigned URL
-///   4. GET CloudFront URL → 206 data
+/// For NASA Earthdata URLs, the reader handles the bearer-token redirect
+/// flow:
+///   1. GET data URL with `Authorization: Bearer` → 303 to CloudFront presigned URL
+///   2. GET CloudFront URL (no auth header) → 206 data
 ///
 /// The final CloudFront URL is cached for subsequent Range requests.
 pub struct Reader {
@@ -205,8 +211,9 @@ impl Reader {
             .no_gzip()
             .no_brotli()
             .no_deflate()
-            // Disable automatic redirects — we follow them manually to inject
-            // Basic auth at the URS OAuth step while keeping cookies flowing.
+            // Disable automatic redirects — we follow them manually so the
+            // bearer token is sent to NASA hosts but stripped before the
+            // presigned CloudFront/S3 hop.
             .redirect(reqwest::redirect::Policy::none())
             // Enable the cookie store so session cookies from URS are
             // automatically sent on subsequent requests in the redirect chain.
@@ -475,12 +482,10 @@ impl Reader {
 
     /// Send a GET request following redirects manually.
     ///
-    /// Handles the NASA Earthdata OAuth redirect flow:
-    ///   - At `urs.earthdata.nasa.gov`: sends Basic auth credentials
-    ///   - At other `.nasa.gov` domains: sends request with cookies (no auth)
-    ///   - At non-NASA domains (S3/CloudFront): no auth, no cookies needed
-    ///
-    /// The reqwest cookie store maintains session cookies across the chain.
+    /// Handles the NASA Earthdata bearer-token redirect flow:
+    ///   - At `.nasa.gov` domains: sends `Authorization: Bearer <token>`
+    ///   - At non-NASA domains (S3/CloudFront): no auth header (a stray
+    ///     Authorization header can break the presigned request signature)
     ///
     /// Returns the response and the final URL it was fetched from.
     async fn send_with_redirects(
@@ -512,10 +517,14 @@ impl Reader {
                 }
             }
 
-            // Send Basic auth only at the URS OAuth endpoint.
+            // Authenticate with the bearer token, sent as `Authorization:
+            // Bearer` to NASA hosts only — never forwarded to the presigned
+            // CloudFront/S3 target, where a stray Authorization header can
+            // break the request signature. The DAAC validates the token
+            // server-side and 303-redirects straight to the presigned URL.
             if let Some(creds) = auth {
-                if current_url.contains("urs.earthdata.nasa.gov") {
-                    request = request.basic_auth(&creds.username, Some(&creds.password));
+                if current_url.contains("nasa.gov") {
+                    request = request.bearer_auth(&creds.token);
                 }
             }
 
@@ -587,6 +596,12 @@ impl Reader {
             .await?;
 
         let status = response.status();
+        if status == reqwest::StatusCode::UNAUTHORIZED {
+            // A 401 while resolving means the DAAC rejected our bearer token.
+            // Retrying is futile — the token is invalid or expired — so fail
+            // fast with an actionable message instead of looping.
+            return Err(IoError::AuthExpired);
+        }
         if !status.is_success() && status != reqwest::StatusCode::PARTIAL_CONTENT {
             return Err(IoError::HttpStatus {
                 status: status.as_u16(),
@@ -692,12 +707,16 @@ impl Reader {
                 return Err(IoError::RangeNotSupported);
             }
 
-            // If the presigned URL expired (403) or auth failed (401),
-            // invalidate the cache and retry with a fresh redirect resolution.
-            if (status == reqwest::StatusCode::FORBIDDEN
-                || status == reqwest::StatusCode::UNAUTHORIZED)
-                && attempt < MAX_RETRIES
-            {
+            // A 401 is an auth failure: the bearer token is invalid or
+            // expired. Retrying cannot help, so fail fast with an actionable
+            // message.
+            if status == reqwest::StatusCode::UNAUTHORIZED {
+                return Err(IoError::AuthExpired);
+            }
+
+            // If the presigned URL expired (403), invalidate the cache and
+            // retry with a fresh redirect resolution.
+            if status == reqwest::StatusCode::FORBIDDEN && attempt < MAX_RETRIES {
                 self.invalidate_resolved_url();
                 last_error = Some(IoError::HttpStatus {
                     status: status.as_u16(),

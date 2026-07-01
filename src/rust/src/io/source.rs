@@ -1,10 +1,17 @@
 use std::path::PathBuf;
 
-/// NASA Earthdata credentials for Basic auth in the OAuth redirect flow.
+/// NASA Earthdata bearer-token credential for authenticating protected DAAC
+/// reads.
+///
+/// The `token` (from `EARTHDATA_TOKEN`, resolved on the R side) is sent as
+/// `Authorization: Bearer` to the NASA DAAC host. The DAAC validates it
+/// server-side and 303-redirects straight to a presigned CloudFront/S3 URL;
+/// the token is never forwarded to that presigned target. Tokens expire (NASA
+/// EDL tokens last 60 days); an invalid or expired token yields a 401 at the
+/// DAAC, surfaced as [`super::reader::IoError::AuthExpired`].
 #[derive(Debug, Clone)]
 pub struct EarthdataAuth {
-    pub username: String,
-    pub password: String,
+    pub token: String,
 }
 
 /// Describes where an HDF5 file is located.
@@ -29,17 +36,17 @@ impl DataSource {
         }
     }
 
-    /// Create an HTTP source with Earthdata credentials.
-    pub fn http_with_auth(
-        url: impl Into<String>,
-        username: impl Into<String>,
-        password: impl Into<String>,
-    ) -> Self {
+    /// Create an HTTP source authenticated with a NASA Earthdata bearer token.
+    ///
+    /// The token is resolved from `EARTHDATA_TOKEN` on the R side and passed in
+    /// explicitly, so the R session's view of the environment is the single
+    /// source of truth (no independent env read here that could diverge from
+    /// it).
+    pub fn http_with_token(url: impl Into<String>, token: impl Into<String>) -> Self {
         DataSource::Http {
             url: url.into(),
             auth: Some(EarthdataAuth {
-                username: username.into(),
-                password: password.into(),
+                token: token.into(),
             }),
         }
     }

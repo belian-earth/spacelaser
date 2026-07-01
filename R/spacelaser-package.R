@@ -36,12 +36,16 @@
 #'   returning a typed R vector
 #'
 #' @section Authentication:
-#' NASA Earthdata credentials are required for any read that hits a
-#' DAAC endpoint. spacelaser resolves them from, in order,
-#' `EARTHDATA_USERNAME` + `EARTHDATA_PASSWORD` environment variables
-#' or a `.netrc` file (via `GDAL_HTTP_NETRC_FILE` or `~/.netrc`).
-#' Register at <https://urs.earthdata.nasa.gov/> and set up with
-#' `earthdatalogin::edl_netrc()` if preferred.
+#' A NASA Earthdata bearer token is required for any read that hits a
+#' DAAC endpoint. spacelaser reads it from the `EARTHDATA_TOKEN`
+#' environment variable and sends it as `Authorization: Bearer` to the
+#' DAAC. Set it in `~/.Renviron` as `EARTHDATA_TOKEN=<token>`. Tokens
+#' expire after 60 days; an expired token surfaces a clear error at read
+#' time.
+#'
+#' - [generate_ed_token()] --- mint (or reuse) an Earthdata token from
+#'   your username and password, optionally persisting it to
+#'   `~/.Renviron`
 #'
 #' @keywords internal
 "_PACKAGE"

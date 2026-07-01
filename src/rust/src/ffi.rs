@@ -73,17 +73,15 @@ fn runtime() -> tokio::runtime::Runtime {
 /// The Local route is for synthetic test fixtures and local HDF5 caches; it
 /// shares the full reader pipeline with the HTTP route, so parser correctness
 /// tests can exercise the real code paths without a network.
-fn make_source(url: &str, username: Nullable<&str>, password: Nullable<&str>) -> DataSource {
+fn make_source(url: &str, token: Nullable<&str>) -> DataSource {
     if let Some(path) = url.strip_prefix("file://") {
         return DataSource::local(path);
     }
     if !(url.starts_with("http://") || url.starts_with("https://")) {
         return DataSource::local(url);
     }
-    match (username, password) {
-        (Nullable::NotNull(u), Nullable::NotNull(p)) => {
-            DataSource::http_with_auth(url, u, p)
-        }
+    match token {
+        Nullable::NotNull(t) if !t.is_empty() => DataSource::http_with_token(url, t),
         _ => DataSource::http(url),
     }
 }
@@ -352,13 +350,12 @@ fn rust_read_gedi(
     ymax: f64,
     columns: Nullable<Vec<String>>,
     beams: Nullable<Vec<String>>,
-    username: Nullable<&str>,
-    password: Nullable<&str>,
+    token: Nullable<&str>,
     pool_columns: Nullable<Vec<String>>,
     transposed_columns: Nullable<Vec<String>>,
 ) -> extendr_api::Result<List> {
     let rt = runtime();
-    let source = make_source(url, username, password);
+    let source = make_source(url, token);
 
     let product_type = match product {
         "L1B" | "l1b" => GediProduct::L1B,
@@ -405,13 +402,12 @@ fn rust_read_icesat2(
     ymax: f64,
     columns: Nullable<Vec<String>>,
     tracks: Nullable<Vec<String>>,
-    username: Nullable<&str>,
-    password: Nullable<&str>,
+    token: Nullable<&str>,
     pool_columns: Nullable<Vec<String>>,
     transposed_columns: Nullable<Vec<String>>,
 ) -> extendr_api::Result<List> {
     let rt = runtime();
-    let source = make_source(url, username, password);
+    let source = make_source(url, token);
 
     let product_type = match product {
         "ATL03" | "atl03" => IceSat2Product::ATL03,
@@ -454,11 +450,10 @@ fn rust_read_icesat2(
 fn rust_hdf5_groups(
     url: &str,
     path: &str,
-    username: Nullable<&str>,
-    password: Nullable<&str>,
+    token: Nullable<&str>,
 ) -> extendr_api::Result<Vec<String>> {
     let rt = runtime();
-    let source = make_source(url, username, password);
+    let source = make_source(url, token);
 
     crate::io::reader::reset_request_counter();
     let result = rt.block_on(async {
@@ -478,11 +473,10 @@ fn rust_hdf5_groups(
 fn rust_hdf5_dataset(
     url: &str,
     dataset_path: &str,
-    username: Nullable<&str>,
-    password: Nullable<&str>,
+    token: Nullable<&str>,
 ) -> extendr_api::Result<List> {
     let rt = runtime();
-    let source = make_source(url, username, password);
+    let source = make_source(url, token);
 
     crate::io::reader::reset_request_counter();
     let result = rt.block_on(async {
@@ -523,8 +517,7 @@ fn rust_read_gedi_multi(
     ymax: f64,
     columns: Nullable<Vec<String>>,
     beams: Nullable<Vec<String>>,
-    username: Nullable<&str>,
-    password: Nullable<&str>,
+    token: Nullable<&str>,
     pool_columns: Nullable<Vec<String>>,
     transposed_columns: Nullable<Vec<String>>,
 ) -> extendr_api::Result<List> {
@@ -545,9 +538,11 @@ fn rust_read_gedi_multi(
     let pool = match pool_columns { Nullable::NotNull(p) => Some(p), Nullable::Null => None };
     let trans = match transposed_columns { Nullable::NotNull(t) => Some(t), Nullable::Null => None };
 
-    // Extract auth strings so they can be shared across closures.
-    let user = match username { Nullable::NotNull(u) => Some(u.to_string()), Nullable::Null => None };
-    let pass = match password { Nullable::NotNull(p) => Some(p.to_string()), Nullable::Null => None };
+    // Extract the bearer token so it can be shared across closures.
+    let token = match token {
+        Nullable::NotNull(t) if !t.is_empty() => Some(t.to_string()),
+        _ => None,
+    };
 
     crate::io::reader::reset_request_counter();
     let t_start = std::time::Instant::now();
@@ -560,9 +555,9 @@ fn rust_read_gedi_multi(
 
         let results: Vec<_> = stream::iter(urls.iter())
             .map(|url| {
-                let source = match (&user, &pass) {
-                    (Some(u), Some(p)) => DataSource::http_with_auth(url, u, p),
-                    _ => DataSource::http(url),
+                let source = match &token {
+                    Some(t) => DataSource::http_with_token(url, t),
+                    None => DataSource::http(url),
                 };
                 let cols = cols.clone();
                 let bms = bms.clone();
@@ -622,8 +617,7 @@ fn rust_read_icesat2_multi(
     ymax: f64,
     columns: Nullable<Vec<String>>,
     tracks: Nullable<Vec<String>>,
-    username: Nullable<&str>,
-    password: Nullable<&str>,
+    token: Nullable<&str>,
     pool_columns: Nullable<Vec<String>>,
     transposed_columns: Nullable<Vec<String>>,
 ) -> extendr_api::Result<List> {
@@ -646,8 +640,11 @@ fn rust_read_icesat2_multi(
     let pool = match pool_columns { Nullable::NotNull(p) => Some(p), Nullable::Null => None };
     let trans = match transposed_columns { Nullable::NotNull(t) => Some(t), Nullable::Null => None };
 
-    let user = match username { Nullable::NotNull(u) => Some(u.to_string()), Nullable::Null => None };
-    let pass = match password { Nullable::NotNull(p) => Some(p.to_string()), Nullable::Null => None };
+    // Extract the bearer token so it can be shared across closures.
+    let token = match token {
+        Nullable::NotNull(t) if !t.is_empty() => Some(t.to_string()),
+        _ => None,
+    };
 
     crate::io::reader::reset_request_counter();
     let all_groups = rt.block_on(async {
@@ -655,9 +652,9 @@ fn rust_read_icesat2_multi(
 
         let results: Vec<_> = stream::iter(urls.iter())
             .map(|url| {
-                let source = match (&user, &pass) {
-                    (Some(u), Some(p)) => DataSource::http_with_auth(url, u, p),
-                    _ => DataSource::http(url),
+                let source = match &token {
+                    Some(t) => DataSource::http_with_token(url, t),
+                    None => DataSource::http(url),
                 };
                 let cols = cols.clone();
                 let trks = trks.clone();

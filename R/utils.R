@@ -780,7 +780,11 @@ read_product <- function(
 #' Read multiple granules concurrently via Rust.
 #'
 #' All URLs are passed to a single Rust function that processes them in
-#' parallel within one async runtime.
+#' parallel within one async runtime. Granules that still fail after the
+#' Rust side's retries are reported: if every granule failed the read is an
+#' error (an empty result would otherwise read as "no footprints in the
+#' box"); otherwise a warning, and the result carries them in the
+#' `failed_granules` attribute (a data frame of `url` and `error`).
 #' @noRd
 read_product_multi <- function(
   urls,
@@ -805,7 +809,24 @@ read_product_multi <- function(
 
   cli::cli_progress_step("Reading {product} from {length(urls)} granule{?s}")
   raw_result <- call_rust_reader(rust_multi_fn, urls, product, params)
-  assemble_read_result(
+  failed <- data.frame(
+    url = as.character(attr(raw_result, "failed_urls")),
+    error = as.character(attr(raw_result, "failed_errors"))
+  )
+  if (nrow(failed) == length(urls)) {
+    cli::cli_abort(c(
+      "All {length(urls)} granule{?s} failed to read.",
+      "i" = "First error: {failed$error[1]}"
+    ))
+  }
+  if (nrow(failed) > 0L) {
+    cli::cli_warn(c(
+      "!" = "{nrow(failed)} of {length(urls)} granule{?s} failed to read after retries; the result omits them.",
+      "i" = "First error: {failed$error[1]}",
+      "i" = "The failed granules are in {.code attr(x, \"failed_granules\")}."
+    ))
+  }
+  out <- assemble_read_result(
     raw_result, bbox, lat_col, lon_col, group_label, element_label,
     params$pool_short, params$pool_idx_map,
     params$fill_values, params$scale_factors,
@@ -813,6 +834,8 @@ read_product_multi <- function(
     transposed_specs = params$transposed_specs,
     convert_time = convert_time
   )
+  attr(out, "failed_granules") <- failed
+  out
 }
 
 # ---------------------------------------------------------------------------

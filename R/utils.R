@@ -425,9 +425,9 @@ check_bbox_within <- function(inner, outer, call = rlang::caller_env()) {
 #' Returns a list consumed by `read_product` / `read_product_multi`.
 #' @noRd
 prepare_read_params <- function(product, bbox, columns, lat_col, lon_col,
-                                needs_creds = TRUE) {
+                                needs_creds = TRUE, urls = NULL) {
   bbox <- validate_bbox(bbox)
-  columns <- validate_columns(columns, product)
+  columns <- validate_columns(columns, column_product(product, urls))
   # Capture the user's requested column set (after default-resolution
   # but before lat/lon and pool-index augmentation) as short names, for
   # downstream column reordering. Anything in the output that's NOT in
@@ -764,10 +764,10 @@ read_product <- function(
   convert_time = TRUE
 ) {
   params <- prepare_read_params(product, bbox, columns, lat_col, lon_col,
-                                needs_creds = is_remote_url(url))
+                                needs_creds = is_remote_url(url), urls = url)
   cli::cli_progress_step("Reading {product} from {.url {basename(url)}}")
   raw_result <- call_rust_reader(rust_fn, url, product, params)
-  assemble_read_result(
+  out <- assemble_read_result(
     raw_result, bbox, lat_col, lon_col, group_label, element_label,
     params$pool_short, params$pool_idx_map,
     params$fill_values, params$scale_factors,
@@ -775,6 +775,8 @@ read_product <- function(
     transposed_specs = params$transposed_specs,
     convert_time = convert_time
   )
+  warn_missing_columns(out, params$user_columns)
+  out
 }
 
 #' Read multiple granules concurrently via Rust.
@@ -805,7 +807,7 @@ read_product_multi <- function(
   }
 
   params <- prepare_read_params(product, bbox, columns, lat_col, lon_col,
-                                needs_creds = any(is_remote_url(urls)))
+                                needs_creds = any(is_remote_url(urls)), urls = urls)
 
   cli::cli_progress_step("Reading {product} from {length(urls)} granule{?s}")
   raw_result <- call_rust_reader(rust_multi_fn, urls, product, params)
@@ -835,7 +837,31 @@ read_product_multi <- function(
     convert_time = convert_time
   )
   attr(out, "failed_granules") <- failed
+  warn_missing_columns(out, params$user_columns)
   out
+}
+
+#' Warn about requested columns a read did not return.
+#'
+#' A dataset absent from the granules (a variable renamed between product
+#' versions, say) is skipped by the reader; without this the column would
+#' simply be missing. Expanded columns count as returned when any of
+#' their parts is (rh0, rh1, ...; surface_type_land, ...), and delta_time
+#' when it was converted to time.
+#' @noRd
+warn_missing_columns <- function(out, user_columns) {
+  if (!nrow(out)) return(invisible())
+  got <- names(out)
+  missing <- user_columns[!vapply(user_columns, function(col)
+    col %in% got || any(grepl(paste0("^", col, "([0-9]+|_[a-z_]+)$"), got)) ||
+      (col == "delta_time" && "time" %in% got), TRUE)]
+  if (length(missing)) {
+    cli::cli_warn(c(
+      "!" = "{length(missing)} requested column{?s} {?is/are} not in the granules and {?was/were} not read: {.val {missing}}.",
+      "i" = "See {.fn sl_columns} for this product version's variables."
+    ))
+  }
+  invisible()
 }
 
 # ---------------------------------------------------------------------------

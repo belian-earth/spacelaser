@@ -7,7 +7,8 @@
 sl_columns(
   product = c("L2A", "L2B", "L4A", "L4C", "L1B", "ATL03", "ATL06", "ATL07", "ATL08",
     "ATL10", "ATL13", "ATL24"),
-  set = c("all", "default")
+  set = c("all", "default"),
+  version = NULL
 )
 }
 \arguments{
@@ -26,6 +27,10 @@ geophysical corrections, instrument details, and pool columns.
 variables, quality flags, and context columns. This is what
 \code{\link[=sl_read]{sl_read()}} returns when \code{columns} is not specified.
 }}
+
+\item{version}{Character or \code{NULL}. For L4A, \code{"3"} (the default) or
+\code{"2.1"}, whose variables differ; see \code{\link[=sl_search]{sl_search()}}. \code{\link[=sl_read]{sl_read()}} picks
+the version from the granule file names.}
 }
 \value{
 A named character vector.

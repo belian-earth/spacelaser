@@ -16,6 +16,7 @@
 use extendr_api::prelude::*;
 
 use crate::hdf5::file::Hdf5File;
+use crate::io::batch::{read_granules, SigpipeGuard};
 use crate::io::source::DataSource;
 use crate::products::common::GroupData;
 use crate::products::gedi::{self, GediProduct};
@@ -61,6 +62,17 @@ fn runtime() -> tokio::runtime::Runtime {
         .enable_all()
         .build()
         .expect("Failed to create tokio runtime")
+}
+
+/// R list of the per-group results, with the granules that failed after
+/// the retries attached as attributes `failed_urls` and `failed_errors`.
+fn groups_with_failures(groups: Vec<GroupData>, failed: Vec<(String, String)>, fill_vals: &[f64]) -> List {
+    let lists: Vec<List> = groups.into_iter().map(|gd| group_data_to_list(gd, fill_vals)).collect();
+    let mut out = List::from_values(lists);
+    let (urls, errors): (Vec<String>, Vec<String>) = failed.into_iter().unzip();
+    out.set_attrib("failed_urls", urls).unwrap();
+    out.set_attrib("failed_errors", errors).unwrap();
+    out
 }
 
 /// Build a `DataSource` from URL/path and optional Earthdata credentials.
@@ -354,6 +366,7 @@ fn rust_read_gedi(
     pool_columns: Nullable<Vec<String>>,
     transposed_columns: Nullable<Vec<String>>,
 ) -> extendr_api::Result<List> {
+    let _sigpipe = SigpipeGuard::new();
     let rt = runtime();
     let source = make_source(url, token);
 
@@ -406,6 +419,7 @@ fn rust_read_icesat2(
     pool_columns: Nullable<Vec<String>>,
     transposed_columns: Nullable<Vec<String>>,
 ) -> extendr_api::Result<List> {
+    let _sigpipe = SigpipeGuard::new();
     let rt = runtime();
     let source = make_source(url, token);
 
@@ -452,6 +466,7 @@ fn rust_hdf5_groups(
     path: &str,
     token: Nullable<&str>,
 ) -> extendr_api::Result<Vec<String>> {
+    let _sigpipe = SigpipeGuard::new();
     let rt = runtime();
     let source = make_source(url, token);
 
@@ -475,6 +490,7 @@ fn rust_hdf5_dataset(
     dataset_path: &str,
     token: Nullable<&str>,
 ) -> extendr_api::Result<List> {
+    let _sigpipe = SigpipeGuard::new();
     let rt = runtime();
     let source = make_source(url, token);
 
@@ -521,6 +537,7 @@ fn rust_read_gedi_multi(
     pool_columns: Nullable<Vec<String>>,
     transposed_columns: Nullable<Vec<String>>,
 ) -> extendr_api::Result<List> {
+    let _sigpipe = SigpipeGuard::new();
     let rt = runtime();
 
     let product_type = match product {
@@ -547,47 +564,27 @@ fn rust_read_gedi_multi(
     crate::io::reader::reset_request_counter();
     let t_start = std::time::Instant::now();
 
-    // Process granules with bounded concurrency (4 at a time) to avoid
-    // overwhelming the server.  Each granule internally runs its beams and
-    // columns concurrently, so 4 granules is already a high request fan-out.
-    let all_groups = rt.block_on(async {
-        use futures::stream::{self, StreamExt};
-
-        let results: Vec<_> = stream::iter(urls.iter())
-            .map(|url| {
-                let source = match &token {
-                    Some(t) => DataSource::http_with_token(url, t),
-                    None => DataSource::http(url),
-                };
-                let cols = cols.clone();
-                let bms = bms.clone();
-                let pool = pool.clone();
-                let trans = trans.clone();
-                async move {
-                    let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
-                    gedi::read_gedi(&file, product_type, bbox, cols, bms, pool, trans)
-                        .await
-                        .map_err(|e| e.to_string())
-                }
-            })
-            // Up from 4. Multi-granule reads are dominated by HTTP
-            // round-trips; bumping concurrency lets us saturate NASA
-            // DAAC endpoints more completely on fast connections.
-            .buffer_unordered(8)
-            .collect()
-            .await;
-
-        let mut all_groups = Vec::new();
-        for result in results {
-            match result {
-                Ok(groups) => all_groups.extend(groups),
-                Err(e) => {
-                    log::warn!("File read failed: {}", e);
-                }
-            }
+    // Process granules with bounded concurrency to avoid overwhelming the
+    // server; each granule internally runs its beams and columns
+    // concurrently. Granules that fail are retried (read_granules).
+    let (all_groups, failed) = rt.block_on(read_granules(&urls, |url| {
+        // Same routing as the single-granule readers: local paths and
+        // file:// URLs read from disk, http(s) URLs over the network.
+        let source = match &token {
+            Some(t) => make_source(&url, Nullable::NotNull(t.as_str())),
+            None => make_source(&url, Nullable::Null),
+        };
+        let cols = cols.clone();
+        let bms = bms.clone();
+        let pool = pool.clone();
+        let trans = trans.clone();
+        async move {
+            let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
+            gedi::read_gedi(&file, product_type, bbox, cols, bms, pool, trans)
+                .await
+                .map_err(|e| e.to_string())
         }
-        all_groups
-    });
+    }));
 
     let (req_count, byte_count) = crate::io::reader::request_counter();
     log::info!(
@@ -601,8 +598,7 @@ fn rust_read_gedi_multi(
     );
 
     let fill_vals = fill_values_for_product(product);
-    let lists: Vec<List> = all_groups.into_iter().map(|gd| group_data_to_list(gd, &fill_vals)).collect();
-    Ok(List::from_values(lists))
+    Ok(groups_with_failures(all_groups, failed, &fill_vals))
 }
 
 /// Read ICESat-2 data from multiple remote HDF5 files concurrently.
@@ -621,6 +617,7 @@ fn rust_read_icesat2_multi(
     pool_columns: Nullable<Vec<String>>,
     transposed_columns: Nullable<Vec<String>>,
 ) -> extendr_api::Result<List> {
+    let _sigpipe = SigpipeGuard::new();
     let rt = runtime();
 
     let product_type = match product {
@@ -647,48 +644,27 @@ fn rust_read_icesat2_multi(
     };
 
     crate::io::reader::reset_request_counter();
-    let all_groups = rt.block_on(async {
-        use futures::stream::{self, StreamExt};
-
-        let results: Vec<_> = stream::iter(urls.iter())
-            .map(|url| {
-                let source = match &token {
-                    Some(t) => DataSource::http_with_token(url, t),
-                    None => DataSource::http(url),
-                };
-                let cols = cols.clone();
-                let trks = trks.clone();
-                let pool = pool.clone();
-                let trans = trans.clone();
-                async move {
-                    let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
-                    icesat2::read_icesat2(&file, product_type, bbox, cols, trks, pool, trans)
-                        .await
-                        .map_err(|e| e.to_string())
-                }
-            })
-            // Up from 4. Multi-granule reads are dominated by HTTP
-            // round-trips; bumping concurrency lets us saturate NASA
-            // DAAC endpoints more completely on fast connections.
-            .buffer_unordered(8)
-            .collect()
-            .await;
-
-        let mut all_groups = Vec::new();
-        for result in results {
-            match result {
-                Ok(groups) => all_groups.extend(groups),
-                Err(e) => {
-                    log::warn!("File read failed: {}", e);
-                }
-            }
+    let (all_groups, failed) = rt.block_on(read_granules(&urls, |url| {
+        // Same routing as the single-granule readers: local paths and
+        // file:// URLs read from disk, http(s) URLs over the network.
+        let source = match &token {
+            Some(t) => make_source(&url, Nullable::NotNull(t.as_str())),
+            None => make_source(&url, Nullable::Null),
+        };
+        let cols = cols.clone();
+        let trks = trks.clone();
+        let pool = pool.clone();
+        let trans = trans.clone();
+        async move {
+            let file = Hdf5File::open(source).await.map_err(|e| e.to_string())?;
+            icesat2::read_icesat2(&file, product_type, bbox, cols, trks, pool, trans)
+                .await
+                .map_err(|e| e.to_string())
         }
-        all_groups
-    });
+    }));
 
     let fill_vals = fill_values_for_product(product);
-    let lists: Vec<List> = all_groups.into_iter().map(|gd| group_data_to_list(gd, &fill_vals)).collect();
-    Ok(List::from_values(lists))
+    Ok(groups_with_failures(all_groups, failed, &fill_vals))
 }
 
 /// Returns true when this Rust crate was compiled with debug assertions

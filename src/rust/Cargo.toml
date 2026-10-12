@@ -42,6 +42,10 @@ log = "0.4"
 # Serialization for FFI data transfer
 serde_json = "1"
 
+# SIGPIPE disposition around network reads (see ffi.rs, SigpipeGuard)
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [profile.release]
 lto = true
 codegen-units = 1

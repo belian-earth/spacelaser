@@ -8,7 +8,8 @@ test_that("sl_columns() returns correct counts for GEDI products", {
   expect_length(sl_columns("L1B"), 81)
   expect_length(sl_columns("L2A"), 45)
   expect_length(sl_columns("L2B"), 76)
-  expect_length(sl_columns("L4A"), 39)
+  expect_length(sl_columns("L4A"), 45)
+  expect_length(sl_columns("L4A", version = "2.1"), 39)
   expect_length(sl_columns("L4C"), 40)
 })
 

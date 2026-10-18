@@ -416,9 +416,41 @@ test_that("L4A fixture: every registry column round-trips when requested", {
 
   data <- sl_read(fixture_path("gedi-l4a.h5"),
                   product = "L4A", bbox = fixture_bbox(),
-                  columns = names(sl_columns("L4A")))
+                  columns = names(sl_columns("L4A", version = "2.1")))
 
+  expect_registry_roundtrip(data, "L4A", version = "2.1")
+})
+
+test_that("L4A v3 fixture: the version comes from the file name and every v3 column round-trips", {
+  skip_if_not(file.exists(fixture_path("gedi-l4a_V003.h5")))
+
+  data <- sl_read(fixture_path("gedi-l4a_V003.h5"), product = "L4A", bbox = fixture_bbox())
+  expect_true(all(c("agbd", "l4a_quality_flag_rel3") %in% names(data)))
+
+  data <- sl_read(fixture_path("gedi-l4a_V003.h5"),
+                  product = "L4A", bbox = fixture_bbox(),
+                  columns = names(sl_columns("L4A")))
   expect_registry_roundtrip(data, "L4A")
+})
+
+test_that("a requested column missing from the granules is warned about", {
+  skip_if_not(file.exists(fixture_path("gedi-l4a.h5")))
+  # a v2.1 file read through a v3 file name: l4a_quality_flag_rel3 is
+  # in the v3 registry but not in this file
+  f <- file.path(withr::local_tempdir(), "gedi-l4a_V003.h5")
+  file.copy(fixture_path("gedi-l4a.h5"), f)
+  expect_warning(
+    data <- sl_read(f, product = "L4A", bbox = fixture_bbox(), columns = c("agbd", "l4a_quality_flag_rel3")),
+    "not in the granules"
+  )
+  expect_true("agbd" %in% names(data))
+})
+
+test_that("L4A granules of both versions cannot be read together", {
+  expect_error(spacelaser:::column_product("L4A", c("a_V002.h5", "b_V003.h5")), "mix GEDI L4A versions")
+  expect_identical(spacelaser:::column_product("L4A", "a_V003.h5"), "L4A_V3")
+  expect_identical(spacelaser:::column_product("L4A", "a_V002.h5"), "L4A")
+  expect_identical(spacelaser:::column_product("L2A", "a_V003.h5"), "L2A")
 })
 
 # ---------------------------------------------------------------------------

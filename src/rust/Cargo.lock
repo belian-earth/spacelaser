@@ -1027,6 +1027,7 @@ dependencies = [
  "extendr-api",
  "flate2",
  "futures",
+ "libc",
  "log",
  "lru",
  "reqwest",

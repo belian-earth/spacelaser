@@ -9,7 +9,8 @@ sl_search(
   product = c("L2A", "L2B", "L4A", "L4C", "L1B", "ATL03", "ATL06", "ATL07", "ATL08",
     "ATL10", "ATL13", "ATL24"),
   date_start = NULL,
-  date_end = NULL
+  date_end = NULL,
+  version = NULL
 )
 }
 \arguments{
@@ -35,6 +36,11 @@ falls on any of those 30 days.
 
 \code{date_start} defaults to the mission start (2019-03-25 for GEDI,
 2018-10-14 for ICESat-2). \code{date_end} defaults to today.}
+
+\item{version}{Character or \code{NULL}. Product version, for products
+published in more than one: GEDI L4A \code{"3"} (the default, released
+2026-06, shots from 2019-04-04 to 2025-07-10) or \code{"2.1"}. Must be
+\code{NULL} for every other product.}
 }
 \value{
 A classed data frame (\code{sl_gedi_search} or \code{sl_icesat2_search})

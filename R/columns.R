@@ -341,6 +341,59 @@
   urban_focal_window_size        = "land_cover_data/urban_focal_window_size",
   urban_proportion               = "land_cover_data/urban_proportion"
 )
+# L4A version 3 (2026) renames the quality flags (l2a_quality_flag_rel3,
+# l4a_quality_flag_rel3, l2_algrunflag), drops selected_mode and the
+# leaf-on/off dates, and adds degrade_include_flag, the infilled PFT,
+# phenology and WorldCover classes. Per-algorithm predictions
+# (agbd_prediction/agbd_a1 etc.) are read by raw path.
+# fmt: skip
+.gedi_l4a_v3_columns <- c(
+  lat_lowestmode                 = "lat_lowestmode",
+  lon_lowestmode                 = "lon_lowestmode",
+  lat_highestreturn              = "lat_highestreturn",
+  lon_highestreturn              = "lon_highestreturn",
+  beam                           = "beam",
+  shot_number                    = "shot_number",
+  channel                        = "channel",
+  delta_time                     = "delta_time",
+  master_frac                    = "master_frac",
+  master_int                     = "master_int",
+  stale_return_flag              = "geolocation/stale_return_flag",
+  l2_algrunflag                  = "l2_algrunflag",
+  degrade_flag                   = "degrade_flag",
+  degrade_include_flag           = "degrade_include_flag",
+  l2a_quality_flag_rel3          = "l2a_quality_flag_rel3",
+  l4a_quality_flag_rel3          = "l4a_quality_flag_rel3",
+  sensitivity                    = "sensitivity",
+  solar_elevation                = "solar_elevation",
+  surface_flag                   = "surface_flag",
+  agbd                           = "agbd",
+  agbd_pi_lower                  = "agbd_pi_lower",
+  agbd_pi_upper                  = "agbd_pi_upper",
+  agbd_se                        = "agbd_se",
+  agbd_t                         = "agbd_t",
+  agbd_t_se                      = "agbd_t_se",
+  elev_lowestmode                = "elev_lowestmode",
+  elev_highestreturn             = "elev_highestreturn",
+  elev_highestreturn_outlier_flag = "elev_highestreturn_outlier_flag",
+  digital_elevation_model        = "digital_elevation_model",
+  predict_stratum                = "predict_stratum",
+  predictor_limit_flag           = "predictor_limit_flag",
+  response_limit_flag            = "response_limit_flag",
+  selected_algorithm             = "selected_algorithm",
+  selected_mode_flag             = "selected_mode_flag",
+  landsat_treecover              = "land_cover_data/landsat_treecover",
+  landsat_water_persistence      = "land_cover_data/landsat_water_persistence",
+  leaf_off_flag                  = "land_cover_data/leaf_off_flag",
+  pft_class                      = "land_cover_data/pft_class",
+  pft_infilled_class             = "land_cover_data/pft_infilled_class",
+  phenology_phase                = "land_cover_data/phenology_phase",
+  phenology_year                 = "land_cover_data/phenology_year",
+  region_class                   = "land_cover_data/region_class",
+  urban_focal_window_size        = "land_cover_data/urban_focal_window_size",
+  urban_proportion               = "land_cover_data/urban_proportion",
+  worldcover_class               = "land_cover_data/worldcover_class"
+)
 # fmt: skip
 .gedi_l4c_columns <- c(
   lat_lowestmode                 = "lat_lowestmode",
@@ -698,6 +751,7 @@
   L2A = .gedi_l2a_columns,
   L2B = .gedi_l2b_columns,
   L4A = .gedi_l4a_columns,
+  L4A_V3 = .gedi_l4a_v3_columns,
   L4C = .gedi_l4c_columns
 )
 
@@ -756,6 +810,14 @@
 .gedi_l4a_default <- c(
   "shot_number", "beam", "delta_time",
   "l4_quality_flag", "degrade_flag", "sensitivity",
+  "agbd", "agbd_se", "agbd_pi_lower", "agbd_pi_upper",
+  "elev_lowestmode", "solar_elevation",
+  "landsat_treecover", "pft_class", "region_class"
+)
+# fmt: skip
+.gedi_l4a_v3_default <- c(
+  "shot_number", "beam", "delta_time",
+  "l4a_quality_flag_rel3", "degrade_flag", "sensitivity",
   "agbd", "agbd_se", "agbd_pi_lower", "agbd_pi_upper",
   "elev_lowestmode", "solar_elevation",
   "landsat_treecover", "pft_class", "region_class"
@@ -838,6 +900,7 @@
   L2A   = .gedi_l2a_default,
   L2B   = .gedi_l2b_default,
   L4A   = .gedi_l4a_default,
+  L4A_V3 = .gedi_l4a_v3_default,
   L4C   = .gedi_l4c_default,
   ATL03 = .icesat2_atl03_default,
   ATL06 = .icesat2_atl06_default,
@@ -874,6 +937,9 @@ product_default_columns <- function(product) {
 #'   * `"default"`: a curated subset of commonly useful science
 #'     variables, quality flags, and context columns. This is what
 #'     [sl_read()] returns when `columns` is not specified.
+#' @param version Character or `NULL`. For L4A, `"3"` (the default) or
+#'   `"2.1"`, whose variables differ; see [sl_search()]. [sl_read()] picks
+#'   the version from the granule file names.
 #' @returns A named character vector.
 #'
 #' @examples
@@ -883,10 +949,12 @@ product_default_columns <- function(product) {
 #' @export
 sl_columns <- function(
   product = c("L2A", "L2B", "L4A", "L4C", "L1B", "ATL03", "ATL06", "ATL07", "ATL08", "ATL10", "ATL13", "ATL24"),
-  set = c("all", "default")
+  set = c("all", "default"),
+  version = NULL
 ) {
   product <- rlang::arg_match(product)
   set <- rlang::arg_match(set)
+  product <- column_product(product, version = product_search_spec(product, version)$version)
   registry <- .gedi_column_registry[[product]] %||%
     .icesat2_column_registry[[product]]
   if (set == "default") {
@@ -900,6 +968,25 @@ sl_columns <- function(
 # ---------------------------------------------------------------------------
 # Internal: validation
 # ---------------------------------------------------------------------------
+
+#' The column-registry key for a product and version.
+#'
+#' L4A versions 2.1 and 3 differ in their variables, so each has its own
+#' registry. The version is the one given, else read from the granule file
+#' names (`_V002` or `_V003`); granules of both versions cannot be read
+#' together.
+#' @noRd
+column_product <- function(product, urls = NULL, version = NULL) {
+  if (product != "L4A") return(product)
+  if (is.null(version) && length(urls)) {
+    v3 <- grepl("_V003", basename(urls), fixed = TRUE)
+    if (any(v3) && !all(v3)) {
+      cli::cli_abort("These granules mix GEDI L4A versions; read version 3 and version 2.1 granules separately.")
+    }
+    version <- if (all(v3)) "3" else "2.1"
+  }
+  if (identical(version, "3")) "L4A_V3" else "L4A"
+}
 
 #' Validate and resolve column names to full HDF5 paths.
 #'

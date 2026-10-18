@@ -13,7 +13,8 @@ sl_search(
   product = c("L2A", "L2B", "L4A", "L4C", "L1B", "ATL03", "ATL06", "ATL07", "ATL08",
     "ATL10", "ATL13", "ATL24"),
   date_start = NULL,
-  date_end = NULL
+  date_end = NULL,
+  version = NULL
 )
 ```
 
@@ -48,6 +49,13 @@ sl_search(
 
   `date_start` defaults to the mission start (2019-03-25 for GEDI,
   2018-10-14 for ICESat-2). `date_end` defaults to today.
+
+- version:
+
+  Character or `NULL`. Product version, for products published in more
+  than one: GEDI L4A `"3"` (the default, released 2026-06, shots from
+  2019-04-04 to 2025-07-10) or `"2.1"`. Must be `NULL` for every other
+  product.
 
 ## Value
 

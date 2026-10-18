@@ -12,7 +12,8 @@ Values are the full HDF5 dataset paths.
 sl_columns(
   product = c("L2A", "L2B", "L4A", "L4C", "L1B", "ATL03", "ATL06", "ATL07", "ATL08",
     "ATL10", "ATL13", "ATL24"),
-  set = c("all", "default")
+  set = c("all", "default"),
+  version = NULL
 )
 ```
 
@@ -38,6 +39,14 @@ sl_columns(
     quality flags, and context columns. This is what
     [`sl_read()`](https://belian-earth.github.io/spacelaser/reference/sl_read.md)
     returns when `columns` is not specified.
+
+- version:
+
+  Character or `NULL`. For L4A, `"3"` (the default) or `"2.1"`, whose
+  variables differ; see
+  [`sl_search()`](https://belian-earth.github.io/spacelaser/reference/sl_search.md).
+  [`sl_read()`](https://belian-earth.github.io/spacelaser/reference/sl_read.md)
+  picks the version from the granule file names.
 
 ## Value
 

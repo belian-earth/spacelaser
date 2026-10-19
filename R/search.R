@@ -296,26 +296,30 @@ search_cmr <- function(bbox, concept_id, date_start, date_end, product_label) {
 
 #' Fetch JSON from a CMR URL with retry and timeout.
 #'
-#' Uses httr2 for connection reuse across pagination, exponential backoff
-#' on transient failures (CMR occasionally returns 5xx during peak hours),
-#' and structured HTTP error handling.
+#' Uses httr2 for connection reuse across pagination and the shared NASA
+#' retry policy (`req_nasa_retry()`): timeouts, 429 and 5xx are retried
+#' with capped backoff for up to `spacelaser.cmr_max_seconds`. A transient
+#' failure that outlasts the retries raises `spacelaser_upstream_error`.
 #' @noRd
 fetch_cmr_json <- function(request_url) {
+  call <- rlang::current_env()
+  host <- httr2::url_parse(request_url)$hostname
   req <- httr2::request(request_url) |>
-    httr2::req_timeout(30) |>
-    httr2::req_retry(
-      max_tries = 3,
-      backoff = function(i) 2^i
-    ) |>
+    httr2::req_timeout(nasa_request_timeout()) |>
+    req_nasa_retry() |>
     httr2::req_user_agent("spacelaser (github.com/belian-earth/spacelaser)")
 
   resp <- tryCatch(
     httr2::req_perform(req),
     error = function(e) {
-      cli::cli_abort(c(
-        "Failed to query NASA CMR.",
-        "i" = conditionMessage(e)
-      ))
+      detail <- conditionMessage(e)
+      msg <- c("Failed to query NASA CMR ({host}).", "i" = "{detail}")
+      if (is_transient_http_error(e)) {
+        status <- if (is.null(e$resp)) NA_integer_ else httr2::resp_status(e$resp)
+        abort_upstream(msg, service = "cmr", url = request_url,
+                       status = status, call = call)
+      }
+      cli::cli_abort(msg, call = call)
     }
   )
 

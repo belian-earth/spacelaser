@@ -176,3 +176,12 @@ test_that("Earthdata token GETs retry; POSTs do not, and fail as upstream errors
   expect_equal(err$status, 503L)
   expect_match(conditionMessage(err), "HTTP 503")
 })
+
+test_that("Retry-After is capped at 60 s and absent means the backoff", {
+  # httr2 checks the budget before each wait, so an uncapped header would
+  # sleep past it.
+  resp <- function(...) httr2::response(503L, headers = list(...))
+  expect_equal(nasa_retry_after(resp(`Retry-After` = "3600")), 60)
+  expect_equal(nasa_retry_after(resp(`Retry-After` = "5")), 5)
+  expect_true(is.na(nasa_retry_after(resp())))
+})

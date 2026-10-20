@@ -17,7 +17,9 @@ nasa_transient_status <- c(429L, 500L, 502L, 503L, 504L)
 #' Retries curl failures (timeouts, refused or reset connections) and the
 #' statuses in `nasa_transient_status`, with capped exponential backoff,
 #' for up to `nasa_retry_max_seconds()` in total. A `Retry-After` header
-#' on 429 or 503 takes precedence over the backoff.
+#' on 429 or 503 takes precedence over the backoff, capped at 60 s: httr2
+#' checks the budget before each wait, not after, so an uncapped header
+#' (`Retry-After: 3600`) would overrun it.
 #' @noRd
 req_nasa_retry <- function(req) {
   max_seconds <- nasa_retry_max_seconds()
@@ -31,7 +33,8 @@ req_nasa_retry <- function(req) {
     is_transient = function(resp) {
       httr2::resp_status(resp) %in% nasa_transient_status
     },
-    backoff = nasa_retry_backoff
+    backoff = nasa_retry_backoff,
+    after = nasa_retry_after
   )
 }
 
@@ -40,6 +43,14 @@ req_nasa_retry <- function(req) {
 #' @noRd
 nasa_retry_backoff <- function(i) {
   min(60, 2^i) + sample.int(1000L, 1L) / 1000
+}
+
+#' Seconds to wait from a `Retry-After` header, capped at 60; `NA` (no
+#' header) falls back to the backoff.
+#' @noRd
+nasa_retry_after <- function(resp) {
+  after <- httr2::resp_retry_after(resp)
+  if (is.na(after)) NA else min(after, 60)
 }
 
 #' Total retry budget in seconds, from the `spacelaser.cmr_max_seconds`

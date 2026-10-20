@@ -23,7 +23,7 @@ ATL03 / ATL06 / ATL07 / ATL08 / ATL10 / ATL13 / ATL24."><meta property="og:image
 
     <a class="navbar-brand me-2" href="../index.html">spacelaser</a>
 
-    <small class="nav-text text-danger me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Unreleased version">0.0.0.9000</small>
+    <small class="nav-text text-danger me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Unreleased version">0.0.0.9001</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -115,6 +115,18 @@ time.</p><ul><li><p><code><a href="generate_ed_token.html">generate_ed_token()</
 your username and password, optionally persisting it to
 <code>~/.Renviron</code></p></li>
 </ul></div>
+    <div class="section level2">
+    <h2 id="options">Options<a class="anchor" aria-label="anchor" href="#options"></a></h2>
+
+
+<p><code>spacelaser.cmr_max_seconds</code>: total time, in seconds, that a request to
+NASA CMR or the Earthdata token API keeps retrying after timeouts,
+connection failures and HTTP 429, 500, 502, 503 or 504. Default <code>600</code>.
+Retries back off exponentially, at most 60 s apart; <code>0</code> disables them.
+Token creation is never retried. A transient failure that remains raises
+an error of class <code>spacelaser_upstream_error</code>, with fields <code>service</code> (<code>"cmr"</code> or
+<code>"earthdata"</code>), <code>url</code> and <code>status</code> (<code>NA</code> for a connection failure).</p>
+    </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
     <div class="dont-index"><p>Useful links:</p><ul><li><p><a href="https://github.com/belian-earth/spacelaser" class="external-link">https://github.com/belian-earth/spacelaser</a></p></li>

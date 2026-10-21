@@ -20,23 +20,53 @@ nasa_transient_status <- c(429L, 500L, 502L, 503L, 504L)
 #' on 429 or 503 takes precedence over the backoff, capped at 60 s: httr2
 #' checks the budget before each wait, not after, so an uncapped header
 #' (`Retry-After: 3600`) would overrun it.
+#'
+#' With `retry_bad_request = TRUE` (CMR searches), a 400 is also retried
+#' up to `length(nasa_bad_request_delays())` times, after the delays that
+#' function gives. CMR has returned spurious 400s during incidents (on
+#' 2026-10-20 a granule search got a 400 that the identical query did not
+#' get 18 minutes later); a truly malformed query still fails within
+#' seconds. Other 4xx, and 400 from other services, are never retried.
 #' @noRd
-req_nasa_retry <- function(req) {
+req_nasa_retry <- function(req, retry_bad_request = FALSE) {
   max_seconds <- nasa_retry_max_seconds()
   if (max_seconds == 0) {
     return(req)
   }
+  # Per-request count of 400s retried. A new request object is built for
+  # every CMR call, so this state is never shared between calls.
+  state <- new.env(parent = emptyenv())
+  state$bad_requests <- 0L
   httr2::req_retry(
     req,
     max_seconds = max_seconds,
     retry_on_failure = TRUE,
     is_transient = function(resp) {
-      httr2::resp_status(resp) %in% nasa_transient_status
+      status <- httr2::resp_status(resp)
+      if (status %in% nasa_transient_status) {
+        return(TRUE)
+      }
+      if (retry_bad_request && status == 400L &&
+          state$bad_requests < length(nasa_bad_request_delays())) {
+        state$bad_requests <- state$bad_requests + 1L
+        return(TRUE)
+      }
+      FALSE
     },
     backoff = nasa_retry_backoff,
-    after = nasa_retry_after
+    after = function(resp) {
+      if (httr2::resp_status(resp) == 400L) {
+        return(nasa_bad_request_delays()[[state$bad_requests]])
+      }
+      nasa_retry_after(resp)
+    }
   )
 }
+
+#' Seconds to wait before each retry of a CMR 400; its length is the
+#' number of retries.
+#' @noRd
+nasa_bad_request_delays <- function() c(2, 5)
 
 #' Seconds to wait before retry `i`: 2^i capped at 60, plus up to 1 s of
 #' jitter so parallel workers do not retry in step.
@@ -89,16 +119,52 @@ is_transient_http_error <- function(e) {
 #' Carries class `spacelaser_upstream_error` with fields `service`
 #' ("cmr" or "earthdata"), `url` and `status` (the HTTP status, or `NA`
 #' for a curl failure), so callers can tell an outage from a bad request.
+#' Further fields (such as `cmr_errors`) go in `...`.
 #' @noRd
 abort_upstream <- function(message, service, url, status = NA_integer_,
-                           call = rlang::caller_env()) {
+                           ..., call = rlang::caller_env()) {
   cli::cli_abort(
     message,
     class = "spacelaser_upstream_error",
     service = service,
     url = url,
     status = status,
+    ...,
     call = call,
     .envir = parent.frame()
   )
+}
+
+#' Error text from a CMR error response.
+#'
+#' CMR error bodies are JSON such as
+#' `{"errors":["An Internal Error has occurred."]}`. Returns the `errors`
+#' entries as a character vector; for any other body, its whitespace-
+#' collapsed text cut to 300 characters; for no response or an empty
+#' body, `character()`.
+#' @noRd
+cmr_error_text <- function(resp) {
+  if (is.null(resp) || !httr2::resp_has_body(resp)) {
+    return(character())
+  }
+  body <- tryCatch(httr2::resp_body_string(resp), error = function(e) "")
+  body <- trimws(gsub("\\s+", " ", body))
+  if (!nzchar(body)) {
+    return(character())
+  }
+  json <- tryCatch(
+    httr2::resp_body_json(resp, check_type = FALSE, simplifyVector = FALSE),
+    error = function(e) NULL
+  )
+  if (is.list(json) && !is.null(json$errors)) {
+    errors <- as.character(unlist(json$errors, use.names = FALSE))
+    errors <- errors[nzchar(errors)]
+    if (length(errors) > 0L) {
+      return(errors)
+    }
+  }
+  if (nchar(body) > 300L) {
+    body <- paste0(substr(body, 1L, 297L), "...")
+  }
+  body
 }

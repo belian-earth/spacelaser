@@ -21,20 +21,38 @@
 #' so the live suite still runs there (single ubuntu runner).
 #'
 #' Local use: `Sys.setenv(SPACELASER_INTEGRATION = 1); devtools::test()`.
+#'
+#' Also sets a 60 s NASA retry budget for the calling test, so an outage
+#' ends in `spacelaser_upstream_error` within a minute instead of the
+#' default ten; `skip_if_nasa_down()` turns that into a skip.
 #' @noRd
-skip_unless_integration <- function() {
+skip_unless_integration <- function(.env = parent.frame()) {
   testthat::skip_on_cran()
   if (!nzchar(Sys.getenv("SPACELASER_INTEGRATION", unset = ""))) {
     testthat::skip("SPACELASER_INTEGRATION not set (integration tests are opt-in)")
   }
+  withr::local_options(spacelaser.cmr_max_seconds = 60, .local_envir = .env)
+}
+
+#' Evaluate `expr`, skipping the test if NASA CMR or Earthdata is
+#' unavailable (`spacelaser_upstream_error`), so a NASA outage does not
+#' fail CI.
+#' @noRd
+skip_if_nasa_down <- function(expr) {
+  tryCatch(expr, spacelaser_upstream_error = function(e) {
+    testthat::skip(sprintf(
+      "NASA %s is unavailable (status %s): %s",
+      e$service, e$status, e$url
+    ))
+  })
 }
 
 #' Same as `skip_unless_integration()`, but also requires an Earthdata
 #' bearer token. Use for tests that authenticate against DAAC endpoints;
 #' pure CMR probes should call the base helper instead.
 #' @noRd
-skip_if_no_earthdata <- function() {
-  skip_unless_integration()
+skip_if_no_earthdata <- function(.env = parent.frame()) {
+  skip_unless_integration(.env = .env)
   creds <- tryCatch(
     spacelaser:::sl_earthdata_creds(),
     error = function(e) NULL

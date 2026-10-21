@@ -84,6 +84,12 @@ Retries back off exponentially, at most 60 s apart; \code{0} disables them.
 Token creation is never retried. A transient failure that remains raises
 an error of class \code{spacelaser_upstream_error}, with fields \code{service} (\code{"cmr"} or
 \code{"earthdata"}), \code{url} and \code{status} (\code{NA} for a connection failure).
+A CMR search also retries an HTTP 400 twice, 2 s and then 5 s apart,
+since CMR has returned spurious 400s during incidents; a 400 that
+persists stays an unclassed error with \code{status} 400. A failed CMR
+request carries \code{service}, \code{url}, \code{status} and \code{cmr_errors}, the error
+text of CMR's response (\code{character()} when there is none), which is
+also shown in the message.
 }
 
 \seealso{

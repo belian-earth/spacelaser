@@ -298,28 +298,40 @@ search_cmr <- function(bbox, concept_id, date_start, date_end, product_label) {
 #'
 #' Uses httr2 for connection reuse across pagination and the shared NASA
 #' retry policy (`req_nasa_retry()`): timeouts, 429 and 5xx are retried
-#' with capped backoff for up to `spacelaser.cmr_max_seconds`. A transient
-#' failure that outlasts the retries raises `spacelaser_upstream_error`.
+#' with capped backoff for up to `spacelaser.cmr_max_seconds`, and a 400
+#' twice. A transient failure that outlasts the retries raises
+#' `spacelaser_upstream_error`; any other failure is an unclassed error.
+#' Both carry `service` ("cmr"), `url`, `status` (`NA` for a curl
+#' failure) and `cmr_errors`, the error text of CMR's response body
+#' (`character()` when there is none).
 #' @noRd
 fetch_cmr_json <- function(request_url) {
   call <- rlang::current_env()
   host <- httr2::url_parse(request_url)$hostname
   req <- httr2::request(request_url) |>
     httr2::req_timeout(nasa_request_timeout()) |>
-    req_nasa_retry() |>
+    req_nasa_retry(retry_bad_request = TRUE) |>
     httr2::req_user_agent("spacelaser (github.com/belian-earth/spacelaser)")
 
   resp <- tryCatch(
     httr2::req_perform(req),
     error = function(e) {
       detail <- conditionMessage(e)
+      resp <- if (inherits(e, "httr2_http")) e$resp
+      status <- if (is.null(resp)) NA_integer_ else httr2::resp_status(resp)
+      cmr_errors <- cmr_error_text(resp)
+      cmr_text <- paste(cmr_errors, collapse = "; ")
       msg <- c("Failed to query NASA CMR ({host}).", "i" = "{detail}")
-      if (is_transient_http_error(e)) {
-        status <- if (is.null(e$resp)) NA_integer_ else httr2::resp_status(e$resp)
-        abort_upstream(msg, service = "cmr", url = request_url,
-                       status = status, call = call)
+      if (length(cmr_errors) > 0L) {
+        msg <- c(msg, "i" = "CMR says: {cmr_text}")
       }
-      cli::cli_abort(msg, call = call)
+      if (is_transient_http_error(e)) {
+        abort_upstream(msg, service = "cmr", url = request_url,
+                       status = status, cmr_errors = cmr_errors,
+                       call = call)
+      }
+      cli::cli_abort(msg, service = "cmr", url = request_url,
+                     status = status, cmr_errors = cmr_errors, call = call)
     }
   )
 

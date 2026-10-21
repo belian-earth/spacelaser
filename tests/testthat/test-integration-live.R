@@ -16,7 +16,8 @@
 #
 # Skipped on CRAN. Also skipped locally when no Earthdata credentials
 # are configured, so running `devtools::test()` without an account
-# still succeeds.
+# still succeeds. A NASA outage (`spacelaser_upstream_error`, after a
+# 60 s retry budget) skips a test rather than failing it.
 
 test_that("GEDI L1B: live read end-to-end (auth + HTTPS + pool columns)", {
   # GEDI L1B exercises the most complex parts of the stack: LPCLOUD
@@ -26,14 +27,14 @@ test_that("GEDI L1B: live read end-to-end (auth + HTTPS + pool columns)", {
 
   bb <- test_bbox()
   dr <- test_date_range()
-  granules <- sl_search(bb, product = "L1B",
-                        date_start = dr$start, date_end = dr$end)
+  granules <- skip_if_nasa_down(sl_search(bb, product = "L1B",
+                                          date_start = dr$start, date_end = dr$end))
   if (nrow(granules) == 0L) {
     skip("No live L1B granules in test bbox/date range")
   }
   granules <- granules[1L, ]  # one granule is enough for smoke
 
-  data <- sl_read(granules)
+  data <- skip_if_nasa_down(sl_read(granules))
 
   expect_valid_read(
     data, bb,
@@ -66,15 +67,15 @@ test_that("ICESat-2 ATL08: live read end-to-end (NSIDC auth + nested subgroups)"
 
   bb <- test_bbox_icesat2()
   dr <- test_date_range_icesat2()
-  granules <- sl_search(bb, product = "ATL08",
-                        date_start = dr$start, date_end = dr$end)
+  granules <- skip_if_nasa_down(sl_search(bb, product = "ATL08",
+                                          date_start = dr$start, date_end = dr$end))
   if (nrow(granules) == 0L) {
     skip("No live ATL08 granules in test bbox/date range")
   }
   # Limit to a handful so the read stays quick
   if (nrow(granules) > 5L) granules <- granules[1:5, ]
 
-  data <- sl_read(granules)
+  data <- skip_if_nasa_down(sl_read(granules))
 
   expect_valid_read(
     data, bb,
@@ -111,8 +112,8 @@ test_that("Live CMR probe: concept IDs still valid across DAACs", {
     list(product = "ATL08", daac = "NSIDC_CPRD"),
     list(product = "L4A",   daac = "ORNL_CLOUD")
   )) {
-    granules <- sl_search(bb, product = spec$product,
-                          date_start = dr$start, date_end = dr$end)
+    granules <- skip_if_nasa_down(sl_search(bb, product = spec$product,
+                                            date_start = dr$start, date_end = dr$end))
     # Empty results are acceptable (coverage gap); what we're checking
     # is that the call completes without error and returns the right
     # search-result class.

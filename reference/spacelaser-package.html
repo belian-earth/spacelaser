@@ -125,7 +125,13 @@ connection failures and HTTP 429, 500, 502, 503 or 504. Default <code>600</code>
 Retries back off exponentially, at most 60 s apart; <code>0</code> disables them.
 Token creation is never retried. A transient failure that remains raises
 an error of class <code>spacelaser_upstream_error</code>, with fields <code>service</code> (<code>"cmr"</code> or
-<code>"earthdata"</code>), <code>url</code> and <code>status</code> (<code>NA</code> for a connection failure).</p>
+<code>"earthdata"</code>), <code>url</code> and <code>status</code> (<code>NA</code> for a connection failure).
+A CMR search also retries an HTTP 400 twice, 2 s and then 5 s apart,
+since CMR has returned spurious 400s during incidents; a 400 that
+persists stays an unclassed error with <code>status</code> 400. A failed CMR
+request carries <code>service</code>, <code>url</code>, <code>status</code> and <code>cmr_errors</code>, the error
+text of CMR's response (<code><a href="https://rdrr.io/r/base/character.html" class="external-link">character()</a></code> when there is none), which is
+also shown in the message.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>

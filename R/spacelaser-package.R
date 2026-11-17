@@ -47,6 +47,21 @@
 #'   your username and password, optionally persisting it to
 #'   `~/.Renviron`
 #'
+#' @section Options:
+#' `spacelaser.cmr_max_seconds`: total time, in seconds, that a request to
+#' NASA CMR or the Earthdata token API keeps retrying after timeouts,
+#' connection failures and HTTP 429, 500, 502, 503 or 504. Default `600`.
+#' Retries back off exponentially, at most 60 s apart; `0` disables them.
+#' Token creation is never retried. A transient failure that remains raises
+#' an error of class `spacelaser_upstream_error`, with fields `service` (`"cmr"` or
+#' `"earthdata"`), `url` and `status` (`NA` for a connection failure).
+#' A CMR search also retries an HTTP 400 twice, 2 s and then 5 s apart,
+#' since CMR has returned spurious 400s during incidents; a 400 that
+#' persists stays an unclassed error with `status` 400. A failed CMR
+#' request carries `service`, `url`, `status` and `cmr_errors`, the error
+#' text of CMR's response (`character()` when there is none), which is
+#' also shown in the message.
+#'
 #' @keywords internal
 "_PACKAGE"
 

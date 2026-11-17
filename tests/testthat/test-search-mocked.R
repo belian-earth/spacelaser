@@ -72,9 +72,30 @@ test_that("sl_search L4A returns sl_gedi_search", {
   skip_unless_httptest2()
   bb <- test_bbox_search(); dr <- test_dates_search()
   with_cmr_mock("l4a", {
+    g <- sl_search(bb, product = "L4A", date_start = dr$start, date_end = dr$end, version = "2.1")
+    expect_search_result(g, "L4A", "gedi", bb)
+    expect_identical(attr(g, "version"), "2.1")
+    expect_true(all(grepl("_V002", g$url)))
+  })
+})
+
+test_that("sl_search L4A defaults to version 3", {
+  skip_unless_httptest2()
+  bb <- test_bbox_search(); dr <- test_dates_search()
+  with_cmr_mock("l4a-v3", {
     g <- sl_search(bb, product = "L4A", date_start = dr$start, date_end = dr$end)
     expect_search_result(g, "L4A", "gedi", bb)
+    expect_identical(attr(g, "version"), "3")
+    expect_gt(nrow(g), 0L)
+    expect_true(all(grepl("_V003", g$url)))
+    expect_identical(attr(g[1, ], "version"), "3")
   })
+})
+
+test_that("sl_search rejects a version for single-version products and unknown versions", {
+  bb <- test_bbox_search()
+  expect_error(sl_search(bb, product = "L2A", version = "3"), "applies only to")
+  expect_error(sl_search(bb, product = "L4A", version = "2"), "must be one of")
 })
 
 test_that("sl_search L4C returns sl_gedi_search", {

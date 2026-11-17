@@ -23,6 +23,10 @@
 #'
 #'   `date_start` defaults to the mission start (2019-03-25 for GEDI,
 #'   2018-10-14 for ICESat-2). `date_end` defaults to today.
+#' @param version Character or `NULL`. Product version, for products
+#'   published in more than one: GEDI L4A `"3"` (the default, released
+#'   2026-06, shots from 2019-04-04 to 2025-07-10) or `"2.1"`. Must be
+#'   `NULL` for every other product.
 #'
 #' @returns A classed data frame (`sl_gedi_search` or `sl_icesat2_search`)
 #'   with columns:
@@ -81,13 +85,14 @@ sl_search <- function(
     "ATL24"
   ),
   date_start = NULL,
-  date_end = NULL
+  date_end = NULL,
+  version = NULL
 ) {
   rlang::check_required(bbox)
   product <- rlang::arg_match(product)
   bbox <- validate_bbox(bbox)
 
-  spec <- product_search_spec(product)
+  spec <- product_search_spec(product, version)
 
   result <- search_cmr(
     bbox = bbox,
@@ -97,7 +102,7 @@ sl_search <- function(
     product_label = spec$label
   )
 
-  new_sl_search(result, product = product, bbox = bbox, sensor = spec$sensor)
+  new_sl_search(result, product = product, bbox = bbox, sensor = spec$sensor, version = spec$version)
 }
 
 #' Per-product CMR search parameters.
@@ -105,9 +110,36 @@ sl_search <- function(
 #' Maps a product string to its CMR concept ID, default mission start date,
 #' sensor (used to pick the search-result class), and a human-readable label
 #' for progress messages. Centralising the table here keeps `sl_search()`
-#' free of branching.
+#' free of branching. Products published in more than one version list
+#' them in `product_versions`; the first is the default.
 #' @noRd
-product_search_spec <- function(product) {
+product_versions <- list(
+  L4A = list(
+    `3` = list(concept_id = "C4212593885-ORNL_CLOUD", label = "GEDI L4A v3"),
+    `2.1` = list(concept_id = "C2237824918-ORNL_CLOUD", label = "GEDI L4A v2.1")
+  )
+)
+
+product_search_spec <- function(product, version = NULL) {
+  spec <- product_search_spec_base(product)
+  versions <- product_versions[[product]]
+  if (is.null(versions)) {
+    if (!is.null(version)) {
+      cli::cli_abort("{.arg version} applies only to {.val {names(product_versions)}}; {.val {product}} has one version.")
+    }
+    return(spec)
+  }
+  version <- version %||% names(versions)[1]
+  if (!is.character(version) || length(version) != 1L || !version %in% names(versions)) {
+    cli::cli_abort("{.arg version} for {.val {product}} must be one of {.val {names(versions)}}.")
+  }
+  spec$concept_id <- versions[[version]]$concept_id
+  spec$label <- versions[[version]]$label
+  spec$version <- version
+  spec
+}
+
+product_search_spec_base <- function(product) {
   switch(
     product,
     L1B = list(
@@ -130,9 +162,7 @@ product_search_spec <- function(product) {
     ),
     L4A = list(
       sensor = "gedi",
-      concept_id = "C2237824918-ORNL_CLOUD",
-      default_start = "2019-03-25",
-      label = "GEDI L4A"
+      default_start = "2019-03-25"
     ),
     L4C = list(
       sensor = "gedi",
@@ -266,26 +296,42 @@ search_cmr <- function(bbox, concept_id, date_start, date_end, product_label) {
 
 #' Fetch JSON from a CMR URL with retry and timeout.
 #'
-#' Uses httr2 for connection reuse across pagination, exponential backoff
-#' on transient failures (CMR occasionally returns 5xx during peak hours),
-#' and structured HTTP error handling.
+#' Uses httr2 for connection reuse across pagination and the shared NASA
+#' retry policy (`req_nasa_retry()`): timeouts, 429 and 5xx are retried
+#' with capped backoff for up to `spacelaser.cmr_max_seconds`, and a 400
+#' twice. A transient failure that outlasts the retries raises
+#' `spacelaser_upstream_error`; any other failure is an unclassed error.
+#' Both carry `service` ("cmr"), `url`, `status` (`NA` for a curl
+#' failure) and `cmr_errors`, the error text of CMR's response body
+#' (`character()` when there is none).
 #' @noRd
 fetch_cmr_json <- function(request_url) {
+  call <- rlang::current_env()
+  host <- httr2::url_parse(request_url)$hostname
   req <- httr2::request(request_url) |>
-    httr2::req_timeout(30) |>
-    httr2::req_retry(
-      max_tries = 3,
-      backoff = function(i) 2^i
-    ) |>
+    httr2::req_timeout(nasa_request_timeout()) |>
+    req_nasa_retry(retry_bad_request = TRUE) |>
     httr2::req_user_agent("spacelaser (github.com/belian-earth/spacelaser)")
 
   resp <- tryCatch(
     httr2::req_perform(req),
     error = function(e) {
-      cli::cli_abort(c(
-        "Failed to query NASA CMR.",
-        "i" = conditionMessage(e)
-      ))
+      detail <- conditionMessage(e)
+      resp <- if (inherits(e, "httr2_http")) e$resp
+      status <- if (is.null(resp)) NA_integer_ else httr2::resp_status(resp)
+      cmr_errors <- cmr_error_text(resp)
+      cmr_text <- paste(cmr_errors, collapse = "; ")
+      msg <- c("Failed to query NASA CMR ({host}).", "i" = "{detail}")
+      if (length(cmr_errors) > 0L) {
+        msg <- c(msg, "i" = "CMR says: {cmr_text}")
+      }
+      if (is_transient_http_error(e)) {
+        abort_upstream(msg, service = "cmr", url = request_url,
+                       status = status, cmr_errors = cmr_errors,
+                       call = call)
+      }
+      cli::cli_abort(msg, service = "cmr", url = request_url,
+                     status = status, cmr_errors = cmr_errors, call = call)
     }
   )
 
@@ -432,10 +478,11 @@ empty_find_result <- function() {
 #' attributes so `sl_read()` can dispatch without the user re-specifying them.
 #'
 #' @noRd
-new_sl_search <- function(df, product, bbox, sensor = c("gedi", "icesat2")) {
+new_sl_search <- function(df, product, bbox, sensor = c("gedi", "icesat2"), version = NULL) {
   sensor <- match.arg(sensor)
   cls <- paste0("sl_", sensor, "_search")
   attr(df, "product") <- product
+  attr(df, "version") <- version
   attr(df, "bbox") <- bbox
   class(df) <- c(cls, class(df))
   df
@@ -444,6 +491,7 @@ new_sl_search <- function(df, product, bbox, sensor = c("gedi", "icesat2")) {
 #' @export
 print.sl_gedi_search <- function(x, ...) {
   product <- attr(x, "product")
+  if (!is.null(attr(x, "version"))) product <- paste0(product, " v", attr(x, "version"))
   bbox <- attr(x, "bbox")
   cli::cli_text(
     "{.cls sl_gedi_search} | GEDI {product} | {nrow(x)} granule{?s} | {.field {format(bbox)}}"
@@ -487,6 +535,7 @@ reattach_search_attrs <- function(out, x, cls) {
     return(out)
   }
   attr(out, "product") <- attr(x, "product")
+  attr(out, "version") <- attr(x, "version")
   attr(out, "bbox") <- attr(x, "bbox")
   if (!inherits(out, cls)) {
     class(out) <- c(cls, class(out))

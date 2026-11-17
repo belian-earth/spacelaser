@@ -184,33 +184,56 @@ ed_token_create <- function(username, password) {
 #'
 #' Uses HTTP Basic auth with the Earthdata username/password. Surfaces URS's
 #' JSON error bodies (e.g. account locked, bad credentials) as R errors.
+#'
+#' GET requests take the shared NASA retry policy (`req_nasa_retry()`). POST
+#' (token creation) is not retried: a request that timed out may still have
+#' minted a token, and a repeat could take the account past its two-token
+#' cap. A transient failure that remains raises `spacelaser_upstream_error`.
+#' `base_url` exists for tests.
 #' @noRd
-ed_urs_request <- function(path, method, username, password) {
-  req <- httr2::request("https://urs.earthdata.nasa.gov") |>
+ed_urs_request <- function(path, method, username, password,
+                           base_url = "https://urs.earthdata.nasa.gov") {
+  call <- rlang::current_env()
+  req <- httr2::request(base_url) |>
     httr2::req_url_path(path) |>
     httr2::req_method(method) |>
     httr2::req_auth_basic(username, password) |>
     httr2::req_user_agent("spacelaser (github.com/belian-earth/spacelaser)") |>
-    httr2::req_timeout(30) |>
+    httr2::req_timeout(nasa_request_timeout()) |>
     httr2::req_error(is_error = function(resp) FALSE)
+  if (identical(method, "GET")) {
+    req <- req_nasa_retry(req)
+  }
+  url <- req$url
+  host <- httr2::url_parse(url)$hostname
 
   resp <- tryCatch(
     httr2::req_perform(req),
     error = function(e) {
-      cli::cli_abort(c(
-        "Failed to reach the NASA Earthdata token API.",
-        "i" = conditionMessage(e)
-      ))
+      detail <- conditionMessage(e)
+      msg <- c(
+        "Failed to reach the NASA Earthdata token API ({host}).",
+        "i" = "{detail}"
+      )
+      if (is_transient_http_error(e)) {
+        abort_upstream(msg, service = "earthdata", url = url, call = call)
+      }
+      cli::cli_abort(msg, call = call)
     }
   )
 
   status <- httr2::resp_status(resp)
   if (status >= 400L) {
     detail <- ed_error_detail(resp)
-    cli::cli_abort(c(
-      "NASA Earthdata token request failed (HTTP {status}).",
-      "i" = detail
-    ))
+    msg <- c(
+      "NASA Earthdata token request failed (HTTP {status}) at {host}.",
+      "i" = "{detail}"
+    )
+    if (status %in% nasa_transient_status) {
+      abort_upstream(msg, service = "earthdata", url = url,
+                     status = status, call = call)
+    }
+    cli::cli_abort(msg, call = call)
   }
   resp
 }

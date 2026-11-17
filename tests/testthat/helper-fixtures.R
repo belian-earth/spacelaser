@@ -11,8 +11,8 @@
 #'   - the `delta_time` → `time` rename applied by `convert_time = TRUE`
 #'
 #' @noRd
-expect_registry_roundtrip <- function(data, product) {
-  registry_names <- names(sl_columns(product))
+expect_registry_roundtrip <- function(data, product, version = NULL) {
+  registry_names <- names(sl_columns(product, version = version))
   out_names <- names(data)
   has_time <- "time" %in% out_names
 

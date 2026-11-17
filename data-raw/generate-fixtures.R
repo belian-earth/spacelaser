@@ -60,5 +60,7 @@ generate("ICESat-2 ATL08", make_icesat2_atl08, "icesat2-atl08.h5")
 generate("ICESat-2 ATL10", make_icesat2_atl10, "icesat2-atl10.h5")
 generate("ICESat-2 ATL13", make_icesat2_atl13, "icesat2-atl13.h5")
 generate("ICESat-2 ATL24", make_icesat2_atl24, "icesat2-atl24.h5")
+# last, so that adding it leaves the other fixtures byte-identical
+generate("GEDI L4A v3", function(p) make_gedi_l4a(p, registry = spacelaser:::.gedi_l4a_v3_columns), "gedi-l4a_V003.h5")
 
 message("Done.")

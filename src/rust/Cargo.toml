@@ -34,7 +34,7 @@ futures = "0.3"
 thiserror = "2"
 
 # Caching
-lru = "0.12"
+lru = "0.16"
 
 # Logging
 log = "0.4"

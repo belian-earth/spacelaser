@@ -2,7 +2,7 @@
 name = "spacelaser-bench-h5coro"
 version = "0.1.0"
 description = "h5coro pipeline for the spacelaser benchmark"
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "h5coro>=0.1.0",
     "numpy>=1.24",

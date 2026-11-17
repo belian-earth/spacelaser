@@ -728,3 +728,20 @@ for (.spec in icesat2_smoke_spec) {
     })
   })
 }
+
+test_that("ATL03 fixture: every photon inside the bbox is returned", {
+  skip_if_not(file.exists(fixture_path("icesat2-atl03.h5")))
+  f <- fixture_path("icesat2-atl03.h5")
+  # A bbox whose edges cut through the track mid-segment. The segment
+  # filter locates segments by their reference photon, so photons of a
+  # segment referenced just outside the bbox used to be dropped.
+  lat <- sl_hdf5_read(f, "gt1l/heights/lat_ph")
+  lon <- sl_hdf5_read(f, "gt1l/heights/lon_ph")
+  q <- stats::quantile(lat, c(0.3, 0.7), names = FALSE)
+  bb <- sl_bbox(min(lon) - 0.5, q[1], max(lon) + 0.5, q[2])
+
+  data <- suppressMessages(sl_read(f, bbox = bb, product = "ATL03"))
+  got <- data[data$track == "gt1l", ]
+  expect_equal(nrow(got), sum(lat >= q[1] & lat <= q[2]))
+  expect_true(all(got$lat_ph >= q[1] & got$lat_ph <= q[2]))
+})

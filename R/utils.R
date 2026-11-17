@@ -370,6 +370,19 @@ sl_bbox <- function(xmin, ymin, xmax, ymax) {
   rlang::check_required(xmax)
   rlang::check_required(ymax)
 
+  for (arg in c("xmin", "ymin", "xmax", "ymax")) {
+    val <- get(arg)
+    if (!is.numeric(val) || length(val) != 1L || !is.finite(val)) {
+      cli::cli_abort("{.arg {arg}} must be a single finite number, not {.obj_type_friendly {val}}.")
+    }
+  }
+  # Plain doubles, without names: `c(xmin = <named value>)` would
+  # otherwise produce names like "xmin.xmin".
+  xmin <- as.double(xmin)[[1L]]
+  ymin <- as.double(ymin)[[1L]]
+  xmax <- as.double(xmax)[[1L]]
+  ymax <- as.double(ymax)[[1L]]
+
   if (xmin >= xmax) {
     cli::cli_abort("{.arg xmin} must be less than {.arg xmax}.")
   }
@@ -784,6 +797,7 @@ read_product <- function(
   element_label,
   convert_time = TRUE
 ) {
+  bbox <- validate_bbox(bbox)
   params <- prepare_read_params(product, bbox, columns, lat_col, lon_col,
                                 needs_creds = is_remote_url(url), urls = url)
   cli::cli_progress_step("Reading {product} from {.url {basename(url)}}")
@@ -828,6 +842,7 @@ read_product_multi <- function(
     return(tibble::tibble())
   }
 
+  bbox <- validate_bbox(bbox)
   params <- prepare_read_params(product, bbox, columns, lat_col, lon_col,
                                 needs_creds = any(is_remote_url(urls)), urls = urls)
 

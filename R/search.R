@@ -224,12 +224,12 @@ product_search_spec_base <- function(product) {
 search_cmr <- function(bbox, concept_id, date_start, date_end, product_label) {
   bbox <- validate_bbox(bbox)
   b <- unclass(bbox)
+  # Fixed notation: paste() would write 0.00001 as 1e-05, which CMR
+  # rejects.
   bbox_str <- paste(
-    b[["xmin"]],
-    b[["ymin"]],
-    b[["xmax"]],
-    b[["ymax"]],
-    sep = ","
+    format(c(b[["xmin"]], b[["ymin"]], b[["xmax"]], b[["ymax"]]),
+           scientific = FALSE, trim = TRUE, digits = 15),
+    collapse = ","
   )
 
   base_url <- paste0(
@@ -522,6 +522,45 @@ print.sl_icesat2_search <- function(x, ...) {
 #' @export
 `[.sl_icesat2_search` <- function(x, ...) {
   reattach_search_attrs(NextMethod(), x, "sl_icesat2_search")
+}
+
+# Row-binding search results is only meaningful when they describe the
+# same search: sl_read() applies the one `bbox` and `product` attribute to
+# every granule. Base rbind() would keep the first result's attributes and
+# read the other results' granules against the wrong bbox.
+
+#' @export
+rbind.sl_gedi_search <- function(..., deparse.level = 1) {
+  bind_searches(list(...), "sl_gedi_search")
+}
+
+#' @export
+rbind.sl_icesat2_search <- function(..., deparse.level = 1) {
+  bind_searches(list(...), "sl_icesat2_search")
+}
+
+#' @noRd
+bind_searches <- function(parts, cls, call = rlang::caller_env()) {
+  first <- parts[[1L]]
+  for (part in parts[-1L]) {
+    same <- inherits(part, cls) &&
+      identical(attr(part, "product"), attr(first, "product")) &&
+      identical(attr(part, "version"), attr(first, "version")) &&
+      identical(unclass(attr(part, "bbox")), unclass(attr(first, "bbox")))
+    if (!same) {
+      cli::cli_abort(
+        c(
+          "Search results can be combined only when they share a product, version and bbox.",
+          "i" = "{.fun sl_read} applies one bbox to every granule, so a combined result would read some granules against the wrong area.",
+          "i" = "Read each search with its own {.fun sl_read} call and combine the data instead."
+        ),
+        call = call
+      )
+    }
+  }
+  out <- do.call(rbind, lapply(parts, strip_search_class))
+  out <- out[!duplicated(out$id), , drop = FALSE]
+  reattach_search_attrs(out, first, cls)
 }
 
 #' Restore search-result class and attributes after a subset.

@@ -47,7 +47,28 @@ impl BBox {
     pub fn contains(&self, lon: f64, lat: f64) -> bool {
         lon >= self.xmin && lon <= self.xmax && lat >= self.ymin && lat <= self.ymax
     }
+
+    /// This box grown by `metres` on every side, clamped to valid
+    /// latitudes. The longitude margin widens with latitude; near the
+    /// poles it is capped at one degree.
+    pub fn padded_metres(&self, metres: f64) -> BBox {
+        const M_PER_DEG: f64 = 111_320.0;
+        let dlat = metres / M_PER_DEG;
+        let max_abs_lat = self.ymin.abs().max(self.ymax.abs()).min(89.9);
+        let dlon = (dlat / max_abs_lat.to_radians().cos()).min(1.0);
+        BBox {
+            xmin: self.xmin - dlon,
+            ymin: (self.ymin - dlat).max(-90.0),
+            xmax: self.xmax + dlon,
+            ymax: (self.ymax + dlat).min(90.0),
+        }
+    }
 }
+
+/// Margin for segment-level selection of photon data (ATL03). Twice the
+/// nominal 20 m segment length, plus allowance for the cross-track
+/// spread of photons about the reference photon.
+const SEGMENT_MARGIN_M: f64 = 60.0;
 
 // ---------------------------------------------------------------------------
 // Column data (output of a single dataset read)
@@ -786,8 +807,15 @@ async fn segment_spatial_filter(
 
     let n_segments = lat_meta.dataspace.dims[0] as usize;
     let elem_size = lat_meta.datatype.size();
+    // A segment is located by its reference photon, but its other
+    // photons extend up to a segment length (about 20 m along track)
+    // either side. Selecting on the bbox alone would drop photons that
+    // are inside the bbox but belong to a segment referenced just
+    // outside it. Select on a padded bbox instead; the caller trims the
+    // result to the exact bbox using the photon coordinates.
+    let padded = bbox.padded_metres(SEGMENT_MARGIN_M);
     let matching_segments =
-        find_matching_indices(&lat_bytes, &lon_bytes, elem_size, n_segments, bbox);
+        find_matching_indices(&lat_bytes, &lon_bytes, elem_size, n_segments, &padded);
 
     if matching_segments.is_empty() {
         return Ok(None);
@@ -1006,6 +1034,18 @@ mod tests {
         assert!(bbox.contains(-10.0, -5.0));
         assert!(!bbox.contains(11.0, 0.0));
         assert!(!bbox.contains(0.0, 6.0));
+    }
+
+    #[test]
+    fn test_bbox_padded() {
+        let bbox = BBox::new(-124.04, 41.39, -124.01, 41.42).padded_metres(60.0);
+        // 60 m is about 0.00054 degrees of latitude, and more of longitude.
+        assert!((bbox.ymin - (41.39 - 0.000539)).abs() < 1e-5);
+        assert!(bbox.xmin < -124.04 - 0.0006 && bbox.xmin > -124.04 - 0.001);
+        assert!(bbox.contains(-124.0405, 41.4204));
+        let polar = BBox::new(0.0, 89.5, 10.0, 90.0).padded_metres(60.0);
+        assert_eq!(polar.ymax, 90.0);
+        assert!(polar.xmin >= -1.0);
     }
 
     #[test]

@@ -44,15 +44,27 @@ read_gedi <- function(url,
 }
 
 #' Validate and coerce bbox input.
+#'
+#' Accepts an `sl_bbox`, or a numeric vector of length 4. A vector named
+#' `xmin`, `ymin`, `xmax`, `ymax` in any order (an `sf::st_bbox()`, say)
+#' is read by name; otherwise the order is `c(xmin, ymin, xmax, ymax)`.
 #' @noRd
-validate_bbox <- function(bbox) {
+validate_bbox <- function(bbox, call = rlang::caller_env()) {
   if (inherits(bbox, "sl_bbox")) {
     return(bbox)
   }
   if (is.numeric(bbox) && length(bbox) == 4L) {
-    return(sl_bbox(bbox[1], bbox[2], bbox[3], bbox[4]))
+    corners <- c("xmin", "ymin", "xmax", "ymax")
+    b <- if (setequal(names(bbox), corners)) {
+      unclass(bbox)[corners]
+    } else {
+      unclass(bbox)
+    }
+    b <- as.double(b)
+    return(sl_bbox(b[[1L]], b[[2L]], b[[3L]], b[[4L]]))
   }
   cli::cli_abort(
-    "{.arg bbox} must be an {.cls sl_bbox} or a numeric vector of length 4."
+    "{.arg bbox} must be an {.cls sl_bbox} or a numeric vector of length 4.",
+    call = call
   )
 }

@@ -13,7 +13,7 @@ sl_read(x, bbox, ...)
 
 \method{sl_read}{sl_icesat2_search}(x, bbox = NULL, columns = NULL, convert_time = TRUE, ...)
 
-\method{sl_read}{character}(x, bbox, ..., product = NULL)
+\method{sl_read}{character}(x, bbox, columns = NULL, convert_time = TRUE, ..., product = NULL)
 }
 \arguments{
 \item{x}{An \code{sl_gedi_search}, \code{sl_icesat2_search}, or character vector of
@@ -49,8 +49,8 @@ inferred from the file name.}
 \value{
 A data frame with one row per footprint (GEDI) or
 segment/photon (ICESat-2). Columns depend on the product and the
-\code{columns} argument. Fill-value sentinels (-9999, 3.4e38, etc.) are
-automatically replaced with \code{NA}.
+\code{columns} argument. It carries a \code{failed_granules} attribute: a data
+frame of \code{url} and \code{error}, with no rows when every granule was read.
 }
 \description{
 \code{sl_read()} is an S3 generic that reads GEDI or ICESat-2 data from remote
@@ -71,6 +71,32 @@ file name, or uses the explicit \code{product} argument.
 All beams (GEDI) or ground tracks (ICESat-2) are always read; the returned
 data frame includes a \code{beam} (GEDI) or \code{track} (ICESat-2) identifier
 column for post-hoc filtering with \code{\link[dplyr:filter]{dplyr::filter()}} or base subsetting.
+\subsection{Missing data}{
+
+Missing-data sentinels are returned as \code{NA}. A value is a sentinel
+when it equals the dataset's own \verb{_FillValue} attribute, compared in
+the dataset's stored type, so each column is judged by what its file
+declares. Two families of undeclared sentinels are also recognised:
+-9999 and -999999 in GEDI products, and in ICESat-2 products the
+largest finite float (3.4e38 for 32-bit, 1.8e308 for 64-bit) and the
+largest 32-bit integer. Integer codes such as 127 or 255 are
+converted only where the dataset declares them, because they are
+valid values elsewhere.
+}
+
+\subsection{Failures}{
+
+A read never substitutes \code{NA} for data it could not fetch. A granule
+in which any requested column fails to read (after retries) is
+dropped whole and reported: a warning and the \code{failed_granules}
+attribute when other granules were read, an error when none were.
+Two kinds of column are left out with a warning instead, because the
+rest of the granule is unaffected: a column absent from the granules,
+and a column the reader cannot return alongside the others (an
+unsupported datatype, or a dataset stored at a different rate from
+the product's coordinates).
+}
+
 \subsection{Default columns}{
 
 When \code{columns = NULL}, a curated default set is returned for each

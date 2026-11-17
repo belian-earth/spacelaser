@@ -6,6 +6,21 @@ use crate::io::reader::Reader;
 use futures::future::try_join_all;
 use std::ops::Range;
 
+/// Same class, width, signedness and byte order.
+fn same_numeric_type(a: &Datatype, b: &Datatype) -> bool {
+    match (a, b) {
+        (
+            Datatype::FixedPoint { size: s1, signed: g1, byte_order: o1 },
+            Datatype::FixedPoint { size: s2, signed: g2, byte_order: o2 },
+        ) => s1 == s2 && g1 == g2 && o1 == o2,
+        (
+            Datatype::FloatingPoint { size: s1, byte_order: o1 },
+            Datatype::FloatingPoint { size: s2, byte_order: o2 },
+        ) => s1 == s2 && o1 == o2,
+        _ => false,
+    }
+}
+
 /// A handle to an HDF5 dataset, with all metadata parsed and ready for reading.
 pub struct Dataset {
     pub meta: DatasetMeta,
@@ -31,6 +46,9 @@ impl Dataset {
                     }
                     crate::hdf5::object_header::HeaderMessage::Link { .. } => "Link".into(),
                     crate::hdf5::object_header::HeaderMessage::LinkInfo { .. } => "LinkInfo".into(),
+                    crate::hdf5::object_header::HeaderMessage::FillAttribute { .. } => {
+                        "FillAttribute".into()
+                    }
                     crate::hdf5::object_header::HeaderMessage::Unknown { msg_type } => {
                         format!("Unknown(0x{:04x})", msg_type)
                     }
@@ -58,6 +76,17 @@ impl Dataset {
             _ => None,
         });
 
+        // The declared sentinel, usable only when the attribute's type is
+        // the dataset's type: bytes are then compared element for element.
+        let fill_attribute = oh.find(|m| match m {
+            crate::hdf5::object_header::HeaderMessage::FillAttribute { datatype: dt, value }
+                if same_numeric_type(dt, &datatype) =>
+            {
+                Some(value.clone())
+            }
+            _ => None,
+        });
+
         Ok(Dataset {
             meta: DatasetMeta {
                 datatype,
@@ -65,6 +94,7 @@ impl Dataset {
                 layout,
                 filters,
                 fill_value,
+                fill_attribute,
             },
         })
     }

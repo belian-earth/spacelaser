@@ -120,6 +120,7 @@ mod tests {
             columns: HashMap::new(),
             selected_indices: Vec::new(),
             pool_columns: HashMap::new(),
+            skipped: Vec::new(),
         }
     }
 

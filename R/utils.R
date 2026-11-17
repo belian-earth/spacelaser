@@ -44,10 +44,34 @@
 #'
 #' @returns A data frame with one row per footprint (GEDI) or
 #'   segment/photon (ICESat-2). Columns depend on the product and the
-#'   `columns` argument. Fill-value sentinels (-9999, 3.4e38, etc.) are
-#'   automatically replaced with `NA`.
+#'   `columns` argument. It carries a `failed_granules` attribute: a data
+#'   frame of `url` and `error`, with no rows when every granule was read.
 #'
 #' @details
+#' ## Missing data
+#'
+#' Missing-data sentinels are returned as `NA`. A value is a sentinel
+#' when it equals the dataset's own `_FillValue` attribute, compared in
+#' the dataset's stored type, so each column is judged by what its file
+#' declares. Two families of undeclared sentinels are also recognised:
+#' -9999 and -999999 in GEDI products, and in ICESat-2 products the
+#' largest finite float (3.4e38 for 32-bit, 1.8e308 for 64-bit) and the
+#' largest 32-bit integer. Integer codes such as 127 or 255 are
+#' converted only where the dataset declares them, because they are
+#' valid values elsewhere.
+#'
+#' ## Failures
+#'
+#' A read never substitutes `NA` for data it could not fetch. A granule
+#' in which any requested column fails to read (after retries) is
+#' dropped whole and reported: a warning and the `failed_granules`
+#' attribute when other granules were read, an error when none were.
+#' Two kinds of column are left out with a warning instead, because the
+#' rest of the granule is unaffected: a column absent from the granules,
+#' and a column the reader cannot return alongside the others (an
+#' unsupported datatype, or a dataset stored at a different rate from
+#' the product's coordinates).
+#'
 #' ## Default columns
 #'
 #' When `columns = NULL`, a curated default set is returned for each
@@ -196,15 +220,42 @@ sl_read.sl_icesat2_search <- function(x, bbox = NULL, columns = NULL,
 #'   Required when `x` is a character vector and the product cannot be
 #'   inferred from the file name.
 #' @export
-sl_read.character <- function(x, bbox, ..., product = NULL) {
+sl_read.character <- function(x, bbox, columns = NULL, convert_time = TRUE,
+                              ..., product = NULL) {
   rlang::check_required(bbox)
-  info <- detect_sensor(x[[1L]], product)
-  read_urls(
-    x,
+  rlang::check_dots_empty()
+  x <- x[!is.na(x)]
+  if (length(x) == 0L) {
+    cli::cli_inform("No URLs to read.")
+    return(tibble::tibble())
+  }
+  # One product per read: the column set and the row-binding depend on it.
+  infos <- lapply(x, detect_sensor, product = product)
+  products <- unique(vapply(infos, function(i) i$product, character(1)))
+  if (length(products) > 1L) {
+    cli::cli_abort(c(
+      "{.arg x} mixes products: {.val {products}}.",
+      "i" = "Read each product in its own {.fun sl_read} call."
+    ))
+  }
+  product <- products
+  gedi <- identical(infos[[1L]]$read_fn, read_gedi)
+  geo <- if (gedi) gedi_lat_lon(product) else icesat2_lat_lon(product)
+
+  # The same path as a search result: a granule that fails after the
+  # retries is a warning plus the `failed_granules` attribute, and a
+  # read in which every granule fails is an error.
+  read_product_multi(
+    urls = x,
+    product = product,
     bbox = bbox,
-    read_fn = info$read_fn,
-    product = info$product,
-    ...
+    columns = columns,
+    rust_multi_fn = if (gedi) rust_read_gedi_multi else rust_read_icesat2_multi,
+    lat_col = geo$lat,
+    lon_col = geo$lon,
+    group_label = if (gedi) "beam" else "track",
+    element_label = if (gedi) "footprint" else "element",
+    convert_time = convert_time
   )
 }
 
@@ -215,36 +266,6 @@ sl_read.default <- function(x, bbox, ...) {
     "{.fun sl_read} does not know how to handle an object of class {.cls {cls}}.",
     "i" = "Expected an {.cls sl_gedi_search}, {.cls sl_icesat2_search}, or {.cls character} URL vector."
   ))
-}
-
-#' Read multiple URLs and row-bind results.
-#' @noRd
-read_urls <- function(urls, bbox, read_fn, product, ...) {
-  urls <- urls[!is.na(urls)]
-  if (length(urls) == 0L) {
-    cli::cli_inform("No URLs to read.")
-    return(tibble::tibble())
-  }
-
-  results <- lapply(urls, function(u) {
-    tryCatch(
-      read_fn(url = u, product = product, bbox = bbox, ...),
-      error = function(e) {
-        cli::cli_warn(c(
-          "!" = "Failed to read {.file {basename(u)}}.",
-          "i" = conditionMessage(e)
-        ))
-        NULL
-      }
-    )
-  })
-
-  results <- Filter(Negate(is.null), results)
-  if (length(results) == 0L) {
-    return(tibble::tibble())
-  }
-
-  vctrs::vec_rbind(!!!results)
 }
 
 #' Detect sensor and product from a URL filename.
@@ -266,7 +287,7 @@ detect_sensor <- function(url, product = NULL) {
       } else if (grepl("GEDI_L4C|GEDI04_C", bn)) {
         "L4C"
       } else {
-        rlang::abort(c(
+        cli::cli_abort(c(
           "Cannot detect GEDI product from filename.",
           "i" = "Pass {.arg product} explicitly."
         ))
@@ -290,7 +311,7 @@ detect_sensor <- function(url, product = NULL) {
       } else if (grepl("ATL24", bn)) {
         "ATL24"
       } else {
-        rlang::abort(c(
+        cli::cli_abort(c(
           "Cannot detect ICESat-2 product from filename.",
           "i" = "Pass {.arg product} explicitly."
         ))
@@ -298,7 +319,7 @@ detect_sensor <- function(url, product = NULL) {
     }
   } else {
     if (is.null(product)) {
-      rlang::abort(c(
+      cli::cli_abort(c(
         "Cannot detect sensor from URL filename {.val {bn}}.",
         "i" = "Pass {.arg product} explicitly."
       ))
@@ -309,7 +330,7 @@ detect_sensor <- function(url, product = NULL) {
     } else if (product %in% c("ATL03", "ATL06", "ATL07", "ATL08", "ATL10", "ATL13", "ATL24")) {
       read_fn <- read_icesat2
     } else {
-      rlang::abort("Unknown product {.val {product}}.")
+      cli::cli_abort("Unknown product {.val {product}}.")
     }
   }
 
@@ -775,7 +796,8 @@ read_product <- function(
     transposed_specs = params$transposed_specs,
     convert_time = convert_time
   )
-  warn_missing_columns(out, params$user_columns)
+  skipped <- warn_skipped_columns(raw_result)
+  warn_missing_columns(out, setdiff(params$user_columns, skipped))
   out
 }
 
@@ -837,8 +859,31 @@ read_product_multi <- function(
     convert_time = convert_time
   )
   attr(out, "failed_granules") <- failed
-  warn_missing_columns(out, params$user_columns)
+  skipped <- warn_skipped_columns(raw_result)
+  warn_missing_columns(out, setdiff(params$user_columns, skipped))
   out
+}
+
+#' Warn about columns that are in the granules but could not be returned.
+#'
+#' The reader skips a column whose datatype it cannot represent, or that
+#' is stored at a different rate from the product's coordinates (an ATL03
+#' segment-rate dataset requested alongside photons, say), and reports
+#' why. Every other read failure fails the granule instead.
+#'
+#' @returns The skipped column names (short form), invisibly.
+#' @noRd
+warn_skipped_columns <- function(raw_result) {
+  skipped <- unlist(lapply(raw_result, function(gd) gd$skipped))
+  if (!length(skipped)) return(invisible(character(0)))
+  cols <- sub(".*/", "", names(skipped))
+  first <- !duplicated(cols)
+  bullets <- paste0("{.val ", cols[first], "}: ", gsub("([{}])", "\\1\\1", skipped[first]))
+  cli::cli_warn(c(
+    "!" = "{sum(first)} requested column{?s} could not be read and {?was/were} left out.",
+    rlang::set_names(bullets, rep("*", length(bullets)))
+  ))
+  invisible(unique(cols))
 }
 
 #' Warn about requested columns a read did not return.

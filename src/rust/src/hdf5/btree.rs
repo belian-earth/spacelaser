@@ -339,10 +339,16 @@ pub async fn read_chunk_btree(
 
         let mut chunks = Vec::new();
         for i in 0..entries_used {
-            // Child[i] contains chunks with offsets in [key[i], key[i+1])
+            // Child[i] holds chunks whose row offset is at least key[i].
+            // key[i+1] bounds them from above only loosely: for the last
+            // child it is either the last chunk's own offset or one chunk
+            // past it, depending on the library version that wrote the
+            // file. Adding a chunk makes the bound safe in both cases, at
+            // the cost of sometimes descending into one extra child.
             if let Some((range_start, range_end)) = row_bounds {
                 let child_min = key_row_offset(key_positions[i]);
-                let child_max = key_row_offset(key_positions[i + 1]);
+                let child_max =
+                    key_row_offset(key_positions[i + 1]).saturating_add(chunk_row_dim.max(1));
                 // Skip if no overlap
                 if child_max <= range_start || child_min >= range_end {
                     continue;

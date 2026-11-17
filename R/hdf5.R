@@ -3,9 +3,10 @@
 #' Low-level helper for exploring the internal structure of a remote
 #' HDF5 file. Useful for discovering available datasets, beams, or
 #' subgroups when working outside the curated [sl_columns()] registry.
-#' Earthdata credentials are required (see [sl_search()] for setup).
+#' Earthdata credentials are required for a remote file (see
+#' [generate_ed_token()]); a local file needs none.
 #'
-#' @param url Character. HTTPS URL of the HDF5 file.
+#' @param url Character. HTTPS URL of the HDF5 file, or a local path.
 #' @param path Character. HDF5 group path to list (default: `"/"`).
 #' @returns A character vector of group/dataset names.
 #' @examplesIf interactive()
@@ -19,11 +20,10 @@
 #' @export
 sl_hdf5_groups <- function(url, path = "/") {
   rlang::check_required(url)
-  creds <- sl_earthdata_creds()
   rust_hdf5_groups(
     url = url,
     path = path,
-    token = creds$token
+    token = if (is_remote_url(url)) sl_earthdata_creds()$token
   )
 }
 
@@ -33,9 +33,10 @@ sl_hdf5_groups <- function(url, path = "/") {
 #' path and returns it as an appropriately-typed R vector. Useful for
 #' pulling individual fields not covered by the curated registry, or
 #' for inspecting a dataset before requesting it via [sl_read()].
-#' Earthdata credentials are required (see [sl_search()] for setup).
+#' Earthdata credentials are required for a remote file (see
+#' [generate_ed_token()]); a local file needs none.
 #'
-#' @param url Character. HTTPS URL of the HDF5 file.
+#' @param url Character. HTTPS URL of the HDF5 file, or a local path.
 #' @param dataset Character. Full HDF5 path to the dataset (e.g.,
 #'   `"/BEAM0101/lat_lowestmode"`).
 #' @returns An R vector — numeric, integer, or raw, depending on the
@@ -52,12 +53,11 @@ sl_hdf5_groups <- function(url, path = "/") {
 sl_hdf5_read <- function(url, dataset) {
   rlang::check_required(url)
   rlang::check_required(dataset)
-  creds <- sl_earthdata_creds()
 
   result <- rust_hdf5_dataset(
     url = url,
     dataset_path = dataset,
-    token = creds$token
+    token = if (is_remote_url(url)) sl_earthdata_creds()$token
   )
 
   parse_column(result$data, result$info)

@@ -38,6 +38,12 @@ pub enum HeaderMessage {
         btree_address: Option<u64>,
         heap_address: Option<u64>,
     },
+    /// The `_FillValue` attribute: one element in the attribute's own
+    /// datatype. Other attributes are not retained.
+    FillAttribute {
+        datatype: Datatype,
+        value: Vec<u8>,
+    },
     Unknown {
         msg_type: u16,
     },
@@ -414,11 +420,12 @@ impl ObjectHeader {
         let mut messages = Vec::new();
         let chunk_end = pos + chunk0_size;
 
+        // v2 message header: type (1 byte), size (2), flags (1).
         while pos + 4 <= chunk_end && pos + 4 <= data.len() {
-            let msg_type = u16::from_le_bytes([data[pos], data[pos + 1]]);
-            let msg_size = u16::from_le_bytes([data[pos + 2], data[pos + 3]]) as usize;
-            let msg_flags = data[pos + 4];
-            pos += 5;
+            let msg_type = data[pos] as u16;
+            let msg_size = u16::from_le_bytes([data[pos + 1], data[pos + 2]]) as usize;
+            let msg_flags = data[pos + 3];
+            pos += 4;
 
             // Bit 2 (0x04): attribute creation order tracked → each message
             // has a 2-byte creation order field after the flags byte.
@@ -490,11 +497,11 @@ impl ObjectHeader {
         // Last 4 bytes are checksum
         let data_end = data.len().saturating_sub(4);
 
-        while pos + 4 < data_end {
-            let msg_type = u16::from_le_bytes([data[pos], data[pos + 1]]);
-            let msg_size = u16::from_le_bytes([data[pos + 2], data[pos + 3]]) as usize;
-            let _msg_flags = data[pos + 4];
-            pos += 5;
+        while pos + 4 <= data_end {
+            let msg_type = data[pos] as u16;
+            let msg_size = u16::from_le_bytes([data[pos + 1], data[pos + 2]]) as usize;
+            let _msg_flags = data[pos + 3];
+            pos += 4;
 
             if oh_flags & 0x04 != 0 {
                 pos += 2;
@@ -623,11 +630,72 @@ fn parse_message(
         MSG_SYMBOL_TABLE => parse_symbol_table(data, offset_size),
         MSG_LINK => parse_link_message(data, offset_size),
         MSG_LINK_INFO => parse_link_info(data, offset_size),
+        MSG_ATTRIBUTE => Ok(parse_fill_attribute(data)
+            .unwrap_or(HeaderMessage::Unknown { msg_type })),
         MSG_HEADER_CONTINUATION => Ok(HeaderMessage::Unknown {
             msg_type: MSG_HEADER_CONTINUATION,
         }),
         _ => Ok(HeaderMessage::Unknown { msg_type }),
     }
+}
+
+/// Parse an attribute message, keeping it only when it is `_FillValue`.
+///
+/// GEDI and ICESat-2 granules declare each dataset's missing-data
+/// sentinel in this attribute (the netCDF convention). The HDF5
+/// fill-value *message* is not a substitute: it records what the library
+/// writes into unallocated chunks, and is 0 on many datasets whose
+/// declared sentinel is 255 or 3.4e38.
+///
+/// Returns `None` for any other attribute, for shared (committed)
+/// datatypes or dataspaces, and for anything malformed: a fill value we
+/// cannot read is treated as absent, never as an error.
+fn parse_fill_attribute(data: &[u8]) -> Option<HeaderMessage> {
+    const NAME: &[u8] = b"_FillValue";
+    if data.len() < 8 {
+        return None;
+    }
+    let version = data[0];
+    let flags = data[1];
+    let name_size = u16::from_le_bytes([data[2], data[3]]) as usize;
+    let dt_size = u16::from_le_bytes([data[4], data[5]]) as usize;
+    let ds_size = u16::from_le_bytes([data[6], data[7]]) as usize;
+
+    // v1 pads name, datatype and dataspace to 8 bytes; v2/v3 do not.
+    // v3 adds a one-byte name character-set field after the sizes.
+    let (mut pos, pad): (usize, fn(usize) -> usize) = match version {
+        1 => (8, |n| (n + 7) & !7),
+        2 => (8, |n| n),
+        3 => (9, |n| n),
+        _ => return None,
+    };
+    // Shared datatype (bit 0) or dataspace (bit 1): the message holds a
+    // reference, not the type itself.
+    if version >= 2 && flags & 0x03 != 0 {
+        return None;
+    }
+
+    let name = data.get(pos..pos + name_size)?;
+    let name = name.split(|&b| b == 0).next().unwrap_or(&[]);
+    if name != NAME {
+        return None;
+    }
+    pos += pad(name_size);
+
+    let dt_bytes = data.get(pos..pos + dt_size)?;
+    if dt_bytes.len() < 8 {
+        return None;
+    }
+    let datatype = parse_datatype(dt_bytes).ok()?;
+    pos += pad(dt_size);
+    pos += pad(ds_size);
+
+    let size = match &datatype {
+        Datatype::FixedPoint { size, .. } | Datatype::FloatingPoint { size, .. } => *size,
+        _ => return None,
+    };
+    let value = data.get(pos..pos + size)?.to_vec();
+    Some(HeaderMessage::FillAttribute { datatype, value })
 }
 
 /// Parse a dataspace message.
@@ -720,6 +788,13 @@ pub fn parse_datatype(data: &[u8]) -> Result<Datatype, Hdf5Error> {
         }
         // String
         3 => Ok(Datatype::String { size }),
+        // Enumerated: stored as its base integer type, which leads the
+        // properties. The member names are not read; values come back
+        // as the underlying integers.
+        8 if data.len() >= 16 => match parse_datatype(&data[8..])? {
+            base @ Datatype::FixedPoint { .. } => Ok(base),
+            _ => Err(Hdf5Error::UnsupportedDatatypeClass(class)),
+        },
         // Variable-length
         9 => {
             // Base type follows at offset 8 (after the 8-byte datatype header portion)
@@ -918,7 +993,7 @@ fn parse_data_layout(
                 _ => Err(Hdf5Error::UnsupportedLayoutClass(layout_class)),
             }
         }
-        _ => Err(Hdf5Error::UnsupportedObjectHeaderVersion(version)),
+        _ => Err(Hdf5Error::UnsupportedLayoutVersion(version)),
     }
 }
 
@@ -935,7 +1010,9 @@ fn parse_filter_pipeline(data: &[u8]) -> Result<HeaderMessage, Hdf5Error> {
     };
 
     for _ in 0..num_filters {
-        if pos + 8 > data.len() {
+        // Smallest entry: v2 with a predefined filter and no client
+        // data is id + flags + count = 6 bytes (Fletcher32, for one).
+        if pos + 6 > data.len() {
             break;
         }
 
@@ -943,6 +1020,9 @@ fn parse_filter_pipeline(data: &[u8]) -> Result<HeaderMessage, Hdf5Error> {
         pos += 2;
 
         let name_length = if version == 1 || filter_id >= 256 {
+            if pos + 6 > data.len() {
+                break;
+            }
             let nl = u16::from_le_bytes([data[pos], data[pos + 1]]) as usize;
             pos += 2;
             nl

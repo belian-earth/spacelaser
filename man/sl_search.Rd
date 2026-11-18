@@ -41,8 +41,8 @@ falls on any of those 30 days.
 that can be searched in more than one. The first listed is the
 default:
 \itemize{
-\item GEDI L4A: \code{"3"} (released 2026-06) or \code{"2.1"}.
-\item GEDI L1B: \code{"2"} or \code{"3"}.
+\item GEDI L1B, L2A, L2B and L4C: \code{"3"} or \code{"2"}.
+\item GEDI L4A: \code{"3"} or \code{"2.1"}.
 \item ICESat-2 ATL24: \code{"1"}, \code{"2"} or \code{"3"}.
 }
 
@@ -78,8 +78,17 @@ after 2024-11-07. A search whose dates run past the end of a closed
 version warns, because the empty tail of the result means "not in
 this version", not "no overpasses".
 
-GEDI L2A, L2B and L4C are searched in version 2 only. Their version 3
-files rename and drop variables and are not read by this package yet.
+GEDI version 3 (published June to September 2026) reprocesses the
+whole mission and is the default. It is not a drop-in replacement for
+version 2: geolocation is improved, L2B canopy cover and the vertical
+profiles are computed differently, and L2A, L2B, L4A and L4C rename or
+drop variables. The quality flags are the change most code will meet:
+\code{quality_flag} (L2A), \code{l2b_quality_flag} and \code{wsci_quality_flag} become
+\code{l2a_quality_flag_rel3}, \code{l2b_quality_flag_rel3} and
+\code{l4c_quality_flag_rel3}. \code{sl_columns(product, version = )} lists each
+version's variables. Pass \code{version = "2"} to keep reading version 2,
+and do not pool values from the two versions without checking that
+they are comparable for your purpose.
 }
 
 \subsection{Authentication}{

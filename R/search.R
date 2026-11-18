@@ -26,8 +26,8 @@
 #' @param version Character or `NULL`. Product version, for the products
 #'   that can be searched in more than one. The first listed is the
 #'   default:
-#'   * GEDI L4A: `"3"` (released 2026-06) or `"2.1"`.
-#'   * GEDI L1B: `"2"` or `"3"`.
+#'   * GEDI L1B, L2A, L2B and L4C: `"3"` or `"2"`.
+#'   * GEDI L4A: `"3"` or `"2.1"`.
 #'   * ICESat-2 ATL24: `"1"`, `"2"` or `"3"`.
 #'
 #'   Must be `NULL` for every other product. See *Product versions*.
@@ -55,8 +55,17 @@
 #' version warns, because the empty tail of the result means "not in
 #' this version", not "no overpasses".
 #'
-#' GEDI L2A, L2B and L4C are searched in version 2 only. Their version 3
-#' files rename and drop variables and are not read by this package yet.
+#' GEDI version 3 (published June to September 2026) reprocesses the
+#' whole mission and is the default. It is not a drop-in replacement for
+#' version 2: geolocation is improved, L2B canopy cover and the vertical
+#' profiles are computed differently, and L2A, L2B, L4A and L4C rename or
+#' drop variables. The quality flags are the change most code will meet:
+#' `quality_flag` (L2A), `l2b_quality_flag` and `wsci_quality_flag` become
+#' `l2a_quality_flag_rel3`, `l2b_quality_flag_rel3` and
+#' `l4c_quality_flag_rel3`. `sl_columns(product, version = )` lists each
+#' version's variables. Pass `version = "2"` to keep reading version 2,
+#' and do not pool values from the two versions without checking that
+#' they are comparable for your purpose.
 #'
 #' ## Authentication
 #'
@@ -138,8 +147,20 @@ sl_search <- function(
 # next version was published.
 product_versions <- list(
   L1B = list(
-    `2` = list(concept_id = "C2142749196-LPCLOUD", label = "GEDI L1B v2", ends = "2025-07-10"),
-    `3` = list(concept_id = "C3974616058-LPCLOUD", label = "GEDI L1B v3")
+    `3` = list(concept_id = "C3974616058-LPCLOUD", label = "GEDI L1B v3"),
+    `2` = list(concept_id = "C2142749196-LPCLOUD", label = "GEDI L1B v2", ends = "2025-07-10")
+  ),
+  L2A = list(
+    `3` = list(concept_id = "C3974616071-LPCLOUD", label = "GEDI L2A v3"),
+    `2` = list(concept_id = "C2142771958-LPCLOUD", label = "GEDI L2A v2", ends = "2025-07-10")
+  ),
+  L2B = list(
+    `3` = list(concept_id = "C3974616135-LPCLOUD", label = "GEDI L2B v3"),
+    `2` = list(concept_id = "C2142776747-LPCLOUD", label = "GEDI L2B v2", ends = "2025-07-10")
+  ),
+  L4C = list(
+    `3` = list(concept_id = "C4302347663-ORNL_CLOUD", label = "GEDI L4C v3"),
+    `2` = list(concept_id = "C3049900163-ORNL_CLOUD", label = "GEDI L4C v2", ends = "2025-07-09")
   ),
   L4A = list(
     `3` = list(concept_id = "C4212593885-ORNL_CLOUD", label = "GEDI L4A v3"),
@@ -211,17 +232,11 @@ product_search_spec_base <- function(product) {
     ),
     L2A = list(
       sensor = "gedi",
-      concept_id = "C2142771958-LPCLOUD",
-      default_start = "2019-03-25",
-      label = "GEDI L2A v2",
-      ends = "2025-07-10"
+      default_start = "2019-03-25"
     ),
     L2B = list(
       sensor = "gedi",
-      concept_id = "C2142776747-LPCLOUD",
-      default_start = "2019-03-25",
-      label = "GEDI L2B v2",
-      ends = "2025-07-10"
+      default_start = "2019-03-25"
     ),
     L4A = list(
       sensor = "gedi",
@@ -229,10 +244,7 @@ product_search_spec_base <- function(product) {
     ),
     L4C = list(
       sensor = "gedi",
-      concept_id = "C3049900163-ORNL_CLOUD",
-      default_start = "2019-03-25",
-      label = "GEDI L4C v2",
-      ends = "2025-07-09"
+      default_start = "2019-03-25"
     ),
     ATL03 = list(
       sensor = "icesat2",

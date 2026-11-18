@@ -118,8 +118,27 @@ enum FillFamily {
     None,
 }
 
+/// The GEDI product for a registry key from R: a product name, with a
+/// `_V3` suffix for the version 3 file layout. Only L2B reads differently
+/// between versions (its coordinates moved to the beam root).
+fn parse_gedi_product(product: &str) -> extendr_api::Result<GediProduct> {
+    let upper = product.to_ascii_uppercase();
+    Ok(match upper.as_str() {
+        "L2B_V3" => GediProduct::L2BV3,
+        other => match other.strip_suffix("_V3").unwrap_or(other) {
+            "L1B" => GediProduct::L1B,
+            "L2A" => GediProduct::L2A,
+            "L2B" => GediProduct::L2B,
+            "L4A" => GediProduct::L4A,
+            "L4C" => GediProduct::L4C,
+            _ => return Err(extendr_api::Error::Other(format!("Unknown GEDI product: {product}"))),
+        },
+    })
+}
+
 fn fill_family(product: &str) -> FillFamily {
-    match product.to_ascii_uppercase().as_str() {
+    let upper = product.to_ascii_uppercase();
+    match upper.strip_suffix("_V3").unwrap_or(&upper) {
         "L1B" | "L2A" | "L2B" | "L4A" | "L4C" => FillFamily::Gedi,
         "ATL03" | "ATL06" | "ATL07" | "ATL08" | "ATL10" | "ATL13" | "ATL24" => {
             FillFamily::Icesat2
@@ -446,14 +465,7 @@ fn rust_read_gedi(
     let rt = runtime();
     let source = make_source(url, token);
 
-    let product_type = match product {
-        "L1B" | "l1b" => GediProduct::L1B,
-        "L2A" | "l2a" => GediProduct::L2A,
-        "L2B" | "l2b" => GediProduct::L2B,
-        "L4A" | "l4a" => GediProduct::L4A,
-        "L4C" | "l4c" => GediProduct::L4C,
-        _ => return Err(extendr_api::Error::Other(format!("Unknown GEDI product: {product}"))),
-    };
+    let product_type = parse_gedi_product(product)?;
 
     let bbox = crate::BBox::new(xmin, ymin, xmax, ymax);
     let cols = match columns { Nullable::NotNull(c) => Some(c), Nullable::Null => None };
@@ -616,14 +628,7 @@ fn rust_read_gedi_multi(
     let _sigpipe = SigpipeGuard::new();
     let rt = runtime();
 
-    let product_type = match product {
-        "L1B" | "l1b" => GediProduct::L1B,
-        "L2A" | "l2a" => GediProduct::L2A,
-        "L2B" | "l2b" => GediProduct::L2B,
-        "L4A" | "l4a" => GediProduct::L4A,
-        "L4C" | "l4c" => GediProduct::L4C,
-        _ => return Err(extendr_api::Error::Other(format!("Unknown GEDI product: {product}"))),
-    };
+    let product_type = parse_gedi_product(product)?;
 
     let bbox = crate::BBox::new(xmin, ymin, xmax, ymax);
     let cols = match columns { Nullable::NotNull(c) => Some(c), Nullable::Null => None };

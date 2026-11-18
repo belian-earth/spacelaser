@@ -27,7 +27,7 @@ read_gedi <- function(url,
   rlang::check_required(bbox)
   product <- rlang::arg_match(product)
 
-  lat_lon <- gedi_lat_lon(product)
+  lat_lon <- gedi_lat_lon(product, url)
 
   read_product(
     url = url,

@@ -28,9 +28,11 @@ variables, quality flags, and context columns. This is what
 \code{\link[=sl_read]{sl_read()}} returns when \code{columns} is not specified.
 }}
 
-\item{version}{Character or \code{NULL}. For L4A, \code{"3"} (the default) or
-\code{"2.1"}, whose variables differ; see \code{\link[=sl_search]{sl_search()}}. \code{\link[=sl_read]{sl_read()}} picks
-the version from the granule file names.}
+\item{version}{Character or \code{NULL}. Product version, for the products
+published in more than one: \code{"3"} (the default) or \code{"2"} for GEDI
+L1B, L2A, L2B and L4C, \code{"3"} or \code{"2.1"} for L4A. GEDI L2A, L2B, L4A
+and L4C variables differ between versions; see \code{\link[=sl_search]{sl_search()}}.
+\code{\link[=sl_read]{sl_read()}} picks the version from the granule file names.}
 }
 \value{
 A named character vector.

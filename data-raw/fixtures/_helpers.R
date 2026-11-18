@@ -28,6 +28,10 @@ synth_values <- function(name, n) {
     # Bit-flag / enumeration scalars
     "master_int", "degrade_flag", "quality_flag",
     "l2a_quality_flag", "l2b_quality_flag", "l4_quality_flag",
+    "l2_algrunflag", "l2a_quality_flag_rel2", "l2a_quality_flag_rel3",
+    "l2b_quality_flag_rel2", "l2b_quality_flag_rel3",
+    "l4c_quality_flag_rel2", "l4c_quality_flag_rel3",
+    "degrade_include_flag", "worldcover_class",
     "surface_flag", "elevation_bias_flag", "stale_return_flag",
     "num_detectedmodes", "selected_algorithm", "selected_mode",
     "selected_mode_flag",

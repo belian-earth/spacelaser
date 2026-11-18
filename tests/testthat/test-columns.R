@@ -6,11 +6,15 @@ test_that("sl_columns() returns correct counts for GEDI products", {
   # surface_type re-added: handled via transposed-column machinery,
   # expands to 5 boolean columns (land/ocean/sea_ice/land_ice/inland_water)
   expect_length(sl_columns("L1B"), 81)
-  expect_length(sl_columns("L2A"), 45)
-  expect_length(sl_columns("L2B"), 76)
+  expect_length(sl_columns("L1B", version = "2"), 81)
+  expect_length(sl_columns("L2A"), 51)
+  expect_length(sl_columns("L2A", version = "2"), 45)
+  expect_length(sl_columns("L2B"), 68)
+  expect_length(sl_columns("L2B", version = "2"), 76)
   expect_length(sl_columns("L4A"), 45)
   expect_length(sl_columns("L4A", version = "2.1"), 39)
-  expect_length(sl_columns("L4C"), 40)
+  expect_length(sl_columns("L4C"), 41)
+  expect_length(sl_columns("L4C", version = "2"), 40)
 })
 
 test_that("sl_columns() returns correct counts for ICESat-2 products", {

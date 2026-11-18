@@ -45,8 +45,22 @@ test_that("sl_search L1B returns sl_gedi_search", {
   skip_unless_httptest2()
   bb <- test_bbox_search(); dr <- test_dates_search()
   with_cmr_mock("l1b", {
+    g <- sl_search(bb, product = "L1B", date_start = dr$start, date_end = dr$end, version = "2")
+    expect_search_result(g, "L1B", "gedi", bb)
+    expect_identical(attr(g, "version"), "2")
+    expect_true(all(grepl("_V002", g$url)))
+  })
+})
+
+test_that("sl_search L1B defaults to version 3", {
+  skip_unless_httptest2()
+  bb <- test_bbox_search(); dr <- test_dates_search()
+  with_cmr_mock("l1b-v3", {
     g <- sl_search(bb, product = "L1B", date_start = dr$start, date_end = dr$end)
     expect_search_result(g, "L1B", "gedi", bb)
+    expect_identical(attr(g, "version"), "3")
+    expect_gt(nrow(g), 0L)
+    expect_true(all(grepl("_V003", g$url)))
   })
 })
 
@@ -54,8 +68,22 @@ test_that("sl_search L2A returns sl_gedi_search", {
   skip_unless_httptest2()
   bb <- test_bbox_search(); dr <- test_dates_search()
   with_cmr_mock("l2a", {
+    g <- sl_search(bb, product = "L2A", date_start = dr$start, date_end = dr$end, version = "2")
+    expect_search_result(g, "L2A", "gedi", bb)
+    expect_identical(attr(g, "version"), "2")
+    expect_true(all(grepl("_V002", g$url)))
+  })
+})
+
+test_that("sl_search L2A defaults to version 3", {
+  skip_unless_httptest2()
+  bb <- test_bbox_search(); dr <- test_dates_search()
+  with_cmr_mock("l2a-v3", {
     g <- sl_search(bb, product = "L2A", date_start = dr$start, date_end = dr$end)
     expect_search_result(g, "L2A", "gedi", bb)
+    expect_identical(attr(g, "version"), "3")
+    expect_gt(nrow(g), 0L)
+    expect_true(all(grepl("_V003", g$url)))
   })
 })
 
@@ -63,8 +91,22 @@ test_that("sl_search L2B returns sl_gedi_search", {
   skip_unless_httptest2()
   bb <- test_bbox_search(); dr <- test_dates_search()
   with_cmr_mock("l2b", {
+    g <- sl_search(bb, product = "L2B", date_start = dr$start, date_end = dr$end, version = "2")
+    expect_search_result(g, "L2B", "gedi", bb)
+    expect_identical(attr(g, "version"), "2")
+    expect_true(all(grepl("_V002", g$url)))
+  })
+})
+
+test_that("sl_search L2B defaults to version 3", {
+  skip_unless_httptest2()
+  bb <- test_bbox_search(); dr <- test_dates_search()
+  with_cmr_mock("l2b-v3", {
     g <- sl_search(bb, product = "L2B", date_start = dr$start, date_end = dr$end)
     expect_search_result(g, "L2B", "gedi", bb)
+    expect_identical(attr(g, "version"), "3")
+    expect_gt(nrow(g), 0L)
+    expect_true(all(grepl("_V003", g$url)))
   })
 })
 
@@ -94,16 +136,31 @@ test_that("sl_search L4A defaults to version 3", {
 
 test_that("sl_search rejects a version for single-version products and unknown versions", {
   bb <- test_bbox_search()
-  expect_error(sl_search(bb, product = "L2A", version = "3"), "applies only to")
+  expect_error(sl_search(bb, product = "ATL08", version = "3"), "applies only to")
   expect_error(sl_search(bb, product = "L4A", version = "2"), "must be one of")
+  expect_error(sl_search(bb, product = "L2A", version = "1"), "must be one of")
 })
 
 test_that("sl_search L4C returns sl_gedi_search", {
   skip_unless_httptest2()
   bb <- test_bbox_search(); dr <- test_dates_search()
   with_cmr_mock("l4c", {
+    g <- sl_search(bb, product = "L4C", date_start = dr$start, date_end = dr$end, version = "2")
+    expect_search_result(g, "L4C", "gedi", bb)
+    expect_identical(attr(g, "version"), "2")
+    expect_true(all(grepl("_V002", g$url)))
+  })
+})
+
+test_that("sl_search L4C defaults to version 3", {
+  skip_unless_httptest2()
+  bb <- test_bbox_search(); dr <- test_dates_search()
+  with_cmr_mock("l4c-v3", {
     g <- sl_search(bb, product = "L4C", date_start = dr$start, date_end = dr$end)
     expect_search_result(g, "L4C", "gedi", bb)
+    expect_identical(attr(g, "version"), "3")
+    expect_gt(nrow(g), 0L)
+    expect_true(all(grepl("_V003", g$url)))
   })
 })
 
@@ -179,7 +236,7 @@ test_that("sl_search returns an empty result for a bbox with no coverage", {
   skip_unless_httptest2()
   bb <- sl_bbox(0, 85, 1, 86)
   with_cmr_mock("empty", {
-    g <- sl_search(bb, product = "L2A",
+    g <- sl_search(bb, product = "L2A", version = "2",
                    date_start = "2020-06-01", date_end = "2020-07-01")
     expect_s3_class(g, "sl_gedi_search")
     expect_equal(nrow(g), 0L)
@@ -191,7 +248,7 @@ test_that("sl_search result survives [ subsetting with attributes intact", {
   skip_unless_httptest2()
   bb <- test_bbox_search(); dr <- test_dates_search()
   with_cmr_mock("l2a", {
-    g <- sl_search(bb, product = "L2A", date_start = dr$start, date_end = dr$end)
+    g <- sl_search(bb, product = "L2A", date_start = dr$start, date_end = dr$end, version = "2")
     if (nrow(g) == 0L) {
       skip("No granules in fixture to subset")
     }
@@ -208,13 +265,19 @@ test_that("sl_search result survives [ subsetting with attributes intact", {
 # ---------------------------------------------------------------------------
 
 test_that("selectable versions resolve to their own collections", {
-  expect_identical(product_search_spec("L1B")$version, "2")
-  expect_identical(product_search_spec("L1B", "3")$concept_id, "C3974616058-LPCLOUD")
+  for (p in c("L1B", "L2A", "L2B", "L4A", "L4C")) {
+    expect_identical(product_search_spec(p)$version, "3")
+  }
+  expect_identical(product_search_spec("L1B")$concept_id, "C3974616058-LPCLOUD")
+  expect_identical(product_search_spec("L2A")$concept_id, "C3974616071-LPCLOUD")
+  expect_identical(product_search_spec("L2B")$concept_id, "C3974616135-LPCLOUD")
+  expect_identical(product_search_spec("L4C")$concept_id, "C4302347663-ORNL_CLOUD")
+  expect_identical(product_search_spec("L2A", 2)$concept_id, "C2142771958-LPCLOUD")
   expect_identical(product_search_spec("ATL24")$concept_id, "C3433822507-NSIDC_CPRD")
   expect_identical(product_search_spec("ATL24", 3)$concept_id, "C4312123631-NSIDC_CPRD")
   expect_identical(product_search_spec("L4A")$version, "3")
   expect_error(product_search_spec("L1B", "4"), "must be one of")
-  expect_error(product_search_spec("L2A", "3"), "applies only to")
+  expect_error(product_search_spec("ATL08", "3"), "applies only to")
 })
 
 test_that("a search past the end of a closed collection warns", {
@@ -226,15 +289,15 @@ test_that("a search past the end of a closed collection warns", {
     warn_collection_ended(spec, product, date_end)
   }
   # Closed, with a newer version that can be searched.
-  expect_warning(ended("L1B", date_end = "2026-01-01"), "holds no granules after 2025-07-10")
-  w <- tryCatch(ended("L1B", date_end = "2026-01-01"), warning = conditionMessage)
-  expect_match(w, 'version = "3"', fixed = TRUE)
-  # Closed, and the newer version is not read yet.
-  w <- tryCatch(ended("L2A", date_end = "2026-01-01"), warning = conditionMessage)
-  expect_match(w, "does not read the newer version of L2A")
+  for (p in c("L1B", "L2A", "L2B", "L4C")) {
+    expect_warning(ended(p, "2", date_end = "2026-01-01"), "holds no granules after 2025-07")
+    w <- tryCatch(ended(p, "2", date_end = "2026-01-01"), warning = conditionMessage)
+    expect_match(w, 'version = "3"', fixed = TRUE)
+  }
   # Inside the collection, or an open collection: silent.
-  expect_no_warning(ended("L2A", date_end = "2025-07-10"))
-  expect_no_warning(ended("L1B", "3", date_end = "2026-01-01"))
+  expect_no_warning(ended("L2A", "2", date_end = "2025-07-10"))
+  expect_no_warning(ended("L2A", date_end = "2026-01-01"))
+  expect_no_warning(ended("L1B", date_end = "2026-01-01"))
   expect_no_warning(ended("L4A", date_end = "2026-01-01"))
   expect_no_warning(ended("ATL08", date_end = "2026-01-01"))
   # date_end defaults to today.

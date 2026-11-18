@@ -103,9 +103,9 @@ test_that("L2A fixture: every registry column round-trips when requested", {
 
   data <- sl_read(fixture_path("gedi-l2a.h5"),
                   product = "L2A", bbox = fixture_bbox(),
-                  columns = names(sl_columns("L2A")))
+                  columns = names(sl_columns("L2A", version = "2")))
 
-  expect_registry_roundtrip(data, "L2A")
+  expect_registry_roundtrip(data, "L2A", version = "2")
 })
 
 test_that("L2A fixture: NULL columns returns the default set", {
@@ -237,9 +237,9 @@ test_that("L2B fixture: every registry column round-trips when requested", {
 
   data <- sl_read(fixture_path("gedi-l2b.h5"),
                   product = "L2B", bbox = fixture_bbox(),
-                  columns = names(sl_columns("L2B")))
+                  columns = names(sl_columns("L2B", version = "2")))
 
-  expect_registry_roundtrip(data, "L2B")
+  expect_registry_roundtrip(data, "L2B", version = "2")
 })
 
 # ---------------------------------------------------------------------------
@@ -447,10 +447,14 @@ test_that("a requested column missing from the granules is warned about", {
 })
 
 test_that("L4A granules of both versions cannot be read together", {
-  expect_error(spacelaser:::column_product("L4A", c("a_V002.h5", "b_V003.h5")), "mix GEDI L4A versions")
-  expect_identical(spacelaser:::column_product("L4A", "a_V003.h5"), "L4A_V3")
-  expect_identical(spacelaser:::column_product("L4A", "a_V002.h5"), "L4A")
-  expect_identical(spacelaser:::column_product("L2A", "a_V003.h5"), "L2A")
+  for (p in c("L2A", "L2B", "L4A", "L4C")) {
+    expect_error(spacelaser:::column_product(p, c("a_V002.h5", "b_V003.h5")), paste("mix GEDI", p, "versions"))
+    expect_identical(spacelaser:::column_product(p, "a_V003.h5"), paste0(p, "_V3"))
+    expect_identical(spacelaser:::column_product(p, "a_V002.h5"), p)
+  }
+  # One registry for both versions.
+  expect_identical(spacelaser:::column_product("L1B", "a_V003.h5"), "L1B")
+  expect_identical(spacelaser:::column_product("ATL08", "a_V003.h5"), "ATL08")
 })
 
 # ---------------------------------------------------------------------------
@@ -492,9 +496,9 @@ test_that("L4C fixture: every registry column round-trips when requested", {
 
   data <- sl_read(fixture_path("gedi-l4c.h5"),
                   product = "L4C", bbox = fixture_bbox(),
-                  columns = names(sl_columns("L4C")))
+                  columns = names(sl_columns("L4C", version = "2")))
 
-  expect_registry_roundtrip(data, "L4C")
+  expect_registry_roundtrip(data, "L4C", version = "2")
 })
 
 # ---------------------------------------------------------------------------
@@ -744,4 +748,87 @@ test_that("ATL03 fixture: every photon inside the bbox is returned", {
   got <- data[data$track == "gt1l", ]
   expect_equal(nrow(got), sum(lat >= q[1] & lat <= q[2]))
   expect_true(all(got$lat_ph >= q[1] & got$lat_ph <= q[2]))
+})
+
+# ---------------------------------------------------------------------------
+# GEDI version 3
+# ---------------------------------------------------------------------------
+#
+# Version 3 files are recognised by `_V003` in the file name and read
+# through their own registries. L2B is the one whose layout matters to
+# the reader: coordinates at the beam root and one pgap_theta_z pool per
+# algorithm setting group.
+
+test_that("L2A v3 fixture: default and full reads use the version 3 registry", {
+  skip_if_not(file.exists(fixture_path("gedi-l2a_V003.h5")))
+  f <- fixture_path("gedi-l2a_V003.h5")
+
+  data <- sl_read(f, product = "L2A", bbox = fixture_bbox())
+  expect_equal(nrow(data), 200L)
+  expect_true(all(c("l2a_quality_flag_rel3", "l2a_quality_flag_rel2", "rh0", "rh100") %in% names(data)))
+  expect_false("quality_flag" %in% names(data))
+
+  data <- sl_read(f, product = "L2A", bbox = fixture_bbox(), columns = names(sl_columns("L2A")))
+  expect_registry_roundtrip(data, "L2A")
+  # The version 2 name is not a version 3 column.
+  expect_error(sl_read(f, product = "L2A", bbox = fixture_bbox(), columns = "quality_flag"))
+})
+
+test_that("L2B v3 fixture: coordinates are read from the beam root", {
+  skip_if_not(file.exists(fixture_path("gedi-l2b_V003.h5")))
+  f <- fixture_path("gedi-l2b_V003.h5")
+
+  data <- sl_read(f, product = "L2B", bbox = fixture_bbox())
+  expect_equal(nrow(data), 120L)
+  expect_setequal(unique(data$beam), c("BEAM0000", "BEAM0101"))
+  bb <- unclass(fixture_bbox())
+  expect_true(all(data$lat_lowestmode >= bb[["ymin"]] & data$lat_lowestmode <= bb[["ymax"]]))
+  expect_true(all(c("l2b_quality_flag_rel3", "cover", "pai", "cover_z0", "rch100") %in% names(data)))
+  # rch is stored in centimetres (0 to 5000 in the fixture) and returned in metres.
+  expect_true(all(data$rch100 >= 0 & data$rch100 <= 50))
+
+  data <- sl_read(f, product = "L2B", bbox = fixture_bbox(), columns = names(sl_columns("L2B")))
+  expect_registry_roundtrip(data, "L2B")
+})
+
+test_that("L2B v3 fixture: each algorithm's pgap_theta_z is sliced by its own index columns", {
+  skip_if_not(file.exists(fixture_path("gedi-l2b_V003.h5")))
+
+  data <- sl_read(fixture_path("gedi-l2b_V003.h5"), product = "L2B", bbox = fixture_bbox(),
+                  columns = c("shot_number", "pgap_theta_z_a1", "pgap_theta_z_a10"))
+  expect_equal(nrow(data), 120L)
+  for (col in c("pgap_theta_z_a1", "pgap_theta_z_a10")) {
+    expect_type(data[[col]], "list")
+    expect_true(all(lengths(data[[col]]) == 30L))
+    # Stored as gap probability x 10000 (0 to 10000 in the fixture),
+    # returned as a probability.
+    v <- unlist(data[[col]])
+    expect_true(all(is.finite(v) & v >= 0 & v <= 1))
+    expect_gt(max(v), 0.5)
+  }
+  # Two different pools, not one read twice.
+  expect_false(identical(data$pgap_theta_z_a1, data$pgap_theta_z_a10))
+})
+
+test_that("L4C v3 fixture: default and full reads use the version 3 registry", {
+  skip_if_not(file.exists(fixture_path("gedi-l4c_V003.h5")))
+  f <- fixture_path("gedi-l4c_V003.h5")
+
+  data <- sl_read(f, product = "L4C", bbox = fixture_bbox())
+  expect_equal(nrow(data), 200L)
+  expect_true(all(c("wsci", "l4c_quality_flag_rel3", "degrade_include_flag") %in% names(data)))
+
+  data <- sl_read(f, product = "L4C", bbox = fixture_bbox(), columns = names(sl_columns("L4C")))
+  expect_registry_roundtrip(data, "L4C")
+})
+
+test_that("a version 2 and a version 3 granule cannot be read in one call", {
+  skip_if_not(file.exists(fixture_path("gedi-l2a_V003.h5")))
+  d <- withr::local_tempdir()
+  v2 <- file.path(d, "GEDI02_A_x_V002.h5")
+  file.copy(fixture_path("gedi-l2a.h5"), v2)
+  expect_error(
+    sl_read(c(v2, fixture_path("gedi-l2a_V003.h5")), product = "L2A", bbox = fixture_bbox()),
+    "mix GEDI L2A versions"
+  )
 })

@@ -8,7 +8,8 @@
 //!
 //! GEDI products store coordinates in different locations:
 //! - L2A / L4A: `lat_lowestmode` / `lon_lowestmode` at the beam root
-//! - L2B: `geolocation/lat_lowestmode` / `geolocation/lon_lowestmode`
+//! - L2B version 2: `geolocation/lat_lowestmode` / `geolocation/lon_lowestmode`
+//! - L2B version 3: `lat_lowestmode` / `lon_lowestmode` at the beam root
 //! - L1B: `geolocation/latitude_bin0` / `geolocation/longitude_bin0`
 //!
 //! The `SatelliteProduct` trait lets us express this without branching
@@ -76,6 +77,8 @@ pub enum GediProduct {
     L1B,
     L2A,
     L2B,
+    /// L2B version 3: coordinates at the beam root, as in L2A.
+    L2BV3,
     L4A,
     L4C,
 }

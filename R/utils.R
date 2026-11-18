@@ -97,21 +97,32 @@
 #' because waveform data requires targeted chunk reads into the pool
 #' dataset.
 #'
+#' **GEDI versions**: the version is read from the granule file names
+#' (`_V002` or `_V003`). L2A, L2B, L4A and L4C name some variables
+#' differently in version 3, so each version has its own column set
+#' (`sl_columns(product, version = )`), and granules of both versions
+#' cannot be read in one call. See *Product versions* in [sl_search()].
+#'
 #' **GEDI L2A**: The `rh` column is a 2D dataset \[N, 101\] that
 #' expands into 101 columns (`rh0` through `rh100`), representing
 #' relative height percentiles in metres. This is included in the
-#' default set.
+#' default set. The quality flag is `l2a_quality_flag_rel3` in version
+#' 3 and `quality_flag` in version 2; version 3 keeps the version 2
+#' definition as `l2a_quality_flag_rel2`.
 #'
 #' **GEDI L2B**: The default set includes `cover_z`, `pai_z`, and
 #' `pavd_z`, which are 2D datasets \[N, 30\] representing canopy
 #' vertical profiles at 5 m height bins. Each expands to 30 columns
 #' (e.g. `cover_z0` through `cover_z29`), adding 90 columns to the
-#' output. `pgap_theta_z` is a variable-length list column (similar to
-#' L1B waveforms) and is not included in defaults; request it
-#' explicitly when needed.
+#' output. Version 3 defaults also include `rch`, the relative canopy
+#' height profile (`rch0` through `rch100`, converted from centimetres
+#' to metres), which replaces version 2's `rh100`.
 #'
-#' **GEDI L2B `rh100`**: Stored in centimetres in the HDF5 file;
-#' automatically converted to metres for consistency with L2A.
+#' The gap probability profile is a variable-length list column
+#' (similar to L1B waveforms), not included in defaults. Version 2 has
+#' one, `pgap_theta_z`. Version 3 stores one per algorithm setting
+#' group: `pgap_theta_z_a1`, `_a2`, `_a5` and `_a10`. The group behind
+#' a shot's other metrics is `selected_l2a_algorithm`.
 #'
 #' **GEDI L4A**: The `agbd` column is above-ground biomass density in
 #' Mg/ha. Prediction intervals (`agbd_pi_lower`, `agbd_pi_upper`) and
@@ -121,7 +132,9 @@
 #' column is the headline metric, with prediction intervals
 #' (`wsci_pi_lower`, `wsci_pi_upper`) and decomposed XY/Z components
 #' (`wsci_xy`, `wsci_z`) in defaults. `worldcover_class` provides the
-#' ESA WorldCover land-cover class.
+#' ESA WorldCover land-cover class. The quality flag is
+#' `l4c_quality_flag_rel3` in version 3 and `wsci_quality_flag` in
+#' version 2.
 #'
 #' **ICESat-2 ATL03**: Photon-level data. A single granule can contain
 #' millions of photons. The reader uses ATL03's segment-level spatial
@@ -180,7 +193,7 @@ sl_read.sl_gedi_search <- function(x, bbox = NULL, columns = NULL,
   bbox <- bbox %||% search_bbox
   check_bbox_within(bbox, search_bbox)
   product <- attr(x, "product")
-  lat_lon <- gedi_lat_lon(product)
+  lat_lon <- gedi_lat_lon(product, x$url)
 
   read_product_multi(
     urls = x$url,
@@ -245,7 +258,7 @@ sl_read.character <- function(x, bbox, columns = NULL, convert_time = TRUE,
   }
   product <- products
   gedi <- identical(infos[[1L]]$read_fn, read_gedi)
-  geo <- if (gedi) gedi_lat_lon(product) else icesat2_lat_lon(product)
+  geo <- if (gedi) gedi_lat_lon(product, x) else icesat2_lat_lon(product)
 
   # The same path as a search result: a granule that fails after the
   # retries is a warning plus the `failed_granules` attribute, and a
@@ -466,7 +479,10 @@ check_bbox_within <- function(inner, outer, call = rlang::caller_env()) {
 prepare_read_params <- function(product, bbox, columns, lat_col, lon_col,
                                 needs_creds = TRUE, urls = NULL) {
   bbox <- validate_bbox(bbox)
-  columns <- validate_columns(columns, column_product(product, urls))
+  # The registry key: the product, or `<product>_V3` for the GEDI
+  # products whose version 3 files are laid out differently.
+  key <- column_product(product, urls)
+  columns <- validate_columns(columns, key)
   # Capture the user's requested column set (after default-resolution
   # but before lat/lon and pool-index augmentation) as short names, for
   # downstream column reordering. Anything in the output that's NOT in
@@ -474,10 +490,10 @@ prepare_read_params <- function(product, bbox, columns, lat_col, lon_col,
   user_columns <- sub(".*/", "", columns)
   columns <- ensure_lat_lon(columns, lat_col, lon_col)
   # Split into: transposed 2D columns, pool columns, and regular scalars
-  trans_split <- split_transposed_columns(columns, product)
-  pool_split <- split_pool_columns(trans_split$scalar, product)
-  scalar_cols <- ensure_pool_indices(pool_split$scalar, pool_split$pool_short, product)
-  pool_specs <- build_pool_specs(pool_split$pool_short, pool_split$pool_paths, product)
+  trans_split <- split_transposed_columns(columns, key)
+  pool_split <- split_pool_columns(trans_split$scalar, key)
+  scalar_cols <- ensure_pool_indices(pool_split$scalar, pool_split$pool_short, key)
+  pool_specs <- build_pool_specs(pool_split$pool_short, pool_split$pool_paths, key)
   transposed_specs <- build_transposed_specs(trans_split$transposed)
   # Only resolve Earthdata credentials when the reader is actually going
   # to make authenticated HTTP calls. Local file:// or bare-path reads
@@ -486,14 +502,15 @@ prepare_read_params <- function(product, bbox, columns, lat_col, lon_col,
   # and don't need an NASA account.
   creds <- if (needs_creds) sl_earthdata_creds() else NULL
   list(
+    key = key,
     bbox = unclass(bbox),
     scalar_cols = scalar_cols,
     pool_specs = pool_specs,
     pool_short = pool_split$pool_short,
-    pool_idx_map = product_pool_index_map(product),
+    pool_idx_map = product_pool_index_map(key),
     transposed_specs = transposed_specs,
-    fill_values = product_fill_values(product),
-    scale_factors = product_scale_factors(product),
+    fill_values = product_fill_values(key),
+    scale_factors = product_scale_factors(key),
     user_columns = user_columns,
     creds = creds
   )
@@ -517,7 +534,7 @@ is_remote_url <- function(x) {
 call_rust_reader <- function(rust_fn, target, product, params) {
   rust_fn(
     target,
-    product,
+    params$key %||% product,
     params$bbox[["xmin"]],
     params$bbox[["ymin"]],
     params$bbox[["xmax"]],
@@ -933,8 +950,14 @@ warn_missing_columns <- function(out, user_columns) {
 # Internal: lat/lon column helpers (shared between read_* and sl_read)
 # ---------------------------------------------------------------------------
 
+#' Coordinate datasets of a GEDI product. L2B moved them from
+#' `geolocation/` to the beam root in version 3, so the version (from the
+#' granule file names) matters.
 #' @noRd
-gedi_lat_lon <- function(product) {
+gedi_lat_lon <- function(product, urls = NULL) {
+  if (identical(column_product(product, urls), "L2B_V3")) {
+    return(list(lat = "lat_lowestmode", lon = "lon_lowestmode"))
+  }
   switch(
     product,
     "L2A" = list(lat = "lat_lowestmode", lon = "lon_lowestmode"),
@@ -1099,11 +1122,12 @@ build_tibble <- function(
 
   tbl <- tibble::new_tibble(cols, nrow = n)
 
-  # Apply per-column scale factors (R-side only: product-specific,
-  # currently only L2B rh100 cm→m).
+  # Apply per-column scale factors (R-side only: product-specific, see
+  # `product_scale_factors()`). Pool columns are scaled where they are
+  # sliced, below.
   if (length(scale_factors) > 0L) {
     tbl_names <- names(tbl)
-    for (base_name in names(scale_factors)) {
+    for (base_name in setdiff(names(scale_factors), pool_short)) {
       factor <- scale_factors[[base_name]]
       pattern <- paste0("^", base_name, "\\d*$")
       matching <- grep(pattern, tbl_names, value = TRUE)
@@ -1132,6 +1156,10 @@ build_tibble <- function(
   if (length(pool_short) > 0L) {
     pool_raw <- group_data$pool_columns %||% list()
     pool_info <- group_data$pool_col_info %||% list()
+    # Keyed by dataset path; a pool in a subgroup (L2B version 3's
+    # `rx_processing/pgap_theta_z_a1`) is looked up by its short name.
+    names(pool_raw) <- sub(".*/", "", names(pool_raw))
+    names(pool_info) <- sub(".*/", "", names(pool_info))
     for (pc in pool_short) {
       if (is.null(pool_raw[[pc]])) next
       flat <- parse_column(pool_raw[[pc]], pool_info[[pc]])
@@ -1139,6 +1167,9 @@ build_tibble <- function(
         for (fv in fill_values) {
           flat[!is.na(flat) & flat == fv] <- NA
         }
+      }
+      if (!is.null(scale_factors[[pc]]) && is.numeric(flat)) {
+        flat <- flat * scale_factors[[pc]]
       }
       spec <- pool_index_map[[pc]]
       if (is.null(spec)) next

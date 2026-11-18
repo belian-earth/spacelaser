@@ -62,37 +62,37 @@ granules <- sl_search(
   date_start = "2022-01-01",
   date_end = "2023-01-01"
 )
-#> ℹ Searching CMR for GEDI L2A granules
-#> ✔ Searching CMR for GEDI L2A granules [686ms]
+#> ℹ Searching CMR for GEDI L2A v3 granules
+#> ✔ Searching CMR for GEDI L2A v3 granules [2.4s]
 #> 
-#> ✔ Found 9 GEDI L2A granules.
+#> ✔ Found 9 GEDI L2A v3 granules.
 gedi2a <- sl_read(granules)
 #> ℹ Reading L2A from 9 granules
-#> ✔ Read 647 footprints from 20 beams.✔ Reading L2A from 9 granules [42.9s]
+#> ✔ Read 647 footprints from 20 beams.✔ Reading L2A from 9 granules [35.2s]
 
 gedi2a
-#> # A tibble: 647 × 121
+#> # A tibble: 647 × 122
 #>    beam     shot_number time                lat_lowestmode lon_lowestmode
 #>    <chr>        <int64> <dttm>                       <dbl>          <dbl>
-#>  1 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
-#>  2 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
-#>  3 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
-#>  4 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
-#>  5 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
-#>  6 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
-#>  7 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
-#>  8 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
-#>  9 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
-#> 10 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.
+#>  1 BEAM0000       2.e17 2022-12-20 14:08:10           41.4          -124.
+#>  2 BEAM0000       2.e17 2022-12-20 14:08:10           41.4          -124.
+#>  3 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.
+#>  4 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.
+#>  5 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.
+#>  6 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.
+#>  7 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.
+#>  8 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.
+#>  9 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.
+#> 10 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.
 #> # ℹ 637 more rows
-#> # ℹ 116 more variables: degrade_flag <int>, quality_flag <int>,
-#> #   sensitivity <dbl>, solar_elevation <dbl>, elev_lowestmode <dbl>,
-#> #   elev_highestreturn <dbl>, energy_total <dbl>, num_detectedmodes <int>,
-#> #   rh0 <dbl>, rh1 <dbl>, rh2 <dbl>, rh3 <dbl>, rh4 <dbl>, rh5 <dbl>,
-#> #   rh6 <dbl>, rh7 <dbl>, rh8 <dbl>, rh9 <dbl>, rh10 <dbl>, rh11 <dbl>,
-#> #   rh12 <dbl>, rh13 <dbl>, rh14 <dbl>, rh15 <dbl>, rh16 <dbl>, rh17 <dbl>, …
+#> # ℹ 117 more variables: degrade_flag <int>, l2a_quality_flag_rel3 <int>,
+#> #   l2a_quality_flag_rel2 <int>, sensitivity <dbl>, solar_elevation <dbl>,
+#> #   elev_lowestmode <dbl>, elev_highestreturn <dbl>, energy_total <dbl>,
+#> #   num_detectedmodes <int>, rh0 <dbl>, rh1 <dbl>, rh2 <dbl>, rh3 <dbl>,
+#> #   rh4 <dbl>, rh5 <dbl>, rh6 <dbl>, rh7 <dbl>, rh8 <dbl>, rh9 <dbl>,
+#> #   rh10 <dbl>, rh11 <dbl>, rh12 <dbl>, rh13 <dbl>, rh14 <dbl>, rh15 <dbl>, …
 
-g <- gedi2a[gedi2a$quality_flag == 1, ]
+g <- gedi2a[gedi2a$l2a_quality_flag_rel3 == 1, ]
 
 plot(
   g$geometry,

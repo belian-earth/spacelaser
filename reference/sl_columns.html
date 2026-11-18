@@ -82,9 +82,11 @@ variables, quality flags, and context columns. This is what
 
 
 <dt id="arg-version">version<a class="anchor" aria-label="anchor" href="#arg-version"></a></dt>
-<dd><p>Character or <code>NULL</code>. For L4A, <code>"3"</code> (the default) or
-<code>"2.1"</code>, whose variables differ; see <code><a href="sl_search.html">sl_search()</a></code>. <code><a href="sl_read.html">sl_read()</a></code> picks
-the version from the granule file names.</p></dd>
+<dd><p>Character or <code>NULL</code>. Product version, for the products
+published in more than one: <code>"3"</code> (the default) or <code>"2"</code> for GEDI
+L1B, L2A, L2B and L4C, <code>"3"</code> or <code>"2.1"</code> for L4A. GEDI L2A, L2B, L4A
+and L4C variables differ between versions; see <code><a href="sl_search.html">sl_search()</a></code>.
+<code><a href="sl_read.html">sl_read()</a></code> picks the version from the granule file names.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -113,8 +115,14 @@ the version from the granule file names.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                                "master_int" </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                                degrade_flag </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                              "degrade_flag" </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                                quality_flag </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                              "quality_flag" </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                        degrade_include_flag </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>          "geolocation/degrade_include_flag" </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                               l2_algrunflag </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                             "l2_algrunflag" </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                       l2a_quality_flag_rel3 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                     "l2a_quality_flag_rel3" </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                       l2a_quality_flag_rel2 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                     "l2a_quality_flag_rel2" </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                                 sensitivity </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                               "sensitivity" </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                               solar_azimuth </span>
@@ -123,6 +131,8 @@ the version from the granule file names.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                           "solar_elevation" </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                                surface_flag </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                              "surface_flag" </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                           stale_return_flag </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>             "geolocation/stale_return_flag" </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                         elevation_bias_flag </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                       "elevation_bias_flag" </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                             elev_lowestmode </span>
@@ -157,18 +167,16 @@ the version from the granule file names.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                         "lon_highestreturn" </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                        longitude_bin0_error </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                      "longitude_bin0_error" </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                          local_beam_azimuth </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>            "geolocation/local_beam_azimuth" </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                        local_beam_elevation </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>          "geolocation/local_beam_elevation" </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                           landsat_treecover </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         "land_cover_data/landsat_treecover" </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                   landsat_water_persistence </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> "land_cover_data/landsat_water_persistence" </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                                leaf_off_doy </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>              "land_cover_data/leaf_off_doy" </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                               leaf_off_flag </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             "land_cover_data/leaf_off_flag" </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                               leaf_on_cycle </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             "land_cover_data/leaf_on_cycle" </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                                 leaf_on_doy </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>               "land_cover_data/leaf_on_doy" </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                          modis_nonvegetated </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>        "land_cover_data/modis_nonvegetated" </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                       modis_nonvegetated_sd </span>
@@ -179,31 +187,39 @@ the version from the granule file names.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span>        "land_cover_data/modis_treecover_sd" </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                                   pft_class </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                 "land_cover_data/pft_class" </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                             phenology_phase </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>           "land_cover_data/phenology_phase" </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                              phenology_year </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>            "land_cover_data/phenology_year" </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                                region_class </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>              "land_cover_data/region_class" </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                     urban_focal_window_size </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   "land_cover_data/urban_focal_window_size" </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                            urban_proportion </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>          "land_cover_data/urban_proportion" </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                            worldcover_class </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>          "land_cover_data/worldcover_class" </span>
 <span class="r-in"><span><span class="fu">sl_columns</span><span class="op">(</span><span class="st">"L2A"</span>, set <span class="op">=</span> <span class="st">"default"</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                                beam                         shot_number </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                              "beam"                       "shot_number" </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                          delta_time                        degrade_flag </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                        "delta_time"                      "degrade_flag" </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                        quality_flag                         sensitivity </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                      "quality_flag"                       "sensitivity" </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                     solar_elevation                     elev_lowestmode </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                   "solar_elevation"                   "elev_lowestmode" </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                  elev_highestreturn                        energy_total </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                "elev_highestreturn"                      "energy_total" </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                   num_detectedmodes                                  rh </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                 "num_detectedmodes"                                "rh" </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                  selected_algorithm             digital_elevation_model </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                "selected_algorithm"           "digital_elevation_model" </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                   landsat_treecover                     modis_treecover </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> "land_cover_data/landsat_treecover"   "land_cover_data/modis_treecover" </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                           pft_class                        region_class </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         "land_cover_data/pft_class"      "land_cover_data/region_class" </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>               l2a_quality_flag_rel3               l2a_quality_flag_rel2 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>             "l2a_quality_flag_rel3"             "l2a_quality_flag_rel2" </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                         sensitivity                     solar_elevation </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                       "sensitivity"                   "solar_elevation" </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                     elev_lowestmode                  elev_highestreturn </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                   "elev_lowestmode"                "elev_highestreturn" </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                        energy_total                   num_detectedmodes </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                      "energy_total"                 "num_detectedmodes" </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                                  rh                  selected_algorithm </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                                "rh"                "selected_algorithm" </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>             digital_elevation_model                   landsat_treecover </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>           "digital_elevation_model" "land_cover_data/landsat_treecover" </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                     modis_treecover                           pft_class </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   "land_cover_data/modis_treecover"         "land_cover_data/pft_class" </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                        region_class </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>      "land_cover_data/region_class" </span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>

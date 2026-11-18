@@ -191,19 +191,29 @@ waveform (<code>txwaveform</code>) is available via explicit request but not
 included in defaults. L1B reads are slower than other products
 because waveform data requires targeted chunk reads into the pool
 dataset.</p>
+<p><strong>GEDI versions</strong>: the version is read from the granule file names
+(<code>_V002</code> or <code>_V003</code>). L2A, L2B, L4A and L4C name some variables
+differently in version 3, so each version has its own column set
+(<code>sl_columns(product, version = )</code>), and granules of both versions
+cannot be read in one call. See <em>Product versions</em> in <code><a href="sl_search.html">sl_search()</a></code>.</p>
 <p><strong>GEDI L2A</strong>: The <code>rh</code> column is a 2D dataset [N, 101] that
 expands into 101 columns (<code>rh0</code> through <code>rh100</code>), representing
 relative height percentiles in metres. This is included in the
-default set.</p>
+default set. The quality flag is <code>l2a_quality_flag_rel3</code> in version
+3 and <code>quality_flag</code> in version 2; version 3 keeps the version 2
+definition as <code>l2a_quality_flag_rel2</code>.</p>
 <p><strong>GEDI L2B</strong>: The default set includes <code>cover_z</code>, <code>pai_z</code>, and
 <code>pavd_z</code>, which are 2D datasets [N, 30] representing canopy
 vertical profiles at 5 m height bins. Each expands to 30 columns
 (e.g. <code>cover_z0</code> through <code>cover_z29</code>), adding 90 columns to the
-output. <code>pgap_theta_z</code> is a variable-length list column (similar to
-L1B waveforms) and is not included in defaults; request it
-explicitly when needed.</p>
-<p><strong>GEDI L2B <code>rh100</code></strong>: Stored in centimetres in the HDF5 file;
-automatically converted to metres for consistency with L2A.</p>
+output. Version 3 defaults also include <code>rch</code>, the relative canopy
+height profile (<code>rch0</code> through <code>rch100</code>, converted from centimetres
+to metres), which replaces version 2's <code>rh100</code>.</p>
+<p>The gap probability profile is a variable-length list column
+(similar to L1B waveforms), not included in defaults. Version 2 has
+one, <code>pgap_theta_z</code>. Version 3 stores one per algorithm setting
+group: <code>pgap_theta_z_a1</code>, <code>_a2</code>, <code>_a5</code> and <code>_a10</code>. The group behind
+a shot's other metrics is <code>selected_l2a_algorithm</code>.</p>
 <p><strong>GEDI L4A</strong>: The <code>agbd</code> column is above-ground biomass density in
 Mg/ha. Prediction intervals (<code>agbd_pi_lower</code>, <code>agbd_pi_upper</code>) and
 standard error (<code>agbd_se</code>) are included in defaults.</p>
@@ -211,7 +221,9 @@ standard error (<code>agbd_se</code>) are included in defaults.</p>
 column is the headline metric, with prediction intervals
 (<code>wsci_pi_lower</code>, <code>wsci_pi_upper</code>) and decomposed XY/Z components
 (<code>wsci_xy</code>, <code>wsci_z</code>) in defaults. <code>worldcover_class</code> provides the
-ESA WorldCover land-cover class.</p>
+ESA WorldCover land-cover class. The quality flag is
+<code>l4c_quality_flag_rel3</code> in version 3 and <code>wsci_quality_flag</code> in
+version 2.</p>
 <p><strong>ICESat-2 ATL03</strong>: Photon-level data. A single granule can contain
 millions of photons. The reader uses ATL03's segment-level spatial
 index (<code>geolocation/reference_photon_lat</code> etc.) to filter at segment

@@ -137,7 +137,7 @@ structural metadata (<code>elevation_bin0</code>,
 noise statistics, DEM references, and per-shot metadata.
 <code>l2a</code> carries the processed ground elevation
 (<code>elev_lowestmode</code>), quality flags
-(<code>quality_flag</code>, <code>sensitivity</code>,
+(<code>l2a_quality_flag_rel3</code>, <code>sensitivity</code>,
 <code>degrade_flag</code>), and the relative-height quantiles
 (<code>rh0</code> through <code>rh100</code>).</p>
 </div>
@@ -151,12 +151,12 @@ side.</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">l1b_joined</span> <span class="op">&lt;-</span> <span class="va">l1b</span> <span class="op">|&gt;</span></span>
 <span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/mutate-joins.html" class="external-link">inner_join</a></span><span class="op">(</span></span>
-<span>    <span class="va">l2a</span> <span class="op">|&gt;</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/select.html" class="external-link">select</a></span><span class="op">(</span><span class="va">shot_number</span>, <span class="va">elev_lowestmode</span>, <span class="va">quality_flag</span>, <span class="va">sensitivity</span>,</span>
+<span>    <span class="va">l2a</span> <span class="op">|&gt;</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/select.html" class="external-link">select</a></span><span class="op">(</span><span class="va">shot_number</span>, <span class="va">elev_lowestmode</span>, <span class="va">l2a_quality_flag_rel3</span>, <span class="va">sensitivity</span>,</span>
 <span>                  <span class="va">rh25</span>, <span class="va">rh50</span>, <span class="va">rh75</span>, <span class="va">rh95</span>, <span class="va">rh100</span><span class="op">)</span>,</span>
 <span>    by <span class="op">=</span> <span class="st">"shot_number"</span></span>
 <span>  <span class="op">)</span> <span class="op">|&gt;</span></span>
 <span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/filter.html" class="external-link">filter</a></span><span class="op">(</span></span>
-<span>    <span class="va">quality_flag</span> <span class="op">==</span> <span class="fl">1L</span>,  <span class="co"># L2A quality gate</span></span>
+<span>    <span class="va">l2a_quality_flag_rel3</span> <span class="op">==</span> <span class="fl">1L</span>,  <span class="co"># L2A quality gate</span></span>
 <span>    <span class="va">sensitivity</span> <span class="op">&gt;</span> <span class="fl">0.9</span>,   <span class="co"># only well-penetrated shots</span></span>
 <span>    <span class="va">solar_elevation</span> <span class="op">&lt;</span> <span class="fl">0</span>  <span class="co"># night shots for cleaner returns</span></span>
 <span>  <span class="op">)</span></span>

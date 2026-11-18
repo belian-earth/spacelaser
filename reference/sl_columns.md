@@ -42,8 +42,10 @@ sl_columns(
 
 - version:
 
-  Character or `NULL`. For L4A, `"3"` (the default) or `"2.1"`, whose
-  variables differ; see
+  Character or `NULL`. Product version, for the products published in
+  more than one: `"3"` (the default) or `"2"` for GEDI L1B, L2A, L2B and
+  L4C, `"3"` or `"2.1"` for L4A. GEDI L2A, L2B, L4A and L4C variables
+  differ between versions; see
   [`sl_search()`](https://belian-earth.github.io/spacelaser/reference/sl_search.md).
   [`sl_read()`](https://belian-earth.github.io/spacelaser/reference/sl_read.md)
   picks the version from the granule file names.
@@ -74,8 +76,14 @@ sl_columns("L2A")
 #>                                "master_int" 
 #>                                degrade_flag 
 #>                              "degrade_flag" 
-#>                                quality_flag 
-#>                              "quality_flag" 
+#>                        degrade_include_flag 
+#>          "geolocation/degrade_include_flag" 
+#>                               l2_algrunflag 
+#>                             "l2_algrunflag" 
+#>                       l2a_quality_flag_rel3 
+#>                     "l2a_quality_flag_rel3" 
+#>                       l2a_quality_flag_rel2 
+#>                     "l2a_quality_flag_rel2" 
 #>                                 sensitivity 
 #>                               "sensitivity" 
 #>                               solar_azimuth 
@@ -84,6 +92,8 @@ sl_columns("L2A")
 #>                           "solar_elevation" 
 #>                                surface_flag 
 #>                              "surface_flag" 
+#>                           stale_return_flag 
+#>             "geolocation/stale_return_flag" 
 #>                         elevation_bias_flag 
 #>                       "elevation_bias_flag" 
 #>                             elev_lowestmode 
@@ -118,18 +128,16 @@ sl_columns("L2A")
 #>                         "lon_highestreturn" 
 #>                        longitude_bin0_error 
 #>                      "longitude_bin0_error" 
+#>                          local_beam_azimuth 
+#>            "geolocation/local_beam_azimuth" 
+#>                        local_beam_elevation 
+#>          "geolocation/local_beam_elevation" 
 #>                           landsat_treecover 
 #>         "land_cover_data/landsat_treecover" 
 #>                   landsat_water_persistence 
 #> "land_cover_data/landsat_water_persistence" 
-#>                                leaf_off_doy 
-#>              "land_cover_data/leaf_off_doy" 
 #>                               leaf_off_flag 
 #>             "land_cover_data/leaf_off_flag" 
-#>                               leaf_on_cycle 
-#>             "land_cover_data/leaf_on_cycle" 
-#>                                 leaf_on_doy 
-#>               "land_cover_data/leaf_on_doy" 
 #>                          modis_nonvegetated 
 #>        "land_cover_data/modis_nonvegetated" 
 #>                       modis_nonvegetated_sd 
@@ -140,29 +148,37 @@ sl_columns("L2A")
 #>        "land_cover_data/modis_treecover_sd" 
 #>                                   pft_class 
 #>                 "land_cover_data/pft_class" 
+#>                             phenology_phase 
+#>           "land_cover_data/phenology_phase" 
+#>                              phenology_year 
+#>            "land_cover_data/phenology_year" 
 #>                                region_class 
 #>              "land_cover_data/region_class" 
 #>                     urban_focal_window_size 
 #>   "land_cover_data/urban_focal_window_size" 
 #>                            urban_proportion 
 #>          "land_cover_data/urban_proportion" 
+#>                            worldcover_class 
+#>          "land_cover_data/worldcover_class" 
 sl_columns("L2A", set = "default")
 #>                                beam                         shot_number 
 #>                              "beam"                       "shot_number" 
 #>                          delta_time                        degrade_flag 
 #>                        "delta_time"                      "degrade_flag" 
-#>                        quality_flag                         sensitivity 
-#>                      "quality_flag"                       "sensitivity" 
-#>                     solar_elevation                     elev_lowestmode 
-#>                   "solar_elevation"                   "elev_lowestmode" 
-#>                  elev_highestreturn                        energy_total 
-#>                "elev_highestreturn"                      "energy_total" 
-#>                   num_detectedmodes                                  rh 
-#>                 "num_detectedmodes"                                "rh" 
-#>                  selected_algorithm             digital_elevation_model 
-#>                "selected_algorithm"           "digital_elevation_model" 
-#>                   landsat_treecover                     modis_treecover 
-#> "land_cover_data/landsat_treecover"   "land_cover_data/modis_treecover" 
-#>                           pft_class                        region_class 
-#>         "land_cover_data/pft_class"      "land_cover_data/region_class" 
+#>               l2a_quality_flag_rel3               l2a_quality_flag_rel2 
+#>             "l2a_quality_flag_rel3"             "l2a_quality_flag_rel2" 
+#>                         sensitivity                     solar_elevation 
+#>                       "sensitivity"                   "solar_elevation" 
+#>                     elev_lowestmode                  elev_highestreturn 
+#>                   "elev_lowestmode"                "elev_highestreturn" 
+#>                        energy_total                   num_detectedmodes 
+#>                      "energy_total"                 "num_detectedmodes" 
+#>                                  rh                  selected_algorithm 
+#>                                "rh"                "selected_algorithm" 
+#>             digital_elevation_model                   landsat_treecover 
+#>           "digital_elevation_model" "land_cover_data/landsat_treecover" 
+#>                     modis_treecover                           pft_class 
+#>   "land_cover_data/modis_treecover"         "land_cover_data/pft_class" 
+#>                        region_class 
+#>      "land_cover_data/region_class" 
 ```

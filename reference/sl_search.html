@@ -98,8 +98,8 @@ falls on any of those 30 days.</p>
 <dt id="arg-version">version<a class="anchor" aria-label="anchor" href="#arg-version"></a></dt>
 <dd><p>Character or <code>NULL</code>. Product version, for the products
 that can be searched in more than one. The first listed is the
-default:</p><ul><li><p>GEDI L4A: <code>"3"</code> (released 2026-06) or <code>"2.1"</code>.</p></li>
-<li><p>GEDI L1B: <code>"2"</code> or <code>"3"</code>.</p></li>
+default:</p><ul><li><p>GEDI L1B, L2A, L2B and L4C: <code>"3"</code> or <code>"2"</code>.</p></li>
+<li><p>GEDI L4A: <code>"3"</code> or <code>"2.1"</code>.</p></li>
 <li><p>ICESat-2 ATL24: <code>"1"</code>, <code>"2"</code> or <code>"3"</code>.</p></li>
 </ul><p>Must be <code>NULL</code> for every other product. See <em>Product versions</em>.</p></dd>
 
@@ -140,8 +140,17 @@ L4C version 2 nothing after 2025-07-09, and ATL24 version 1 nothing
 after 2024-11-07. A search whose dates run past the end of a closed
 version warns, because the empty tail of the result means "not in
 this version", not "no overpasses".</p>
-<p>GEDI L2A, L2B and L4C are searched in version 2 only. Their version 3
-files rename and drop variables and are not read by this package yet.</p>
+<p>GEDI version 3 (published June to September 2026) reprocesses the
+whole mission and is the default. It is not a drop-in replacement for
+version 2: geolocation is improved, L2B canopy cover and the vertical
+profiles are computed differently, and L2A, L2B, L4A and L4C rename or
+drop variables. The quality flags are the change most code will meet:
+<code>quality_flag</code> (L2A), <code>l2b_quality_flag</code> and <code>wsci_quality_flag</code> become
+<code>l2a_quality_flag_rel3</code>, <code>l2b_quality_flag_rel3</code> and
+<code>l4c_quality_flag_rel3</code>. <code>sl_columns(product, version = )</code> lists each
+version's variables. Pass <code>version = "2"</code> to keep reading version 2,
+and do not pool values from the two versions without checking that
+they are comparable for your purpose.</p>
 </div>
 
 <div class="section">

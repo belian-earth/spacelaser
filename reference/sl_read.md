@@ -137,19 +137,33 @@ request but not included in defaults. L1B reads are slower than other
 products because waveform data requires targeted chunk reads into the
 pool dataset.
 
+**GEDI versions**: the version is read from the granule file names
+(`_V002` or `_V003`). L2A, L2B, L4A and L4C name some variables
+differently in version 3, so each version has its own column set
+(`sl_columns(product, version = )`), and granules of both versions
+cannot be read in one call. See *Product versions* in
+[`sl_search()`](https://belian-earth.github.io/spacelaser/reference/sl_search.md).
+
 **GEDI L2A**: The `rh` column is a 2D dataset \[N, 101\] that expands
 into 101 columns (`rh0` through `rh100`), representing relative height
-percentiles in metres. This is included in the default set.
+percentiles in metres. This is included in the default set. The quality
+flag is `l2a_quality_flag_rel3` in version 3 and `quality_flag` in
+version 2; version 3 keeps the version 2 definition as
+`l2a_quality_flag_rel2`.
 
 **GEDI L2B**: The default set includes `cover_z`, `pai_z`, and `pavd_z`,
 which are 2D datasets \[N, 30\] representing canopy vertical profiles at
 5 m height bins. Each expands to 30 columns (e.g. `cover_z0` through
-`cover_z29`), adding 90 columns to the output. `pgap_theta_z` is a
-variable-length list column (similar to L1B waveforms) and is not
-included in defaults; request it explicitly when needed.
+`cover_z29`), adding 90 columns to the output. Version 3 defaults also
+include `rch`, the relative canopy height profile (`rch0` through
+`rch100`, converted from centimetres to metres), which replaces version
+2's `rh100`.
 
-**GEDI L2B `rh100`**: Stored in centimetres in the HDF5 file;
-automatically converted to metres for consistency with L2A.
+The gap probability profile is a variable-length list column (similar to
+L1B waveforms), not included in defaults. Version 2 has one,
+`pgap_theta_z`. Version 3 stores one per algorithm setting group:
+`pgap_theta_z_a1`, `_a2`, `_a5` and `_a10`. The group behind a shot's
+other metrics is `selected_l2a_algorithm`.
 
 **GEDI L4A**: The `agbd` column is above-ground biomass density in
 Mg/ha. Prediction intervals (`agbd_pi_lower`, `agbd_pi_upper`) and
@@ -159,7 +173,8 @@ standard error (`agbd_se`) are included in defaults.
 the headline metric, with prediction intervals (`wsci_pi_lower`,
 `wsci_pi_upper`) and decomposed XY/Z components (`wsci_xy`, `wsci_z`) in
 defaults. `worldcover_class` provides the ESA WorldCover land-cover
-class.
+class. The quality flag is `l4c_quality_flag_rel3` in version 3 and
+`wsci_quality_flag` in version 2.
 
 **ICESat-2 ATL03**: Photon-level data. A single granule can contain
 millions of photons. The reader uses ATL03's segment-level spatial index

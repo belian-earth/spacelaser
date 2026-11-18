@@ -106,37 +106,37 @@
 <span>  date_start <span class="op">=</span> <span class="st">"2022-01-01"</span>,</span>
 <span>  date_end <span class="op">=</span> <span class="st">"2023-01-01"</span></span>
 <span><span class="op">)</span></span>
-<span><span class="co">#&gt; ℹ Searching CMR for GEDI L2A granules</span></span>
-<span><span class="co">#&gt; ✔ Searching CMR for GEDI L2A granules [686ms]</span></span>
+<span><span class="co">#&gt; ℹ Searching CMR for GEDI L2A v3 granules</span></span>
+<span><span class="co">#&gt; ✔ Searching CMR for GEDI L2A v3 granules [2.4s]</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; ✔ Found 9 GEDI L2A granules.</span></span>
+<span><span class="co">#&gt; ✔ Found 9 GEDI L2A v3 granules.</span></span>
 <span><span class="va">gedi2a</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/sl_read.html">sl_read</a></span><span class="op">(</span><span class="va">granules</span><span class="op">)</span></span>
 <span><span class="co">#&gt; ℹ Reading L2A from 9 granules</span></span>
-<span><span class="co">#&gt; ✔ Read 647 footprints from 20 beams.✔ Reading L2A from 9 granules [42.9s]</span></span>
+<span><span class="co">#&gt; ✔ Read 647 footprints from 20 beams.✔ Reading L2A from 9 granules [35.2s]</span></span>
 <span></span>
 <span><span class="va">gedi2a</span></span>
-<span><span class="co">#&gt; # A tibble: 647 × 121</span></span>
+<span><span class="co">#&gt; # A tibble: 647 × 122</span></span>
 <span><span class="co">#&gt;    beam     shot_number time                lat_lowestmode lon_lowestmode</span></span>
 <span><span class="co">#&gt;    &lt;chr&gt;        &lt;int64&gt; &lt;dttm&gt;                       &lt;dbl&gt;          &lt;dbl&gt;</span></span>
-<span><span class="co">#&gt;  1 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
-<span><span class="co">#&gt;  2 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
-<span><span class="co">#&gt;  3 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
-<span><span class="co">#&gt;  4 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
-<span><span class="co">#&gt;  5 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
-<span><span class="co">#&gt;  6 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
-<span><span class="co">#&gt;  7 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
-<span><span class="co">#&gt;  8 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
-<span><span class="co">#&gt;  9 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
-<span><span class="co">#&gt; 10 BEAM0000       1.e17 2022-01-22 01:46:51           41.4          -124.</span></span>
+<span><span class="co">#&gt;  1 BEAM0000       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
+<span><span class="co">#&gt;  2 BEAM0000       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
+<span><span class="co">#&gt;  3 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
+<span><span class="co">#&gt;  4 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
+<span><span class="co">#&gt;  5 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
+<span><span class="co">#&gt;  6 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
+<span><span class="co">#&gt;  7 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
+<span><span class="co">#&gt;  8 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
+<span><span class="co">#&gt;  9 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
+<span><span class="co">#&gt; 10 BEAM0001       2.e17 2022-12-20 14:08:10           41.4          -124.</span></span>
 <span><span class="co">#&gt; # ℹ 637 more rows</span></span>
-<span><span class="co">#&gt; # ℹ 116 more variables: degrade_flag &lt;int&gt;, quality_flag &lt;int&gt;,</span></span>
-<span><span class="co">#&gt; #   sensitivity &lt;dbl&gt;, solar_elevation &lt;dbl&gt;, elev_lowestmode &lt;dbl&gt;,</span></span>
-<span><span class="co">#&gt; #   elev_highestreturn &lt;dbl&gt;, energy_total &lt;dbl&gt;, num_detectedmodes &lt;int&gt;,</span></span>
-<span><span class="co">#&gt; #   rh0 &lt;dbl&gt;, rh1 &lt;dbl&gt;, rh2 &lt;dbl&gt;, rh3 &lt;dbl&gt;, rh4 &lt;dbl&gt;, rh5 &lt;dbl&gt;,</span></span>
-<span><span class="co">#&gt; #   rh6 &lt;dbl&gt;, rh7 &lt;dbl&gt;, rh8 &lt;dbl&gt;, rh9 &lt;dbl&gt;, rh10 &lt;dbl&gt;, rh11 &lt;dbl&gt;,</span></span>
-<span><span class="co">#&gt; #   rh12 &lt;dbl&gt;, rh13 &lt;dbl&gt;, rh14 &lt;dbl&gt;, rh15 &lt;dbl&gt;, rh16 &lt;dbl&gt;, rh17 &lt;dbl&gt;, …</span></span>
+<span><span class="co">#&gt; # ℹ 117 more variables: degrade_flag &lt;int&gt;, l2a_quality_flag_rel3 &lt;int&gt;,</span></span>
+<span><span class="co">#&gt; #   l2a_quality_flag_rel2 &lt;int&gt;, sensitivity &lt;dbl&gt;, solar_elevation &lt;dbl&gt;,</span></span>
+<span><span class="co">#&gt; #   elev_lowestmode &lt;dbl&gt;, elev_highestreturn &lt;dbl&gt;, energy_total &lt;dbl&gt;,</span></span>
+<span><span class="co">#&gt; #   num_detectedmodes &lt;int&gt;, rh0 &lt;dbl&gt;, rh1 &lt;dbl&gt;, rh2 &lt;dbl&gt;, rh3 &lt;dbl&gt;,</span></span>
+<span><span class="co">#&gt; #   rh4 &lt;dbl&gt;, rh5 &lt;dbl&gt;, rh6 &lt;dbl&gt;, rh7 &lt;dbl&gt;, rh8 &lt;dbl&gt;, rh9 &lt;dbl&gt;,</span></span>
+<span><span class="co">#&gt; #   rh10 &lt;dbl&gt;, rh11 &lt;dbl&gt;, rh12 &lt;dbl&gt;, rh13 &lt;dbl&gt;, rh14 &lt;dbl&gt;, rh15 &lt;dbl&gt;, …</span></span>
 <span></span>
-<span><span class="va">g</span> <span class="op">&lt;-</span> <span class="va">gedi2a</span><span class="op">[</span><span class="va">gedi2a</span><span class="op">$</span><span class="va">quality_flag</span> <span class="op">==</span> <span class="fl">1</span>, <span class="op">]</span></span>
+<span><span class="va">g</span> <span class="op">&lt;-</span> <span class="va">gedi2a</span><span class="op">[</span><span class="va">gedi2a</span><span class="op">$</span><span class="va">l2a_quality_flag_rel3</span> <span class="op">==</span> <span class="fl">1</span>, <span class="op">]</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span></span>
 <span>  <span class="va">g</span><span class="op">$</span><span class="va">geometry</span>,</span>

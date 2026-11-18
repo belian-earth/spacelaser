@@ -67,7 +67,7 @@ l2a <- sl_read(g_l2a[1L, ], bbox = bbox)
 the L1B processing stage) and its structural metadata (`elevation_bin0`,
 `elevation_lastbin`, `rx_sample_count`), plus noise statistics, DEM
 references, and per-shot metadata. `l2a` carries the processed ground
-elevation (`elev_lowestmode`), quality flags (`quality_flag`,
+elevation (`elev_lowestmode`), quality flags (`l2a_quality_flag_rel3`,
 `sensitivity`, `degrade_flag`), and the relative-height quantiles (`rh0`
 through `rh100`).
 
@@ -81,12 +81,12 @@ waveforms and their detected ground elevations side by side.
 
 l1b_joined <- l1b |>
   inner_join(
-    l2a |> select(shot_number, elev_lowestmode, quality_flag, sensitivity,
+    l2a |> select(shot_number, elev_lowestmode, l2a_quality_flag_rel3, sensitivity,
                   rh25, rh50, rh75, rh95, rh100),
     by = "shot_number"
   ) |>
   filter(
-    quality_flag == 1L,  # L2A quality gate
+    l2a_quality_flag_rel3 == 1L,  # L2A quality gate
     sensitivity > 0.9,   # only well-penetrated shots
     solar_elevation < 0  # night shots for cleaner returns
   )

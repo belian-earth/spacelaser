@@ -130,6 +130,21 @@ fn fill_family(product: &str) -> FillFamily {
 
 const GEDI_FILLS: [i64; 2] = [-9999, -999999];
 
+/// GEDI integer columns whose files hold a type-maximum sentinel without
+/// declaring it in a `_FillValue` attribute. Listed by name, because 255
+/// or 32767 is not safe to treat as missing in GEDI integer columns at
+/// large. Each value lies outside its column's valid range (flags of 0
+/// or 1, a cycle count, a day of year, a calendar year).
+fn gedi_column_fill(short_name: &str) -> Option<i64> {
+    match short_name {
+        "leaf_off_flag" | "leaf_on_cycle" | "predictor_limit_flag" | "response_limit_flag"
+        | "phenology_phase" => Some(255),
+        "leaf_off_doy" | "leaf_on_doy" => Some(32767),
+        "phenology_year" => Some(65535),
+        _ => None,
+    }
+}
+
 /// Convert a `GroupData` (beam or track) into an R list with typed
 /// vectors (not raw bytes). Fill-value sentinels are replaced with NA
 /// during conversion. Column name prefixes are stripped.
@@ -194,7 +209,12 @@ fn columns_to_typed_list(
             Some(pos) => name[pos + 1..].to_string(),
             None => name,
         };
-        match column_data_to_robj(&cdata, family) {
+        let named_fill = if family == FillFamily::Gedi {
+            gedi_column_fill(&short_name)
+        } else {
+            None
+        };
+        match column_data_to_robj(&cdata, family, named_fill) {
             Ok(robj) => {
                 names.push(short_name);
                 values.push(robj);
@@ -216,11 +236,13 @@ fn columns_to_typed_list(
 /// - Fixed-length strings become character.
 ///
 /// An element becomes NA when it equals the dataset's declared
-/// `_FillValue`, when it is a family sentinel (see [`FillFamily`]), or
-/// when it is a float NaN. Any other datatype is an `Err` naming it.
+/// `_FillValue`, when it is a family sentinel (see [`FillFamily`]) or the
+/// column's own undeclared sentinel (`named_fill`, integers up to 32
+/// bits), or when it is a float NaN. Any other datatype is an `Err` naming it.
 fn column_data_to_robj(
     cdata: &crate::products::common::ColumnData,
     family: FillFamily,
+    named_fill: Option<i64>,
 ) -> std::result::Result<Robj, String> {
     let b = &cdata.bytes;
     let s = cdata.element_size;
@@ -320,6 +342,7 @@ fn column_data_to_robj(
                     }
                 };
                 let fill = is_declared(chunk)
+                    || named_fill == Some(val as i64)
                     || (icesat2 && s == 4 && val == i32::MAX)
                     || (gedi && is_signed && GEDI_FILLS.contains(&(val as i64)));
                 // i32::MIN is R's own NA_integer_.

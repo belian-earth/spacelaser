@@ -58,7 +58,12 @@
 #' largest finite float (3.4e38 for 32-bit, 1.8e308 for 64-bit) and the
 #' largest 32-bit integer. Integer codes such as 127 or 255 are
 #' converted only where the dataset declares them, because they are
-#' valid values elsewhere.
+#' valid values elsewhere. The exception is a short list of GEDI
+#' phenology and prediction-limit columns (`leaf_off_flag`,
+#' `leaf_on_cycle`, `leaf_off_doy`, `leaf_on_doy`,
+#' `predictor_limit_flag`, `response_limit_flag`, `phenology_phase`,
+#' `phenology_year`), whose files hold 255, 32767 or 65535 without
+#' declaring it.
 #'
 #' ## Failures
 #'

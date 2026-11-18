@@ -81,7 +81,12 @@ declares. Two families of undeclared sentinels are also recognised:
 largest finite float (3.4e38 for 32-bit, 1.8e308 for 64-bit) and the
 largest 32-bit integer. Integer codes such as 127 or 255 are
 converted only where the dataset declares them, because they are
-valid values elsewhere.
+valid values elsewhere. The exception is a short list of GEDI
+phenology and prediction-limit columns (\code{leaf_off_flag},
+\code{leaf_on_cycle}, \code{leaf_off_doy}, \code{leaf_on_doy},
+\code{predictor_limit_flag}, \code{response_limit_flag}, \code{phenology_phase},
+\code{phenology_year}), whose files hold 255, 32767 or 65535 without
+declaring it.
 }
 
 \subsection{Failures}{

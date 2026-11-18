@@ -111,6 +111,10 @@ def make_v1(path):
         b1.create_dataset("f32_gedi", data=col("f4", -9999.0))
         b1.create_dataset("f64_gedi", data=col("f8", -999999.0))
         b1.create_dataset("i16_gedi", data=col("i2", -9999))
+        # GEDI columns that hold a type maximum without declaring it.
+        b1.create_dataset("leaf_off_flag", data=col("u1", 255))
+        b1.create_dataset("leaf_on_doy", data=col("i2", 32767))
+        b1.create_dataset("phenology_year", data=col("u2", 65535))
         # A 2-D column with a declared fill: expands to three columns.
         m = np.tile(np.arange(3, dtype="f4"), (n, 1))
         m[fill_rows, 1] = np.finfo("f4").max

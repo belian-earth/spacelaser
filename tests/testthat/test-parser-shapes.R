@@ -133,3 +133,15 @@ test_that("unallocated chunks read as the dataset's fill value", {
   d <- d[d$beam == "BEAM0001", ]
   expect_equal(d$sparse, c(0:9, rep(-7L, 90)))
 })
+
+test_that("GEDI columns with an undeclared type-maximum sentinel become NA", {
+  cols <- c("leaf_off_flag", "leaf_on_doy", "phenology_year")
+  d <- read_shape("parser-v1.h5", "L2A", cols)
+  d <- d[d$beam == "BEAM0001", ]
+  for (col in cols) {
+    expect_identical(is.na(d[[col]]), fill_rows, info = col)
+  }
+  # The same bytes under an ICESat-2 product are data.
+  d <- read_shape("parser-v1.h5", "ATL13", "i8_atlas")
+  expect_false(anyNA(d$i8_atlas))
+})

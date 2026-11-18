@@ -4,9 +4,9 @@ Low-level helper for exploring the internal structure of a remote HDF5
 file. Useful for discovering available datasets, beams, or subgroups
 when working outside the curated
 [`sl_columns()`](https://belian-earth.github.io/spacelaser/reference/sl_columns.md)
-registry. Earthdata credentials are required (see
-[`sl_search()`](https://belian-earth.github.io/spacelaser/reference/sl_search.md)
-for setup).
+registry. Earthdata credentials are required for a remote file (see
+[`generate_ed_token()`](https://belian-earth.github.io/spacelaser/reference/generate_ed_token.md));
+a local file needs none.
 
 ## Usage
 
@@ -18,7 +18,7 @@ sl_hdf5_groups(url, path = "/")
 
 - url:
 
-  Character. HTTPS URL of the HDF5 file.
+  Character. HTTPS URL of the HDF5 file, or a local path.
 
 - path:
 

@@ -17,7 +17,7 @@ sl_read(x, bbox = NULL, columns = NULL, convert_time = TRUE, ...)
 sl_read(x, bbox = NULL, columns = NULL, convert_time = TRUE, ...)
 
 # S3 method for class 'character'
-sl_read(x, bbox, ..., product = NULL)
+sl_read(x, bbox, columns = NULL, convert_time = TRUE, ..., product = NULL)
 ```
 
 ## Arguments
@@ -69,9 +69,9 @@ sl_read(x, bbox, ..., product = NULL)
 ## Value
 
 A data frame with one row per footprint (GEDI) or segment/photon
-(ICESat-2). Columns depend on the product and the `columns` argument.
-Fill-value sentinels (-9999, 3.4e38, etc.) are automatically replaced
-with `NA`.
+(ICESat-2). Columns depend on the product and the `columns` argument. It
+carries a `failed_granules` attribute: a data frame of `url` and
+`error`, with no rows when every granule was read.
 
 ## Details
 
@@ -89,6 +89,33 @@ returned data frame includes a `beam` (GEDI) or `track` (ICESat-2)
 identifier column for post-hoc filtering with
 [`dplyr::filter()`](https://dplyr.tidyverse.org/reference/filter.html)
 or base subsetting.
+
+### Missing data
+
+Missing-data sentinels are returned as `NA`. A value is a sentinel when
+it equals the dataset's own `_FillValue` attribute, compared in the
+dataset's stored type, so each column is judged by what its file
+declares. Two families of undeclared sentinels are also recognised:
+-9999 and -999999 in GEDI products, and in ICESat-2 products the largest
+finite float (3.4e38 for 32-bit, 1.8e308 for 64-bit) and the largest
+32-bit integer. Integer codes such as 127 or 255 are converted only
+where the dataset declares them, because they are valid values
+elsewhere. The exception is a short list of GEDI phenology and
+prediction-limit columns (`leaf_off_flag`, `leaf_on_cycle`,
+`leaf_off_doy`, `leaf_on_doy`, `predictor_limit_flag`,
+`response_limit_flag`, `phenology_phase`, `phenology_year`), whose files
+hold 255, 32767 or 65535 without declaring it.
+
+### Failures
+
+A read never substitutes `NA` for data it could not fetch. A granule in
+which any requested column fails to read (after retries) is dropped
+whole and reported: a warning and the `failed_granules` attribute when
+other granules were read, an error when none were. Two kinds of column
+are left out with a warning instead, because the rest of the granule is
+unaffected: a column absent from the granules, and a column the reader
+cannot return alongside the others (an unsupported datatype, or a
+dataset stored at a different rate from the product's coordinates).
 
 ### Default columns
 

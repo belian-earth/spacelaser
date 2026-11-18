@@ -5,9 +5,9 @@ and returns it as an appropriately-typed R vector. Useful for pulling
 individual fields not covered by the curated registry, or for inspecting
 a dataset before requesting it via
 [`sl_read()`](https://belian-earth.github.io/spacelaser/reference/sl_read.md).
-Earthdata credentials are required (see
-[`sl_search()`](https://belian-earth.github.io/spacelaser/reference/sl_search.md)
-for setup).
+Earthdata credentials are required for a remote file (see
+[`generate_ed_token()`](https://belian-earth.github.io/spacelaser/reference/generate_ed_token.md));
+a local file needs none.
 
 ## Usage
 
@@ -19,7 +19,7 @@ sl_hdf5_read(url, dataset)
 
 - url:
 
-  Character. HTTPS URL of the HDF5 file.
+  Character. HTTPS URL of the HDF5 file, or a local path.
 
 - dataset:
 

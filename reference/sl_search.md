@@ -52,10 +52,16 @@ sl_search(
 
 - version:
 
-  Character or `NULL`. Product version, for products published in more
-  than one: GEDI L4A `"3"` (the default, released 2026-06, shots from
-  2019-04-04 to 2025-07-10) or `"2.1"`. Must be `NULL` for every other
-  product.
+  Character or `NULL`. Product version, for the products that can be
+  searched in more than one. The first listed is the default:
+
+  - GEDI L4A: `"3"` (released 2026-06) or `"2.1"`.
+
+  - GEDI L1B: `"2"` or `"3"`.
+
+  - ICESat-2 ATL24: `"1"`, `"2"` or `"3"`.
+
+  Must be `NULL` for every other product. See *Product versions*.
 
 ## Value
 
@@ -87,6 +93,21 @@ The returned object carries `bbox` and `product` as attributes so
 can dispatch without re-specifying them.
 
 ## Details
+
+### Product versions
+
+A search queries one version (one CMR collection) of a product. NASA
+closes a version when its successor is published: GEDI L1B, L2A and L2B
+version 2 and L4A version 2.1 hold nothing after 2025-07-10, L4C version
+2 nothing after 2025-07-09, and ATL24 version 1 nothing after
+2024-11-07. A search whose dates run past the end of a closed version
+warns, because the empty tail of the result means "not in this version",
+not "no overpasses".
+
+GEDI L2A, L2B and L4C are searched in version 2 only. Their version 3
+files rename and drop variables and are not read by this package yet.
+
+### Authentication
 
 No authentication is needed for the search itself; Earthdata credentials
 are only required when reading data via

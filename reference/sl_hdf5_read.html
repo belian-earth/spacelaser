@@ -9,11 +9,13 @@
 path and returns it as an appropriately-typed R vector. Useful for
 pulling individual fields not covered by the curated registry, or
 for inspecting a dataset before requesting it via sl_read().
-Earthdata credentials are required (see sl_search() for setup)."><meta property="og:description" content="Low-level helper that reads an arbitrary HDF5 dataset by its full
+Earthdata credentials are required for a remote file (see
+generate_ed_token()); a local file needs none."><meta property="og:description" content="Low-level helper that reads an arbitrary HDF5 dataset by its full
 path and returns it as an appropriately-typed R vector. Useful for
 pulling individual fields not covered by the curated registry, or
 for inspecting a dataset before requesting it via sl_read().
-Earthdata credentials are required (see sl_search() for setup)."><meta property="og:image" content="https://belian-earth.github.io/spacelaser/logo.png"></head><body>
+Earthdata credentials are required for a remote file (see
+generate_ed_token()); a local file needs none."><meta property="og:image" content="https://belian-earth.github.io/spacelaser/logo.png"></head><body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
 
 
@@ -54,7 +56,8 @@ Earthdata credentials are required (see sl_search() for setup)."><meta property=
 path and returns it as an appropriately-typed R vector. Useful for
 pulling individual fields not covered by the curated registry, or
 for inspecting a dataset before requesting it via <code><a href="sl_read.html">sl_read()</a></code>.
-Earthdata credentials are required (see <code><a href="sl_search.html">sl_search()</a></code> for setup).</p>
+Earthdata credentials are required for a remote file (see
+<code><a href="generate_ed_token.html">generate_ed_token()</a></code>); a local file needs none.</p>
     </div>
 
     <div class="section level2">
@@ -67,7 +70,7 @@ Earthdata credentials are required (see <code><a href="sl_search.html">sl_search
 
 
 <dl><dt id="arg-url">url<a class="anchor" aria-label="anchor" href="#arg-url"></a></dt>
-<dd><p>Character. HTTPS URL of the HDF5 file.</p></dd>
+<dd><p>Character. HTTPS URL of the HDF5 file, or a local path.</p></dd>
 
 
 <dt id="arg-dataset">dataset<a class="anchor" aria-label="anchor" href="#arg-dataset"></a></dt>

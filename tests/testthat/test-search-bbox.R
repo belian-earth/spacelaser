@@ -130,3 +130,72 @@ test_that("subsetting a search object still dispatches to sl_read.sl_*_search", 
   wider <- sl_bbox(-125, 40, -123, 42)
   expect_error(sl_read(sub, bbox = wider), "extends outside the search bbox")
 })
+
+# ---------------------------------------------------------------------------
+# bbox input forms
+# ---------------------------------------------------------------------------
+
+test_that("sl_bbox rejects non-numeric, non-scalar and missing corners", {
+  expect_error(sl_bbox(NA, 1, 2, 3), "xmin.*single finite number")
+  expect_error(sl_bbox(0, 1, c(2, 3), 3), "xmax.*single finite number")
+  expect_error(sl_bbox(0, "1", 2, 3), "ymin.*single finite number")
+  expect_error(sl_bbox(0, 1, Inf, 3), "xmax.*single finite number")
+  # Integer input gives the same object as double input.
+  expect_identical(sl_bbox(1L, 1L, 2L, 3L), sl_bbox(1, 1, 2, 3))
+})
+
+test_that("validate_bbox reads a numeric vector by position or by name", {
+  want <- sl_bbox(-124.04, 41.39, -124.01, 41.42)
+  expect_identical(validate_bbox(c(-124.04, 41.39, -124.01, 41.42)), want)
+  # Named in another order, as terra and others give it.
+  expect_identical(
+    validate_bbox(c(ymax = 41.42, xmin = -124.04, xmax = -124.01, ymin = 41.39)),
+    want
+  )
+  # An sf-style bbox: a classed, named double.
+  sf_like <- structure(c(xmin = -124.04, ymin = 41.39, xmax = -124.01, ymax = 41.42),
+                       class = "bbox")
+  expect_identical(validate_bbox(sf_like), want)
+  expect_named(unclass(validate_bbox(sf_like)), c("xmin", "ymin", "xmax", "ymax"))
+  expect_error(validate_bbox(c(1, 2, 3)), "numeric vector of length 4")
+})
+
+test_that("sl_read accepts the documented numeric bbox form", {
+  l2a <- test_path("fixtures", "gedi-l2a.h5")
+  skip_if_not(file.exists(l2a))
+  want <- suppressMessages(
+    sl_read(l2a, bbox = sl_bbox(-124.04, 41.39, -124.01, 41.42), product = "L2A")
+  )
+  got <- suppressMessages(
+    sl_read(l2a, bbox = c(-124.04, 41.39, -124.01, 41.42), product = "L2A")
+  )
+  expect_equal(nrow(got), nrow(want))
+  expect_gt(nrow(got), 0L)
+})
+
+# ---------------------------------------------------------------------------
+# Combining search results
+# ---------------------------------------------------------------------------
+
+test_that("rbind combines searches that share product and bbox, and only those", {
+  bb <- sl_bbox(-124.04, 41.39, -124.01, 41.42)
+  mk <- function(ids, bbox = bb, product = "L2A") {
+    df <- tibble::tibble(
+      id = ids,
+      time_start = as.POSIXct("2020-01-01", tz = "UTC"),
+      time_end = as.POSIXct("2020-01-02", tz = "UTC"),
+      url = paste0("https://example.invalid/", ids, ".h5"),
+      geometry = wk::wkt(rep(NA_character_, length(ids)), crs = wk::wk_crs_longlat())
+    )
+    spacelaser:::new_sl_search(df, product = product, bbox = bbox, sensor = "gedi")
+  }
+  both <- rbind(mk(c("a", "b")), mk(c("b", "c")))
+  expect_s3_class(both, "sl_gedi_search")
+  expect_equal(both$id, c("a", "b", "c"))
+  expect_identical(attr(both, "bbox"), bb)
+
+  expect_error(rbind(mk("a"), mk("b", bbox = sl_bbox(0, 0, 1, 1))),
+               "share a product, version and bbox")
+  expect_error(rbind(mk("a"), mk("b", product = "L2B")),
+               "share a product, version and bbox")
+})

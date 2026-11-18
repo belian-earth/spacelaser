@@ -47,7 +47,28 @@ impl BBox {
     pub fn contains(&self, lon: f64, lat: f64) -> bool {
         lon >= self.xmin && lon <= self.xmax && lat >= self.ymin && lat <= self.ymax
     }
+
+    /// This box grown by `metres` on every side, clamped to valid
+    /// latitudes. The longitude margin widens with latitude; near the
+    /// poles it is capped at one degree.
+    pub fn padded_metres(&self, metres: f64) -> BBox {
+        const M_PER_DEG: f64 = 111_320.0;
+        let dlat = metres / M_PER_DEG;
+        let max_abs_lat = self.ymin.abs().max(self.ymax.abs()).min(89.9);
+        let dlon = (dlat / max_abs_lat.to_radians().cos()).min(1.0);
+        BBox {
+            xmin: self.xmin - dlon,
+            ymin: (self.ymin - dlat).max(-90.0),
+            xmax: self.xmax + dlon,
+            ymax: (self.ymax + dlat).min(90.0),
+        }
+    }
 }
+
+/// Margin for segment-level selection of photon data (ATL03). Twice the
+/// nominal 20 m segment length, plus allowance for the cross-track
+/// spread of photons about the reference photon.
+const SEGMENT_MARGIN_M: f64 = 60.0;
 
 // ---------------------------------------------------------------------------
 // Column data (output of a single dataset read)
@@ -63,6 +84,9 @@ pub struct ColumnData {
     pub element_size: usize,
     pub num_elements: usize,
     pub dtype_desc: String,
+    /// The dataset's declared missing-data sentinel (its `_FillValue`
+    /// attribute), as one element in the dataset's own type.
+    pub fill: Option<Vec<u8>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -85,6 +109,49 @@ pub struct GroupData {
     /// beam. The R side slices these into per-shot list columns using
     /// `rx_sample_start_index` / `rx_sample_count` (and the tx equivalents).
     pub pool_columns: HashMap<String, ColumnData>,
+    /// Requested columns that exist in the file but were not returned,
+    /// with the reason (unsupported datatype, stored at a different
+    /// rate than the product's coordinates). Surfaced to R as a warning.
+    pub skipped: Vec<(String, String)>,
+}
+
+/// Is this a property of the dataset that no retry will change, and that
+/// leaves the rest of the granule readable?
+///
+/// Such columns are skipped and reported. Every other failure (I/O,
+/// decompression, a structure we cannot follow) fails the granule: a
+/// column that silently comes back empty is indistinguishable from
+/// missing data, and the granule-level retry and `failed_granules`
+/// reporting exist for exactly these.
+fn unsupported_reason(e: &Hdf5Error) -> Option<String> {
+    match e {
+        Hdf5Error::UnsupportedDatatypeClass(_)
+        | Hdf5Error::UnsupportedLayoutClass(_)
+        | Hdf5Error::UnsupportedLayoutVersion(_)
+        | Hdf5Error::UnsupportedChunkShape(_)
+        | Hdf5Error::UnsupportedFilter(_) => Some(e.to_string()),
+        _ => None,
+    }
+}
+
+/// Why a dataset cannot be read with this group's row selection, if it
+/// cannot. `coord_rows` is the length of the product's lat/lon datasets.
+fn rate_mismatch(dims: &[u64], coord_rows: Option<u64>, max_row: u64) -> Option<String> {
+    let rows = match dims.first() {
+        Some(&r) => r,
+        None => return Some("it is a scalar, not a per-row dataset".into()),
+    };
+    match coord_rows {
+        Some(n) if rows != n => Some(format!(
+            "it has {rows} rows where this product's coordinates have {n}: \
+             it is stored at a different rate"
+        )),
+        None if max_row > rows => Some(format!(
+            "it has {rows} rows but the selection reaches row {max_row}: \
+             it is stored at a different rate"
+        )),
+        _ => None,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -211,14 +278,25 @@ async fn read_single_group(
     // direct lat/lon scan (all other products).
     let t_spatial_start = Instant::now();
     let mut spatial_bytes: usize = 0;
-    let (selected_indices, row_ranges, n_selected) =
+    let (selected_indices, row_ranges, n_selected, coord_rows) =
         if let Some(seg_idx) = product.segment_index() {
             // Segment-index path: read small segment-level arrays,
             // filter, then compute photon row ranges.
-            match segment_spatial_filter(file, &group_path, &seg_idx, &bbox).await? {
-                Some(v) => v,
-                None => return Ok(None),
-            }
+            let (idx, ranges, n) =
+                match segment_spatial_filter(file, &group_path, &seg_idx, &bbox).await? {
+                    Some(v) => v,
+                    None => return Ok(None),
+                };
+            // Header only: the photon-rate row count, so columns at the
+            // segment rate are recognised rather than read with photon
+            // row numbers.
+            let lat_path = format!("{}/{}", group_path, product.lat_dataset());
+            let coord_rows = match file.dataset(&lat_path).await {
+                Ok(ds) => ds.meta.dataspace.dims.first().copied(),
+                Err(Hdf5Error::PathNotFound(_)) => None,
+                Err(e) => return Err(e),
+            };
+            (idx, ranges, n, coord_rows)
         } else {
             // Direct lat/lon scan: every product without a segment
             // index reads the full per-beam lat/lon, filters to
@@ -234,12 +312,16 @@ async fn read_single_group(
             );
             let (lat_meta, lat_bytes) = match lat_result {
                 Ok(v) => v,
-                Err(Hdf5Error::PathNotFound(_)) => return Ok(None),
+                Err(Hdf5Error::PathNotFound(_)) => {
+                    return missing_coordinates(file, &group_path, product.lat_dataset()).await
+                }
                 Err(e) => return Err(e),
             };
             let (_, lon_bytes) = match lon_result {
                 Ok(v) => v,
-                Err(Hdf5Error::PathNotFound(_)) => return Ok(None),
+                Err(Hdf5Error::PathNotFound(_)) => {
+                    return missing_coordinates(file, &group_path, product.lon_dataset()).await
+                }
                 Err(e) => return Err(e),
             };
             let elem_size = lat_meta.datatype.size();
@@ -262,8 +344,9 @@ async fn read_single_group(
 
             let row_ranges = indices_to_ranges(&selected_indices);
             let n_selected = selected_indices.len();
-            (selected_indices, row_ranges, n_selected)
+            (selected_indices, row_ranges, n_selected, Some(num_elements as u64))
         };
+    let max_row = row_ranges.iter().map(|r| r.1).max().unwrap_or(0);
     let spatial_elapsed = t_spatial_start.elapsed();
 
     // 4. Read all requested columns. Done in three phases so we can
@@ -289,50 +372,56 @@ async fn read_single_group(
     let offset_size = file.superblock().offset_size;
 
     // Phase A: plan per-column reads (resolve dataset + gather byte
-    // ranges). Per-column failures are warned and dropped, not fatal:
-    // one column's object-header or B-tree error shouldn't forfeit
-    // the rest of the beam's data. PathNotFound is the historically
-    // tolerated case (a product variant that lacks the requested
-    // column); other errors now degrade to the same silent-skip
-    // treatment, with a warn logged so the drop is observable.
+    // ranges). A column absent from the file is dropped quietly (a
+    // product variant that lacks it; R warns when it is absent
+    // everywhere). A column that cannot be read as part of this
+    // selection is skipped and reported. Anything else fails the
+    // granule; see `unsupported_reason`.
     type ColPlan = (String, Dataset, Vec<Range<u64>>);
-    let plan_results: Vec<Option<ColPlan>> = stream::iter(columns.iter())
+    enum Planned {
+        Read(ColPlan),
+        Absent,
+        Skipped(String, String),
+    }
+    let plan_results: Vec<Result<Planned, Hdf5Error>> = stream::iter(columns.iter())
         .map(|col_name| {
             let col_path = format!("{}/{}", group_path, col_name);
             let col_name = col_name.clone();
             async move {
                 let ds = match file.dataset(&col_path).await {
                     Ok(d) => d,
-                    Err(Hdf5Error::PathNotFound(_)) => return None,
+                    Err(Hdf5Error::PathNotFound(_)) => return Ok(Planned::Absent),
                     Err(e) => {
-                        log::warn!(
-                            "column '{}' plan failed (header): {}",
-                            col_name, e
-                        );
-                        return None;
+                        return match unsupported_reason(&e) {
+                            Some(why) => Ok(Planned::Skipped(col_name, why)),
+                            None => Err(e),
+                        }
                     }
                 };
-                let ranges = match ds
-                    .row_byte_ranges(file.reader(), offset_size, row_ranges_ref)
-                    .await
+                if let Some(why) =
+                    rate_mismatch(&ds.meta.dataspace.dims, coord_rows, max_row)
                 {
-                    Ok(r) => r,
-                    Err(e) => {
-                        log::warn!(
-                            "column '{}' plan failed (btree): {}",
-                            col_name, e
-                        );
-                        return None;
-                    }
-                };
-                Some((col_name, ds, ranges))
+                    return Ok(Planned::Skipped(col_name, why));
+                }
+                let ranges = ds
+                    .row_byte_ranges(file.reader(), offset_size, row_ranges_ref)
+                    .await?;
+                Ok(Planned::Read((col_name, ds, ranges)))
             }
         })
         .buffer_unordered(32)
         .collect()
         .await;
 
-    let plans: Vec<ColPlan> = plan_results.into_iter().flatten().collect();
+    let mut plans: Vec<ColPlan> = Vec::new();
+    let mut skipped: Vec<(String, String)> = Vec::new();
+    for planned in plan_results {
+        match planned? {
+            Planned::Read(p) => plans.push(p),
+            Planned::Absent => {}
+            Planned::Skipped(name, why) => skipped.push((name, why)),
+        }
+    }
 
     // Phase B: coalesce byte ranges and prefetch into the block cache.
     // Discard the returned bytes — we only care that the cache is
@@ -363,34 +452,25 @@ async fn read_single_group(
         }
     }
 
-    // Phase C: execute per-column reads (hit cache from Phase B).
-    // Same error policy as Phase A — a failed column is warned and
-    // skipped, the rest of the beam proceeds.
+    // Phase C: execute per-column reads (hit cache from Phase B). A
+    // failure here fails the granule, as in Phase A.
     let n_planned = plans.len();
-    let col_results: Vec<Option<(String, crate::hdf5::types::DatasetMeta, Vec<u8>)>> =
+    let col_results: Vec<Result<(String, crate::hdf5::types::DatasetMeta, Vec<u8>), Hdf5Error>> =
         stream::iter(plans.into_iter())
             .map(|(col_name, ds, _)| async move {
-                match ds
+                let data = ds
                     .read_rows(file.reader(), offset_size, row_ranges_ref)
-                    .await
-                {
-                    Ok(data) => Some((col_name, ds.meta, data)),
-                    Err(e) => {
-                        log::warn!("column '{}' read failed: {}", col_name, e);
-                        None
-                    }
-                }
+                    .await?;
+                Ok((col_name, ds.meta, data))
             })
             .buffer_unordered(32)
             .collect()
             .await;
+    let col_results: Vec<(String, crate::hdf5::types::DatasetMeta, Vec<u8>)> =
+        col_results.into_iter().collect::<Result<_, _>>()?;
     let cols_elapsed = t_cols_start.elapsed();
-    let n_succeeded = col_results.iter().filter(|r| r.is_some()).count();
-    let total_cols_bytes: usize = col_results
-        .iter()
-        .filter_map(|o| o.as_ref())
-        .map(|(_, _, b)| b.len())
-        .sum();
+    let n_succeeded = col_results.len();
+    let total_cols_bytes: usize = col_results.iter().map(|(_, _, b)| b.len()).sum();
 
     log::info!(
         "timing {}: spatial={:.3}s ({} B, {} shots) \
@@ -407,11 +487,31 @@ async fn read_single_group(
 
     // Process results: expand 2D datasets, build HashMap
     let mut col_data = HashMap::new();
-    for result in col_results {
-        if let Some((col_name, meta, bytes)) = result {
+    for (col_name, meta, bytes) in col_results {
+        {
             let elem_size = meta.datatype.size();
             let dims = &meta.dataspace.dims;
             let dtype_desc = format!("{:?}", meta.datatype);
+
+            // Every column must hold exactly one row per selected row. A
+            // short read would otherwise be recycled or NA-padded into
+            // the wrong rows on the R side.
+            let row_elems: usize = dims.iter().skip(1).map(|&d| d as usize).product();
+            let expected = n_selected * row_elems * elem_size;
+            if bytes.len() != expected {
+                return Err(Hdf5Error::InvalidStructure(format!(
+                    "column '{}' in '{}' returned {} bytes for {} selected rows \
+                     (expected {})",
+                    col_name, group_name, bytes.len(), n_selected, expected
+                )));
+            }
+            if dims.len() > 2 {
+                skipped.push((
+                    col_name,
+                    format!("it has {} dimensions; only 1-D and 2-D datasets are read", dims.len()),
+                ));
+                continue;
+            }
 
             if dims.len() >= 2 {
                 // 2D dataset (e.g. rh [N, 101]): expand into separate
@@ -449,6 +549,7 @@ async fn read_single_group(
                             element_size: elem_size,
                             num_elements: n_selected,
                             dtype_desc: dtype_desc.clone(),
+                            fill: meta.fill_attribute.clone(),
                         },
                     );
                 }
@@ -462,6 +563,7 @@ async fn read_single_group(
                         element_size: elem_size,
                         num_elements,
                         dtype_desc,
+                        fill: meta.fill_attribute.clone(),
                     },
                 );
             }
@@ -564,13 +666,15 @@ async fn read_single_group(
                         element_size: elem_size,
                         num_elements,
                         dtype_desc: format!("{:?}", meta.datatype),
+                        fill: meta.fill_attribute.clone(),
                     },
                 );
             }
             Err(Hdf5Error::PathNotFound(_)) => {}
-            Err(e) => {
-                log::warn!("Failed to read pool column '{}': {}", pool_name, e);
-            }
+            Err(e) => match unsupported_reason(&e) {
+                Some(why) => skipped.push((pool_name.to_string(), why)),
+                None => return Err(e),
+            },
         }
     }
 
@@ -600,24 +704,30 @@ async fn read_single_group(
         let (meta, bytes) = match file.read_dataset(&col_path).await {
             Ok(v) => v,
             Err(Hdf5Error::PathNotFound(_)) => continue,
-            Err(e) => {
-                log::warn!("Failed to read transposed column '{}': {}", path_part, e);
-                continue;
-            }
+            Err(e) => match unsupported_reason(&e) {
+                Some(why) => {
+                    skipped.push((path_part.to_string(), why));
+                    continue;
+                }
+                None => return Err(e),
+            },
         };
 
         let elem_size = meta.datatype.size();
         let dims = &meta.dataspace.dims;
         if dims.len() < 2 {
-            log::warn!("Transposed column '{}' is not 2D (dims: {:?})", path_part, dims);
+            skipped.push((
+                path_part.to_string(),
+                format!("it was expected to be 2-D but has dimensions {:?}", dims),
+            ));
             continue;
         }
         let n_total = dims[1] as usize;
         if dims[0] as usize != k {
-            log::warn!(
-                "Transposed column '{}' dim 0 ({}) does not match label count ({})",
-                path_part, dims[0], k
-            );
+            skipped.push((
+                path_part.to_string(),
+                format!("its first dimension is {} where {} categories were expected", dims[0], k),
+            ));
             continue;
         }
 
@@ -648,6 +758,7 @@ async fn read_single_group(
                     element_size: elem_size,
                     num_elements: selected_indices.len(),
                     dtype_desc: format!("{:?}", meta.datatype),
+                    fill: meta.fill_attribute.clone(),
                 },
             );
         }
@@ -658,12 +769,37 @@ async fn read_single_group(
         columns: col_data,
         selected_indices,
         pool_columns: pool_data,
+        skipped,
     }))
 }
 
 // ---------------------------------------------------------------------------
 // Spatial helper functions
 // ---------------------------------------------------------------------------
+
+/// A group's coordinate dataset was not found: decide what that means.
+///
+/// A beam or track that is absent from the granule is normal (degraded
+/// periods, single-beam granules) and yields no rows. A group that is
+/// present but lacks the coordinates is not: the file is laid out
+/// differently from what this product's reader expects, typically a
+/// product version it does not know. Reporting "no rows in the bounding
+/// box" for that would hide the whole granule.
+async fn missing_coordinates<T>(
+    file: &Hdf5File,
+    group_path: &str,
+    dataset: &str,
+) -> Result<Option<T>, Hdf5Error> {
+    match file.list_group(group_path).await {
+        Ok(members) if !members.is_empty() => Err(Hdf5Error::InvalidStructure(format!(
+            "group '{}' has no coordinate dataset '{}'; the file is not laid out as \
+             this product is expected to be (a different product, or a version \
+             that is not supported)",
+            group_path, dataset
+        ))),
+        _ => Ok(None),
+    }
+}
 
 /// Segment-index spatial filter for ATL03.
 ///
@@ -689,19 +825,30 @@ async fn segment_spatial_filter(
 
     let (lat_meta, lat_bytes) = match lat_result {
         Ok(v) => v,
-        Err(Hdf5Error::PathNotFound(_)) => return Ok(None),
+        Err(Hdf5Error::PathNotFound(_)) => {
+            return missing_coordinates(file, group_path, seg_idx.lat_dataset).await
+        }
         Err(e) => return Err(e),
     };
     let (_lon_meta, lon_bytes) = match lon_result {
         Ok(v) => v,
-        Err(Hdf5Error::PathNotFound(_)) => return Ok(None),
+        Err(Hdf5Error::PathNotFound(_)) => {
+            return missing_coordinates(file, group_path, seg_idx.lon_dataset).await
+        }
         Err(e) => return Err(e),
     };
 
     let n_segments = lat_meta.dataspace.dims[0] as usize;
     let elem_size = lat_meta.datatype.size();
+    // A segment is located by its reference photon, but its other
+    // photons extend up to a segment length (about 20 m along track)
+    // either side. Selecting on the bbox alone would drop photons that
+    // are inside the bbox but belong to a segment referenced just
+    // outside it. Select on a padded bbox instead; the caller trims the
+    // result to the exact bbox using the photon coordinates.
+    let padded = bbox.padded_metres(SEGMENT_MARGIN_M);
     let matching_segments =
-        find_matching_indices(&lat_bytes, &lon_bytes, elem_size, n_segments, bbox);
+        find_matching_indices(&lat_bytes, &lon_bytes, elem_size, n_segments, &padded);
 
     if matching_segments.is_empty() {
         return Ok(None);
@@ -920,6 +1067,18 @@ mod tests {
         assert!(bbox.contains(-10.0, -5.0));
         assert!(!bbox.contains(11.0, 0.0));
         assert!(!bbox.contains(0.0, 6.0));
+    }
+
+    #[test]
+    fn test_bbox_padded() {
+        let bbox = BBox::new(-124.04, 41.39, -124.01, 41.42).padded_metres(60.0);
+        // 60 m is about 0.00054 degrees of latitude, and more of longitude.
+        assert!((bbox.ymin - (41.39 - 0.000539)).abs() < 1e-5);
+        assert!(bbox.xmin < -124.04 - 0.0006 && bbox.xmin > -124.04 - 0.001);
+        assert!(bbox.contains(-124.0405, 41.4204));
+        let polar = BBox::new(0.0, 89.5, 10.0, 90.0).padded_metres(60.0);
+        assert_eq!(polar.ymax, 90.0);
+        assert!(polar.xmin >= -1.0);
     }
 
     #[test]

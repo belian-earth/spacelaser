@@ -201,12 +201,9 @@ async fn read_direct_block(
         header_size += 4;
     }
 
-    // Trailing checksum (4 bytes) at the end of the block
-    let data_end = if data.len() >= 4 {
-        data.len() - 4
-    } else {
-        data.len()
-    };
+    // The block's checksum, when present, is part of the header counted
+    // above; object data runs to the end of the block.
+    let data_end = data.len();
 
     if header_size >= data_end {
         return Ok(Vec::new());

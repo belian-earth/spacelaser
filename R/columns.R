@@ -1216,23 +1216,18 @@ build_pool_specs <- function(pool_short, pool_paths, product) {
 # Internal: fill values and scale factors
 # ---------------------------------------------------------------------------
 
-#' Known fill-value sentinels for each sensor family.
+#' Fill-value sentinels applied on the R side, to pool columns only.
 #'
-#' GEDI (all products) uses -9999 for most columns and -999999 for DEM
-#' columns. ICESat-2 ATL08 and ATL13 use HDF5 float max (3.4028235e+38).
-#' Other ICESat-2 products (ATL03, ATL06, ATL07, ATL10, ATL24) either
-#' use IEEE NaN — which R already represents as NA — or have no fill
-#' values; they need no explicit sentinel handling.
-#'
-#' These sentinels are applied to all numeric/integer columns after
-#' parsing. The values are exact IEEE 754 representations, so equality
-#' comparison is correct.
+#' Pool columns (GEDI waveforms, `pgap_theta_z`) arrive from Rust as raw
+#' bytes and are converted here, so GEDI's -9999 / -999999 are replaced
+#' here too. Every other column is converted, and its sentinels replaced,
+#' in Rust: by the dataset's `_FillValue` attribute first, then by the
+#' sensor family's sentinels (`fill_family()` in `src/rust/src/ffi.rs`).
+#' ICESat-2 has no pool columns, so it has no entry.
 #' @noRd
 product_fill_values <- function(product) {
   if (product %in% c("L1B", "L2A", "L2B", "L4A", "L4C")) {
     c(-9999.0, -999999.0)
-  } else if (product %in% c("ATL08", "ATL13")) {
-    c(3.4028235e+38)
   } else {
     numeric(0)
   }

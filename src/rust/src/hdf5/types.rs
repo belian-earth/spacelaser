@@ -23,6 +23,15 @@ pub enum Hdf5Error {
     #[error("Unsupported data layout class: {0}")]
     UnsupportedLayoutClass(u8),
 
+    #[error(
+        "Unsupported data layout version: {0} (the chunk indexes and virtual \
+         datasets introduced in HDF5 1.10 are not read)"
+    )]
+    UnsupportedLayoutVersion(u8),
+
+    #[error("Unsupported chunk shape: {0}; chunks must span the trailing dimensions")]
+    UnsupportedChunkShape(String),
+
     #[error("Unsupported filter: {0}")]
     UnsupportedFilter(u16),
 
@@ -150,5 +159,10 @@ pub struct DatasetMeta {
     pub dataspace: Dataspace,
     pub layout: DataLayout,
     pub filters: Vec<Filter>,
+    /// HDF5 fill-value message: what the library writes into unallocated
+    /// storage. Not the missing-data sentinel; see `fill_attribute`.
     pub fill_value: Option<Vec<u8>>,
+    /// The `_FillValue` attribute (one element, in the dataset's own
+    /// type): the declared missing-data sentinel.
+    pub fill_attribute: Option<Vec<u8>>,
 }

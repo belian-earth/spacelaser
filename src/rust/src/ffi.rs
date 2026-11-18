@@ -66,8 +66,8 @@ fn runtime() -> tokio::runtime::Runtime {
 
 /// R list of the per-group results, with the granules that failed after
 /// the retries attached as attributes `failed_urls` and `failed_errors`.
-fn groups_with_failures(groups: Vec<GroupData>, failed: Vec<(String, String)>, fill_vals: &[f64]) -> List {
-    let lists: Vec<List> = groups.into_iter().map(|gd| group_data_to_list(gd, fill_vals)).collect();
+fn groups_with_failures(groups: Vec<GroupData>, failed: Vec<(String, String)>, family: FillFamily) -> List {
+    let lists: Vec<List> = groups.into_iter().map(|gd| group_data_to_list(gd, family)).collect();
     let mut out = List::from_values(lists);
     let (urls, errors): (Vec<String>, Vec<String>) = failed.into_iter().unzip();
     out.set_attrib("failed_urls", urls).unwrap();
@@ -98,18 +98,50 @@ fn make_source(url: &str, token: Nullable<&str>) -> DataSource {
     }
 }
 
-/// Fill-value sentinels for each sensor family. Matching values are
-/// replaced with NA during byte-to-typed-vector conversion so the R
-/// side never sees raw sentinels.
-fn fill_values_for_product(product: &str) -> Vec<f64> {
-    match product {
-        "L1B" | "l1b" | "L2A" | "l2a" | "L2B" | "l2b" | "L4A" | "l4a" | "L4C" | "l4c" => {
-            vec![-9999.0, -999999.0]
+/// Sensor family, for the missing-data sentinels that a product uses
+/// across all its datasets.
+///
+/// The first authority is each dataset's own `_FillValue` attribute
+/// (`ColumnData::fill`), compared in the dataset's native type. The
+/// family sentinels below are the fallback for datasets that carry the
+/// sentinel without declaring it. They are restricted to values that
+/// cannot be data: integer type maxima such as 127 or 255 are *not*
+/// family sentinels, because they are legitimate values in columns that
+/// declare no fill.
+#[derive(Clone, Copy, PartialEq)]
+enum FillFamily {
+    /// -9999 and -999999, in any numeric type that can hold them.
+    Gedi,
+    /// The ATLAS `INVALID_R4B` / `INVALID_R8B` / `INVALID_I4B` constants:
+    /// the largest finite float of each width and the largest int32.
+    Icesat2,
+    None,
+}
+
+fn fill_family(product: &str) -> FillFamily {
+    match product.to_ascii_uppercase().as_str() {
+        "L1B" | "L2A" | "L2B" | "L4A" | "L4C" => FillFamily::Gedi,
+        "ATL03" | "ATL06" | "ATL07" | "ATL08" | "ATL10" | "ATL13" | "ATL24" => {
+            FillFamily::Icesat2
         }
-        "ATL08" | "atl08" | "ATL13" | "atl13" => {
-            vec![3.4028235e+38_f64]
-        }
-        _ => Vec::new(),
+        _ => FillFamily::None,
+    }
+}
+
+const GEDI_FILLS: [i64; 2] = [-9999, -999999];
+
+/// GEDI integer columns whose files hold a type-maximum sentinel without
+/// declaring it in a `_FillValue` attribute. Listed by name, because 255
+/// or 32767 is not safe to treat as missing in GEDI integer columns at
+/// large. Each value lies outside its column's valid range (flags of 0
+/// or 1, a cycle count, a day of year, a calendar year).
+fn gedi_column_fill(short_name: &str) -> Option<i64> {
+    match short_name {
+        "leaf_off_flag" | "leaf_on_cycle" | "predictor_limit_flag" | "response_limit_flag"
+        | "phenology_phase" => Some(255),
+        "leaf_off_doy" | "leaf_on_doy" => Some(32767),
+        "phenology_year" => Some(65535),
+        _ => None,
     }
 }
 
@@ -122,37 +154,46 @@ fn fill_values_for_product(product: &str) -> Vec<f64> {
 /// list(
 ///   group_name   = "BEAM0101",
 ///   n_elements   = 1234L,
-///   columns      = list(col1 = <dbl/int>, col2 = <dbl/int>, ...),
-///   pool_columns = list(rxwaveform = <dbl>, ...),
+///   columns      = list(col1 = <dbl/int/chr>, col2 = ..., ...),
+///   pool_columns = list(rxwaveform = <raw>, ...),
 ///   pool_col_info = list(rxwaveform = "<json>", ...),
+///   skipped      = c(col = "reason", ...)
 /// )
 /// ```
-fn group_data_to_list(gd: GroupData, fill_values: &[f64]) -> List {
+fn group_data_to_list(gd: GroupData, family: FillFamily) -> List {
     let n_elements = gd.selected_indices.len() as i32;
     let group_name = gd.group_name;
+    let mut skipped = gd.skipped;
 
-    let columns = columns_to_typed_list(gd.columns, fill_values);
+    let columns = columns_to_typed_list(gd.columns, family, &mut skipped);
     // Pool columns stay as raw bytes + JSON: the R side needs to
     // slice them per-shot using count vectors, and the flat byte
     // buffer is the right format for that (avoids double-conversion).
     let (pool_columns, pool_col_info) = columns_to_raw_lists(gd.pool_columns);
+
+    let (skipped_names, skipped_reasons): (Vec<String>, Vec<String>) =
+        skipped.into_iter().unzip();
+    let mut skipped_robj: Robj = skipped_reasons.into();
+    skipped_robj.set_names(skipped_names).unwrap();
 
     list!(
         group_name = group_name,
         n_elements = n_elements,
         columns = columns,
         pool_columns = pool_columns,
-        pool_col_info = pool_col_info
+        pool_col_info = pool_col_info,
+        skipped = skipped_robj
     )
 }
 
 /// Convert a `HashMap<String, ColumnData>` into a named R list of
-/// typed vectors. Float columns become `Doubles` (with fill → NA),
-/// integer columns become `Integers` (with fill → NA_integer).
-/// Column name prefixes (e.g. "geolocation/") are stripped.
+/// typed vectors. Column name prefixes (e.g. "geolocation/") are
+/// stripped. Columns whose datatype has no R representation are left
+/// out and recorded in `skipped`.
 fn columns_to_typed_list(
     cols: std::collections::HashMap<String, crate::products::common::ColumnData>,
-    fill_values: &[f64],
+    family: FillFamily,
+    skipped: &mut Vec<(String, String)>,
 ) -> List {
     // Sort by full key so output column order is deterministic across
     // runs; HashMap iteration order is randomised per process.
@@ -168,9 +209,18 @@ fn columns_to_typed_list(
             Some(pos) => name[pos + 1..].to_string(),
             None => name,
         };
-        let robj = column_data_to_robj(&cdata, fill_values);
-        names.push(short_name);
-        values.push(robj);
+        let named_fill = if family == FillFamily::Gedi {
+            gedi_column_fill(&short_name)
+        } else {
+            None
+        };
+        match column_data_to_robj(&cdata, family, named_fill) {
+            Ok(robj) => {
+                names.push(short_name);
+                values.push(robj);
+            }
+            Err(why) => skipped.push((short_name, why)),
+        }
     }
 
     List::from_names_and_values(names.iter().map(|s| s.as_str()), values)
@@ -179,105 +229,129 @@ fn columns_to_typed_list(
 
 /// Convert raw HDF5 bytes + dtype into a typed R vector.
 ///
-/// Float columns: f32→f64 widening, fill values → `NA_real_`.
-/// Integer columns (≤4 bytes): direct cast to i32, fill → `NA_integer_`.
-/// Integer columns (8 bytes): int64 → f64 arithmetic conversion.
+/// - Floats (4 or 8 bytes) become doubles.
+/// - Integers up to 32 bits become R integers, except uint32, which
+///   becomes double (exact; it does not fit a signed 32-bit integer).
+/// - 64-bit integers become `bit64::integer64`.
+/// - Fixed-length strings become character.
+///
+/// An element becomes NA when it equals the dataset's declared
+/// `_FillValue`, when it is a family sentinel (see [`FillFamily`]) or the
+/// column's own undeclared sentinel (`named_fill`, integers up to 32
+/// bits), or when it is a float NaN. Any other datatype is an `Err` naming it.
 fn column_data_to_robj(
     cdata: &crate::products::common::ColumnData,
-    fill_values: &[f64],
-) -> Robj {
+    family: FillFamily,
+    named_fill: Option<i64>,
+) -> std::result::Result<Robj, String> {
     let b = &cdata.bytes;
     let s = cdata.element_size;
     let n = cdata.num_elements;
-    let is_float = cdata.dtype_desc.contains("FloatingPoint");
-    let is_signed = cdata.dtype_desc.contains("signed: true");
+    let desc = cdata.dtype_desc.as_str();
+    let is_float = desc.starts_with("FloatingPoint");
+    let is_int = desc.starts_with("FixedPoint");
+    let is_string = desc.starts_with("String");
+    let is_signed = desc.contains("signed: true");
 
-    if is_float {
-        let doubles: Vec<Rfloat> = if s == 4 {
-            b.chunks_exact(4)
-                .take(n)
-                .map(|chunk| {
-                    let val = f32::from_le_bytes(chunk.try_into().unwrap()) as f64;
-                    if fill_values.iter().any(|&fv| val == fv) {
-                        Rfloat::na()
-                    } else {
-                        Rfloat::from(val)
-                    }
-                })
-                .collect()
-        } else {
-            b.chunks_exact(8)
-                .take(n)
-                .map(|chunk| {
-                    let val = f64::from_le_bytes(chunk.try_into().unwrap());
-                    if val.is_nan() || fill_values.iter().any(|&fv| val == fv) {
-                        Rfloat::na()
-                    } else {
-                        Rfloat::from(val)
-                    }
-                })
-                .collect()
-        };
-        Doubles::from_values(doubles).into()
-    } else if s <= 4 {
-        // Integer (signed or unsigned, ≤ 32 bits)
-        //
-        // Signed → R integer (i32). Unsigned 1-2 bytes → R integer
-        // (fits in i32). Unsigned 4 bytes → R double (u32 max 4.3e9
-        // exceeds i32 max 2.1e9 but is exact in f64).
-        if !is_signed && s == 4 {
-            let doubles: Vec<Rfloat> = b.chunks_exact(4).take(n).map(|chunk| {
-                let val = u32::from_le_bytes(chunk.try_into().unwrap()) as f64;
-                if fill_values.iter().any(|&fv| val == fv) {
+    // Declared sentinel: byte-for-byte equality in the native type, so
+    // no widening or rounding can make it miss.
+    let declared: Option<&[u8]> = cdata.fill.as_deref().filter(|f| f.len() == s);
+    let is_declared = |chunk: &[u8]| declared == Some(chunk);
+    let gedi = family == FillFamily::Gedi;
+    let icesat2 = family == FillFamily::Icesat2;
+
+    if is_string && s > 0 {
+        // Fixed-length string: NUL-terminated, NUL-padded or space-padded.
+        let strings: Vec<String> = b
+            .chunks_exact(s)
+            .take(n)
+            .map(|chunk| {
+                let end = chunk.iter().position(|&c| c == 0).unwrap_or(s);
+                String::from_utf8_lossy(&chunk[..end]).trim_end().to_string()
+            })
+            .collect();
+        return Ok(strings.into());
+    }
+
+    if is_float && s == 4 {
+        let doubles: Vec<Rfloat> = b
+            .chunks_exact(4)
+            .take(n)
+            .map(|chunk| {
+                let val = f32::from_le_bytes(chunk.try_into().unwrap());
+                let fill = is_declared(chunk)
+                    || val.is_nan()
+                    || (icesat2 && val == f32::MAX)
+                    || (gedi && GEDI_FILLS.iter().any(|&fv| val == fv as f32));
+                if fill { Rfloat::na() } else { Rfloat::from(val as f64) }
+            })
+            .collect();
+        return Ok(Doubles::from_values(doubles).into());
+    }
+    if is_float && s == 8 {
+        let doubles: Vec<Rfloat> = b
+            .chunks_exact(8)
+            .take(n)
+            .map(|chunk| {
+                let val = f64::from_le_bytes(chunk.try_into().unwrap());
+                let fill = is_declared(chunk)
+                    || val.is_nan()
+                    || (icesat2 && val == f64::MAX)
+                    || (gedi && GEDI_FILLS.iter().any(|&fv| val == fv as f64));
+                if fill { Rfloat::na() } else { Rfloat::from(val) }
+            })
+            .collect();
+        return Ok(Doubles::from_values(doubles).into());
+    }
+
+    if is_int && !is_signed && s == 4 {
+        // uint32 → double (max 4.3e9 exceeds i32 but is exact in f64).
+        let doubles: Vec<Rfloat> = b
+            .chunks_exact(4)
+            .take(n)
+            .map(|chunk| {
+                if is_declared(chunk) {
                     Rfloat::na()
                 } else {
-                    Rfloat::from(val)
+                    Rfloat::from(u32::from_le_bytes(chunk.try_into().unwrap()) as f64)
                 }
-            }).collect();
-            return Doubles::from_values(doubles).into();
-        }
-        let fill_ints: Vec<i32> = fill_values.iter().map(|&fv| fv as i32).collect();
-        let ints: Vec<Rint> = match s {
-            1 => {
-                if is_signed {
-                    b.iter().take(n).map(|&byte| {
-                        let val = byte as i8 as i32;
-                        if fill_ints.contains(&val) { Rint::na() } else { Rint::from(val) }
-                    }).collect()
-                } else {
-                    b.iter().take(n).map(|&byte| {
-                        let val = byte as i32;
-                        if fill_ints.contains(&val) { Rint::na() } else { Rint::from(val) }
-                    }).collect()
-                }
-            }
-            2 => {
-                b.chunks_exact(2).take(n).map(|chunk| {
-                    let val = if is_signed {
-                        i16::from_le_bytes(chunk.try_into().unwrap()) as i32
-                    } else {
-                        u16::from_le_bytes(chunk.try_into().unwrap()) as i32
-                    };
-                    if fill_ints.contains(&val) { Rint::na() } else { Rint::from(val) }
-                }).collect()
-            }
-            _ => {
-                // 3 or 4 bytes, signed → i32. For 3-byte values the
-                // top byte must be sign-extended, otherwise negatives
-                // deserialise to large positive i32.
-                b.chunks_exact(s).take(n).map(|chunk| {
-                    let mut buf = [0u8; 4];
-                    buf[..s].copy_from_slice(chunk);
-                    if s == 3 && is_signed && (chunk[2] & 0x80) != 0 {
-                        buf[3] = 0xFF;
+            })
+            .collect();
+        return Ok(Doubles::from_values(doubles).into());
+    }
+    if is_int && (1..=4).contains(&s) {
+        let ints: Vec<Rint> = b
+            .chunks_exact(s)
+            .take(n)
+            .map(|chunk| {
+                let val: i32 = match (s, is_signed) {
+                    (1, true) => chunk[0] as i8 as i32,
+                    (1, false) => chunk[0] as i32,
+                    (2, true) => i16::from_le_bytes(chunk.try_into().unwrap()) as i32,
+                    (2, false) => u16::from_le_bytes(chunk.try_into().unwrap()) as i32,
+                    _ => {
+                        // 3 or 4 bytes. For 3-byte signed values the top
+                        // byte must be sign-extended, otherwise negatives
+                        // deserialise to large positive i32.
+                        let mut buf = [0u8; 4];
+                        buf[..s].copy_from_slice(chunk);
+                        if s == 3 && is_signed && (chunk[2] & 0x80) != 0 {
+                            buf[3] = 0xFF;
+                        }
+                        i32::from_le_bytes(buf)
                     }
-                    let val = i32::from_le_bytes(buf);
-                    if fill_ints.contains(&val) { Rint::na() } else { Rint::from(val) }
-                }).collect()
-            }
-        };
-        Integers::from_values(ints).into()
-    } else {
+                };
+                let fill = is_declared(chunk)
+                    || named_fill == Some(val as i64)
+                    || (icesat2 && s == 4 && val == i32::MAX)
+                    || (gedi && is_signed && GEDI_FILLS.contains(&(val as i64)));
+                // i32::MIN is R's own NA_integer_.
+                if fill { Rint::na() } else { Rint::from(val) }
+            })
+            .collect();
+        return Ok(Integers::from_values(ints).into());
+    }
+    if is_int && s == 8 {
         // int64 / uint64 → bit64::integer64.
         //
         // bit64 stores int64 values as doubles where the 8 bytes ARE
@@ -288,21 +362,23 @@ fn column_data_to_robj(
         // (shot_number max ~2.3e17) fit within signed int64 range
         // (max 9.2e18), so treating uint64 as int64 is safe.
         const BIT64_NA_BITS: u64 = 0x8000_0000_0000_0000;
-        let doubles: Vec<Rfloat> = b.chunks_exact(8).take(n).map(|chunk| {
-            let bits = u64::from_le_bytes(chunk.try_into().unwrap());
-            // Fill-value check: interpret raw bits as i64, cast to f64,
-            // compare against the f64 fill values from the product spec.
-            let as_f64 = (bits as i64) as f64;
-            if bits == BIT64_NA_BITS || fill_values.iter().any(|&fv| as_f64 == fv) {
-                Rfloat::from(f64::from_bits(BIT64_NA_BITS))
-            } else {
-                Rfloat::from(f64::from_bits(bits))
-            }
-        }).collect();
+        let doubles: Vec<Rfloat> = b
+            .chunks_exact(8)
+            .take(n)
+            .map(|chunk| {
+                let bits = u64::from_le_bytes(chunk.try_into().unwrap());
+                let fill = is_declared(chunk)
+                    || bits == BIT64_NA_BITS
+                    || (gedi && is_signed && GEDI_FILLS.contains(&(bits as i64)));
+                Rfloat::from(f64::from_bits(if fill { BIT64_NA_BITS } else { bits }))
+            })
+            .collect();
         let mut robj: Robj = Doubles::from_values(doubles).into();
         robj.set_attrib(class_symbol(), "integer64").unwrap();
-        robj
+        return Ok(robj);
     }
+
+    Err(format!("its datatype is not supported ({desc})"))
 }
 
 /// Convert a `HashMap<String, ColumnData>` into two parallel R lists:
@@ -393,10 +469,10 @@ fn rust_read_gedi(
             .map_err(|e| e.to_string())
     });
 
-    let fill_vals = fill_values_for_product(product);
+    let family = fill_family(product);
     match result {
         Ok(groups) => {
-            let lists: Vec<List> = groups.into_iter().map(|gd| group_data_to_list(gd, &fill_vals)).collect();
+            let lists: Vec<List> = groups.into_iter().map(|gd| group_data_to_list(gd, family)).collect();
             Ok(List::from_values(lists))
         }
         Err(e) => Err(extendr_api::Error::Other(e)),
@@ -448,10 +524,10 @@ fn rust_read_icesat2(
             .map_err(|e| e.to_string())
     });
 
-    let fill_vals = fill_values_for_product(product);
+    let family = fill_family(product);
     match result {
         Ok(groups) => {
-            let lists: Vec<List> = groups.into_iter().map(|gd| group_data_to_list(gd, &fill_vals)).collect();
+            let lists: Vec<List> = groups.into_iter().map(|gd| group_data_to_list(gd, family)).collect();
             Ok(List::from_values(lists))
         }
         Err(e) => Err(extendr_api::Error::Other(e)),
@@ -597,8 +673,8 @@ fn rust_read_gedi_multi(
         (byte_count as f64 / 1_048_576.0) / req_count.max(1) as f64,
     );
 
-    let fill_vals = fill_values_for_product(product);
-    Ok(groups_with_failures(all_groups, failed, &fill_vals))
+    let family = fill_family(product);
+    Ok(groups_with_failures(all_groups, failed, family))
 }
 
 /// Read ICESat-2 data from multiple remote HDF5 files concurrently.
@@ -663,8 +739,8 @@ fn rust_read_icesat2_multi(
         }
     }));
 
-    let fill_vals = fill_values_for_product(product);
-    Ok(groups_with_failures(all_groups, failed, &fill_vals))
+    let family = fill_family(product);
+    Ok(groups_with_failures(all_groups, failed, family))
 }
 
 /// Returns true when this Rust crate was compiled with debug assertions

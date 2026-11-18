@@ -75,12 +75,14 @@ nasa_retry_backoff <- function(i) {
   min(60, 2^i) + sample.int(1000L, 1L) / 1000
 }
 
-#' Seconds to wait from a `Retry-After` header, capped at 60; `NA` (no
-#' header) falls back to the backoff.
+#' Seconds to wait from a `Retry-After` header, capped at 60; `NA` falls
+#' back to the backoff. `NA` covers no header and also a header asking
+#' for less than a second (`Retry-After: 0`, or a date in the past):
+#' honouring those would retry in a tight loop for the whole budget.
 #' @noRd
 nasa_retry_after <- function(resp) {
   after <- httr2::resp_retry_after(resp)
-  if (is.na(after)) NA else min(after, 60)
+  if (is.na(after) || after < 1) NA else min(after, 60)
 }
 
 #' Total retry budget in seconds, from the `spacelaser.cmr_max_seconds`

@@ -240,4 +240,7 @@ test_that("Retry-After is capped at 60 s and absent means the backoff", {
   expect_equal(nasa_retry_after(resp(`Retry-After` = "3600")), 60)
   expect_equal(nasa_retry_after(resp(`Retry-After` = "5")), 5)
   expect_true(is.na(nasa_retry_after(resp())))
+  # No tight loop: a zero or past Retry-After falls back to the backoff.
+  expect_true(is.na(nasa_retry_after(resp(`Retry-After` = "0"))))
+  expect_true(is.na(nasa_retry_after(resp(`Retry-After` = "Wed, 21 Oct 2015 07:28:00 GMT"))))
 })

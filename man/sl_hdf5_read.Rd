@@ -7,7 +7,7 @@
 sl_hdf5_read(url, dataset)
 }
 \arguments{
-\item{url}{Character. HTTPS URL of the HDF5 file.}
+\item{url}{Character. HTTPS URL of the HDF5 file, or a local path.}
 
 \item{dataset}{Character. Full HDF5 path to the dataset (e.g.,
 \code{"/BEAM0101/lat_lowestmode"}).}
@@ -21,7 +21,8 @@ Low-level helper that reads an arbitrary HDF5 dataset by its full
 path and returns it as an appropriately-typed R vector. Useful for
 pulling individual fields not covered by the curated registry, or
 for inspecting a dataset before requesting it via \code{\link[=sl_read]{sl_read()}}.
-Earthdata credentials are required (see \code{\link[=sl_search]{sl_search()}} for setup).
+Earthdata credentials are required for a remote file (see
+\code{\link[=generate_ed_token]{generate_ed_token()}}); a local file needs none.
 }
 \examples{
 \dontshow{if (interactive()) withAutoprint(\{ # examplesIf}

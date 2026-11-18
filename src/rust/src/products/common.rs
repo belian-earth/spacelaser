@@ -128,6 +128,7 @@ fn unsupported_reason(e: &Hdf5Error) -> Option<String> {
         Hdf5Error::UnsupportedDatatypeClass(_)
         | Hdf5Error::UnsupportedLayoutClass(_)
         | Hdf5Error::UnsupportedLayoutVersion(_)
+        | Hdf5Error::UnsupportedChunkShape(_)
         | Hdf5Error::UnsupportedFilter(_) => Some(e.to_string()),
         _ => None,
     }
@@ -311,12 +312,16 @@ async fn read_single_group(
             );
             let (lat_meta, lat_bytes) = match lat_result {
                 Ok(v) => v,
-                Err(Hdf5Error::PathNotFound(_)) => return Ok(None),
+                Err(Hdf5Error::PathNotFound(_)) => {
+                    return missing_coordinates(file, &group_path, product.lat_dataset()).await
+                }
                 Err(e) => return Err(e),
             };
             let (_, lon_bytes) = match lon_result {
                 Ok(v) => v,
-                Err(Hdf5Error::PathNotFound(_)) => return Ok(None),
+                Err(Hdf5Error::PathNotFound(_)) => {
+                    return missing_coordinates(file, &group_path, product.lon_dataset()).await
+                }
                 Err(e) => return Err(e),
             };
             let elem_size = lat_meta.datatype.size();
@@ -772,6 +777,30 @@ async fn read_single_group(
 // Spatial helper functions
 // ---------------------------------------------------------------------------
 
+/// A group's coordinate dataset was not found: decide what that means.
+///
+/// A beam or track that is absent from the granule is normal (degraded
+/// periods, single-beam granules) and yields no rows. A group that is
+/// present but lacks the coordinates is not: the file is laid out
+/// differently from what this product's reader expects, typically a
+/// product version it does not know. Reporting "no rows in the bounding
+/// box" for that would hide the whole granule.
+async fn missing_coordinates<T>(
+    file: &Hdf5File,
+    group_path: &str,
+    dataset: &str,
+) -> Result<Option<T>, Hdf5Error> {
+    match file.list_group(group_path).await {
+        Ok(members) if !members.is_empty() => Err(Hdf5Error::InvalidStructure(format!(
+            "group '{}' has no coordinate dataset '{}'; the file is not laid out as \
+             this product is expected to be (a different product, or a version \
+             that is not supported)",
+            group_path, dataset
+        ))),
+        _ => Ok(None),
+    }
+}
+
 /// Segment-index spatial filter for ATL03.
 ///
 /// Instead of downloading the full photon-level lat/lon arrays (tens to
@@ -796,12 +825,16 @@ async fn segment_spatial_filter(
 
     let (lat_meta, lat_bytes) = match lat_result {
         Ok(v) => v,
-        Err(Hdf5Error::PathNotFound(_)) => return Ok(None),
+        Err(Hdf5Error::PathNotFound(_)) => {
+            return missing_coordinates(file, group_path, seg_idx.lat_dataset).await
+        }
         Err(e) => return Err(e),
     };
     let (_lon_meta, lon_bytes) = match lon_result {
         Ok(v) => v,
-        Err(Hdf5Error::PathNotFound(_)) => return Ok(None),
+        Err(Hdf5Error::PathNotFound(_)) => {
+            return missing_coordinates(file, group_path, seg_idx.lon_dataset).await
+        }
         Err(e) => return Err(e),
     };
 

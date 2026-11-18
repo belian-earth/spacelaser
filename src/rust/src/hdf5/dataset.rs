@@ -284,9 +284,13 @@ impl Dataset {
                 for &(start, end) in row_ranges {
                     let byte_start = start as usize * row_size;
                     let byte_end = end as usize * row_size;
-                    if byte_end <= data.len() {
-                        result.extend_from_slice(&data[byte_start..byte_end]);
-                    }
+                    let rows = data.get(byte_start..byte_end).ok_or_else(|| {
+                        Hdf5Error::InvalidStructure(format!(
+                            "rows {}..{} are beyond the end of a compact dataset of {} bytes",
+                            start, end, data.len()
+                        ))
+                    })?;
+                    result.extend_from_slice(rows);
                 }
                 Ok(result)
             }
@@ -357,13 +361,14 @@ impl Dataset {
                 let chunk_data = try_join_all(chunk_futs).await?;
 
                 // Extract the specific rows
-                Ok(chunk::extract_rows_from_chunks(
+                chunk::extract_rows_from_chunks(
                     &chunk_data,
                     row_ranges,
                     chunk_dims,
+                    &self.meta.dataspace.dims,
                     element_size,
-                    ndims,
-                ))
+                    self.meta.fill_value.as_deref(),
+                )
             }
         }
     }

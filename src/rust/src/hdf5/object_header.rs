@@ -624,7 +624,15 @@ fn parse_message(
     match msg_type {
         MSG_DATASPACE => parse_dataspace(data),
         MSG_DATATYPE => parse_datatype(data).map(HeaderMessage::Datatype),
-        MSG_FILL_VALUE_OLD | MSG_FILL_VALUE => parse_fill_value(data),
+        // The old message is just size (4) + data, with no version byte.
+        MSG_FILL_VALUE_OLD => Ok(HeaderMessage::FillValue(
+            data.get(..4)
+                .map(|n| u32::from_le_bytes([n[0], n[1], n[2], n[3]]) as usize)
+                .filter(|&n| n > 0)
+                .and_then(|n| data.get(4..4 + n))
+                .map(<[u8]>::to_vec),
+        )),
+        MSG_FILL_VALUE => parse_fill_value(data),
         MSG_DATA_LAYOUT => parse_data_layout(data, offset_size, length_size),
         MSG_FILTER_PIPELINE => parse_filter_pipeline(data),
         MSG_SYMBOL_TABLE => parse_symbol_table(data, offset_size),
@@ -826,17 +834,17 @@ fn parse_fill_value(data: &[u8]) -> Result<HeaderMessage, Hdf5Error> {
     let version = data[0];
     match version {
         1 | 2 => {
-            // Version 1/2: allocation time (1), fill write time (1), fill defined (1)
-            // then: size (4) + data
-            if data.len() < 7 {
+            // version (1), space allocation time (1), fill write time (1),
+            // fill defined (1), then size (4) + data. Version 1 always
+            // has the size; version 2 has it only when a fill is defined.
+            if data.len() < 8 {
                 return Ok(HeaderMessage::FillValue(None));
             }
-            let fill_defined = data[4];
-            if fill_defined != 0 && data.len() >= 9 {
-                let size =
-                    u32::from_le_bytes([data[5], data[6], data[7], data[8]]) as usize;
-                if size > 0 && data.len() >= 9 + size {
-                    return Ok(HeaderMessage::FillValue(Some(data[9..9 + size].to_vec())));
+            let fill_defined = data[3];
+            if version == 1 || fill_defined != 0 {
+                let size = u32::from_le_bytes([data[4], data[5], data[6], data[7]]) as usize;
+                if size > 0 && data.len() >= 8 + size {
+                    return Ok(HeaderMessage::FillValue(Some(data[8..8 + size].to_vec())));
                 }
             }
             Ok(HeaderMessage::FillValue(None))

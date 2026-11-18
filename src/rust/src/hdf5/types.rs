@@ -29,6 +29,9 @@ pub enum Hdf5Error {
     )]
     UnsupportedLayoutVersion(u8),
 
+    #[error("Unsupported chunk shape: {0}; chunks must span the trailing dimensions")]
+    UnsupportedChunkShape(String),
+
     #[error("Unsupported filter: {0}")]
     UnsupportedFilter(u16),
 

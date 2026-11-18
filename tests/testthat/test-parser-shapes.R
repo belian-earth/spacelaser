@@ -118,3 +118,18 @@ test_that("dense link storage lists every link", {
   expect_length(links, 600L)
   expect_setequal(substr(links, 1, 4), sprintf("d%03d", 0:599))
 })
+
+test_that("a 2-D dataset chunked across its columns is assembled row by row", {
+  d <- read_shape("parser-v1.h5", "L2A", "split")
+  d <- d[d$beam == "BEAM0001", ]
+  expect_equal(nrow(d), 100L)
+  for (j in 0:6) {
+    expect_equal(d[[paste0("split", j)]], (0:99) * 100L + j, info = j)
+  }
+})
+
+test_that("unallocated chunks read as the dataset's fill value", {
+  d <- read_shape("parser-v1.h5", "L2A", "sparse")
+  d <- d[d$beam == "BEAM0001", ]
+  expect_equal(d$sparse, c(0:9, rep(-7L, 90)))
+})

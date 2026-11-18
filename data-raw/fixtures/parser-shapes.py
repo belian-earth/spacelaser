@@ -17,7 +17,9 @@
 #     /BEAM0001   one column per datatype, each with fill sentinels in the
 #                 data: declared by a `_FillValue` attribute, or GEDI's
 #                 undeclared -9999. Also a fixed-length string, an enum,
-#                 a dataset at a different rate and a 3-D dataset.
+#                 a dataset at a different rate, a 3-D dataset, a 2-D
+#                 dataset chunked across its columns, and a dataset
+#                 whose chunks are mostly unallocated.
 #     /gt1l       the ATLAS sentinels (largest finite float32 / float64,
 #                 largest int32) with no attribute, read as ATL13.
 #
@@ -113,6 +115,16 @@ def make_v1(path):
         m = np.tile(np.arange(3, dtype="f4"), (n, 1))
         m[fill_rows, 1] = np.finfo("f4").max
         with_fill(b1, "matrix", m, np.finfo("f4").max)
+
+        # Chunked across columns as well as rows, as GEDI version 3
+        # stores `rh`: each row is assembled from three chunks, the last
+        # of which is wider than the dataset.
+        wide = (np.arange(n)[:, None] * 100 + np.arange(7)[None, :]).astype("i4")
+        b1.create_dataset("split", data=wide, chunks=(32, 3), compression="gzip")
+        # Only the first chunk is ever written: the rest of the dataset
+        # is unallocated and reads as the fill value.
+        sparse = b1.create_dataset("sparse", shape=(n,), dtype="i2", chunks=(10,), fillvalue=-7)
+        sparse[0:10] = np.arange(10)
 
         strata = np.array([b"ENT_NAm", b"DBT_Eu", b"GSW"])[np.arange(n) % 3]
         b1.create_dataset("stratum", data=strata.astype("S8"))

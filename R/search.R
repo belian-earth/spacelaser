@@ -23,10 +23,14 @@
 #'
 #'   `date_start` defaults to the mission start (2019-03-25 for GEDI,
 #'   2018-10-14 for ICESat-2). `date_end` defaults to today.
-#' @param version Character or `NULL`. Product version, for products
-#'   published in more than one: GEDI L4A `"3"` (the default, released
-#'   2026-06, shots from 2019-04-04 to 2025-07-10) or `"2.1"`. Must be
-#'   `NULL` for every other product.
+#' @param version Character or `NULL`. Product version, for the products
+#'   that can be searched in more than one. The first listed is the
+#'   default:
+#'   * GEDI L4A: `"3"` (released 2026-06) or `"2.1"`.
+#'   * GEDI L1B: `"2"` or `"3"`.
+#'   * ICESat-2 ATL24: `"1"`, `"2"` or `"3"`.
+#'
+#'   Must be `NULL` for every other product. See *Product versions*.
 #'
 #' @returns A classed data frame (`sl_gedi_search` or `sl_icesat2_search`)
 #'   with columns:
@@ -41,6 +45,21 @@
 #'   [sl_read()] can dispatch without re-specifying them.
 #'
 #' @details
+#' ## Product versions
+#'
+#' A search queries one version (one CMR collection) of a product. NASA
+#' closes a version when its successor is published: GEDI L1B, L2A and
+#' L2B version 2 and L4A version 2.1 hold nothing after 2025-07-10,
+#' L4C version 2 nothing after 2025-07-09, and ATL24 version 1 nothing
+#' after 2024-11-07. A search whose dates run past the end of a closed
+#' version warns, because the empty tail of the result means "not in
+#' this version", not "no overpasses".
+#'
+#' GEDI L2A, L2B and L4C are searched in version 2 only. Their version 3
+#' files rename and drop variables and are not read by this package yet.
+#'
+#' ## Authentication
+#'
 #' No authentication is needed for the search itself; Earthdata credentials
 #' are only required when reading data via [sl_read()].
 #'
@@ -93,6 +112,7 @@ sl_search <- function(
   bbox <- validate_bbox(bbox)
 
   spec <- product_search_spec(product, version)
+  warn_collection_ended(spec, product, date_end)
 
   result <- search_cmr(
     bbox = bbox,
@@ -113,10 +133,22 @@ sl_search <- function(
 #' free of branching. Products published in more than one version list
 #' them in `product_versions`; the first is the default.
 #' @noRd
+# Versions a search can select, default first. `ends` is the last day a
+# closed collection holds granules for: NASA stopped adding to it when the
+# next version was published.
 product_versions <- list(
+  L1B = list(
+    `2` = list(concept_id = "C2142749196-LPCLOUD", label = "GEDI L1B v2", ends = "2025-07-10"),
+    `3` = list(concept_id = "C3974616058-LPCLOUD", label = "GEDI L1B v3")
+  ),
   L4A = list(
     `3` = list(concept_id = "C4212593885-ORNL_CLOUD", label = "GEDI L4A v3"),
-    `2.1` = list(concept_id = "C2237824918-ORNL_CLOUD", label = "GEDI L4A v2.1")
+    `2.1` = list(concept_id = "C2237824918-ORNL_CLOUD", label = "GEDI L4A v2.1", ends = "2025-07-09")
+  ),
+  ATL24 = list(
+    `1` = list(concept_id = "C3433822507-NSIDC_CPRD", label = "ICESat-2 ATL24 v1", ends = "2024-11-07"),
+    `2` = list(concept_id = "C4085168939-NSIDC_CPRD", label = "ICESat-2 ATL24 v2"),
+    `3` = list(concept_id = "C4312123631-NSIDC_CPRD", label = "ICESat-2 ATL24 v3")
   )
 )
 
@@ -129,6 +161,7 @@ product_search_spec <- function(product, version = NULL) {
     }
     return(spec)
   }
+  if (is.numeric(version) && length(version) == 1L) version <- as.character(version)
   version <- version %||% names(versions)[1]
   if (!is.character(version) || length(version) != 1L || !version %in% names(versions)) {
     cli::cli_abort("{.arg version} for {.val {product}} must be one of {.val {names(versions)}}.")
@@ -136,7 +169,37 @@ product_search_spec <- function(product, version = NULL) {
   spec$concept_id <- versions[[version]]$concept_id
   spec$label <- versions[[version]]$label
   spec$version <- version
+  spec$ends <- versions[[version]]$ends
+  spec$newer <- names(versions)[is.na(match(names(versions), version)) &
+    vapply(versions, function(v) is.null(v$ends), logical(1))]
   spec
+}
+
+#' Warn when a search asks for dates its collection cannot hold.
+#'
+#' A closed collection returns nothing for later dates, which reads as
+#' "no overpasses" when the granules exist in a newer version. Shown at
+#' most once every eight hours per product.
+#' @noRd
+warn_collection_ended <- function(spec, product, date_end) {
+  if (is.null(spec$ends)) return(invisible())
+  end <- parse_search_date(date_end %||% Sys.Date(), arg = "date_end")
+  if (end <= as.Date(spec$ends)) return(invisible())
+  how <- if (length(spec$newer)) {
+    c("i" = "Search the newer version with {.code version = \"{spec$newer[length(spec$newer)]}\"}.")
+  } else {
+    c("x" = "{.pkg spacelaser} does not read the newer version of {product} yet.")
+  }
+  cli::cli_warn(
+    c(
+      "!" = "{spec$label} holds no granules after {spec$ends}; this search runs to {format(end)}.",
+      "i" = "Later granules are published only in a newer version of the product, so they are not in this result.",
+      how
+    ),
+    .frequency = "regularly",
+    .frequency_id = paste0("spacelaser_collection_ended_", product, spec$version)
+  )
+  invisible()
 }
 
 product_search_spec_base <- function(product) {
@@ -144,21 +207,21 @@ product_search_spec_base <- function(product) {
     product,
     L1B = list(
       sensor = "gedi",
-      concept_id = "C2142749196-LPCLOUD",
-      default_start = "2019-03-25",
-      label = "GEDI L1B"
+      default_start = "2019-03-25"
     ),
     L2A = list(
       sensor = "gedi",
       concept_id = "C2142771958-LPCLOUD",
       default_start = "2019-03-25",
-      label = "GEDI L2A"
+      label = "GEDI L2A v2",
+      ends = "2025-07-10"
     ),
     L2B = list(
       sensor = "gedi",
       concept_id = "C2142776747-LPCLOUD",
       default_start = "2019-03-25",
-      label = "GEDI L2B"
+      label = "GEDI L2B v2",
+      ends = "2025-07-10"
     ),
     L4A = list(
       sensor = "gedi",
@@ -168,7 +231,8 @@ product_search_spec_base <- function(product) {
       sensor = "gedi",
       concept_id = "C3049900163-ORNL_CLOUD",
       default_start = "2019-03-25",
-      label = "GEDI L4C"
+      label = "GEDI L4C v2",
+      ends = "2025-07-09"
     ),
     ATL03 = list(
       sensor = "icesat2",
@@ -208,9 +272,7 @@ product_search_spec_base <- function(product) {
     ),
     ATL24 = list(
       sensor = "icesat2",
-      concept_id = "C3433822507-NSIDC_CPRD",
-      default_start = "2018-10-14",
-      label = "ICESat-2 ATL24"
+      default_start = "2018-10-14"
     )
   )
 }
@@ -502,6 +564,7 @@ print.sl_gedi_search <- function(x, ...) {
 #' @export
 print.sl_icesat2_search <- function(x, ...) {
   product <- attr(x, "product")
+  if (!is.null(attr(x, "version"))) product <- paste0(product, " v", attr(x, "version"))
   bbox <- attr(x, "bbox")
   cli::cli_text(
     "{.cls sl_icesat2_search} | ICESat-2 {product} | {nrow(x)} granule{?s} | {.field {format(bbox)}}"

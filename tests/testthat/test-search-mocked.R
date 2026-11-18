@@ -202,3 +202,41 @@ test_that("sl_search result survives [ subsetting with attributes intact", {
     expect_equal(nrow(sub), 1L)
   })
 })
+
+# ---------------------------------------------------------------------------
+# Closed collections
+# ---------------------------------------------------------------------------
+
+test_that("selectable versions resolve to their own collections", {
+  expect_identical(product_search_spec("L1B")$version, "2")
+  expect_identical(product_search_spec("L1B", "3")$concept_id, "C3974616058-LPCLOUD")
+  expect_identical(product_search_spec("ATL24")$concept_id, "C3433822507-NSIDC_CPRD")
+  expect_identical(product_search_spec("ATL24", 3)$concept_id, "C4312123631-NSIDC_CPRD")
+  expect_identical(product_search_spec("L4A")$version, "3")
+  expect_error(product_search_spec("L1B", "4"), "must be one of")
+  expect_error(product_search_spec("L2A", "3"), "applies only to")
+})
+
+test_that("a search past the end of a closed collection warns", {
+  ended <- function(product, version = NULL, date_end) {
+    spec <- product_search_spec(product, version)
+    rlang::reset_warning_verbosity(
+      paste0("spacelaser_collection_ended_", product, spec$version)
+    )
+    warn_collection_ended(spec, product, date_end)
+  }
+  # Closed, with a newer version that can be searched.
+  expect_warning(ended("L1B", date_end = "2026-01-01"), "holds no granules after 2025-07-10")
+  w <- tryCatch(ended("L1B", date_end = "2026-01-01"), warning = conditionMessage)
+  expect_match(w, 'version = "3"', fixed = TRUE)
+  # Closed, and the newer version is not read yet.
+  w <- tryCatch(ended("L2A", date_end = "2026-01-01"), warning = conditionMessage)
+  expect_match(w, "does not read the newer version of L2A")
+  # Inside the collection, or an open collection: silent.
+  expect_no_warning(ended("L2A", date_end = "2025-07-10"))
+  expect_no_warning(ended("L1B", "3", date_end = "2026-01-01"))
+  expect_no_warning(ended("L4A", date_end = "2026-01-01"))
+  expect_no_warning(ended("ATL08", date_end = "2026-01-01"))
+  # date_end defaults to today.
+  expect_warning(ended("ATL24", date_end = NULL), "holds no granules after 2024-11-07")
+})

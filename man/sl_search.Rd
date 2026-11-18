@@ -37,10 +37,16 @@ falls on any of those 30 days.
 \code{date_start} defaults to the mission start (2019-03-25 for GEDI,
 2018-10-14 for ICESat-2). \code{date_end} defaults to today.}
 
-\item{version}{Character or \code{NULL}. Product version, for products
-published in more than one: GEDI L4A \code{"3"} (the default, released
-2026-06, shots from 2019-04-04 to 2025-07-10) or \code{"2.1"}. Must be
-\code{NULL} for every other product.}
+\item{version}{Character or \code{NULL}. Product version, for the products
+that can be searched in more than one. The first listed is the
+default:
+\itemize{
+\item GEDI L4A: \code{"3"} (released 2026-06) or \code{"2.1"}.
+\item GEDI L1B: \code{"2"} or \code{"3"}.
+\item ICESat-2 ATL24: \code{"1"}, \code{"2"} or \code{"3"}.
+}
+
+Must be \code{NULL} for every other product. See \emph{Product versions}.}
 }
 \value{
 A classed data frame (\code{sl_gedi_search} or \code{sl_icesat2_search})
@@ -62,12 +68,29 @@ granules that overlap a bounding box and optional date range. The sensor
 valid product strings do not overlap.
 }
 \details{
+\subsection{Product versions}{
+
+A search queries one version (one CMR collection) of a product. NASA
+closes a version when its successor is published: GEDI L1B, L2A and
+L2B version 2 and L4A version 2.1 hold nothing after 2025-07-10,
+L4C version 2 nothing after 2025-07-09, and ATL24 version 1 nothing
+after 2024-11-07. A search whose dates run past the end of a closed
+version warns, because the empty tail of the result means "not in
+this version", not "no overpasses".
+
+GEDI L2A, L2B and L4C are searched in version 2 only. Their version 3
+files rename and drop variables and are not read by this package yet.
+}
+
+\subsection{Authentication}{
+
 No authentication is needed for the search itself; Earthdata credentials
 are only required when reading data via \code{\link[=sl_read]{sl_read()}}.
 
 The CMR search filters by bounding box on the server side. For finer
 spatial filtering (e.g. against an irregular polygon), filter the returned
 \code{geometry} column with your favourite spatial package.
+}
 }
 \examples{
 \dontshow{if (interactive()) withAutoprint(\{ # examplesIf}

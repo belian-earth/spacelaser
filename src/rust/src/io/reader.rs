@@ -98,8 +98,18 @@ pub enum IoError {
     #[error("Local file I/O error: {0}")]
     LocalIo(#[from] std::io::Error),
 
-    #[error("Server does not support range requests")]
+    #[error(
+        "The server ignored the byte range and returned the whole file, or \
+         cannot satisfy the range. spacelaser needs a server that supports \
+         HTTP range requests."
+    )]
     RangeNotSupported,
+
+    #[error("The server returned bytes from offset {returned} for a request at offset {requested}")]
+    RangeMismatch { requested: u64, returned: u64 },
+
+    #[error("The server returned {returned} bytes for a {requested}-byte range")]
+    RangeTooLong { requested: u64, returned: u64 },
 }
 
 /// Maximum number of retry attempts for transient HTTP errors.
@@ -114,6 +124,53 @@ const MAX_REDIRECTS: usize = 10;
 /// HTTP status codes that warrant a retry.
 fn is_retriable(status: u16) -> bool {
     matches!(status, 429 | 500 | 502 | 503 | 504)
+}
+
+/// May the Earthdata bearer token be sent to this URL?
+///
+/// Only over https, and only to `nasa.gov` or one of its subdomains,
+/// judged on the parsed host. A substring test on the URL would also
+/// match `https://nasa.gov.example.org/` or any URL with `nasa.gov` in
+/// its path or query, and hand a 60-day credential to that host.
+fn is_token_host(url: &str) -> bool {
+    match reqwest::Url::parse(url) {
+        Ok(u) if u.scheme() == "https" => match u.host_str() {
+            Some(host) => {
+                let host = host.trim_end_matches('.').to_ascii_lowercase();
+                host == "nasa.gov" || host.ends_with(".nasa.gov")
+            }
+            None => false,
+        },
+        _ => false,
+    }
+}
+
+/// Check a ranged response is the range that was asked for.
+///
+/// A server or proxy that ignores `Range` answers 200 with the whole
+/// file. Its bytes start at offset 0, so caching them under the
+/// requested blocks would return data from the wrong place.
+fn check_range_response(
+    status: u16,
+    content_range: Option<&str>,
+    requested: &Range<u64>,
+) -> Result<(), IoError> {
+    if status != 206 {
+        return Err(IoError::RangeNotSupported);
+    }
+    // "bytes START-END/TOTAL". Absent or unparseable: accept, the status
+    // already says partial content.
+    let start = content_range
+        .and_then(|v| v.trim().strip_prefix("bytes"))
+        .and_then(|v| v.trim_start().split('-').next())
+        .and_then(|v| v.trim().parse::<u64>().ok());
+    match start {
+        Some(start) if start != requested.start => Err(IoError::RangeMismatch {
+            requested: requested.start,
+            returned: start,
+        }),
+        _ => Ok(()),
+    }
 }
 
 /// Identify URLs in the Earthdata OAuth redirect chain that must NOT
@@ -523,7 +580,7 @@ impl Reader {
             // break the request signature. The DAAC validates the token
             // server-side and 303-redirects straight to the presigned URL.
             if let Some(creds) = auth {
-                if current_url.contains("nasa.gov") {
+                if is_token_host(&current_url) {
                     request = request.bearer_auth(&creds.token);
                 }
             }
@@ -740,9 +797,22 @@ impl Reader {
                 });
             }
 
+            let content_range = response
+                .headers()
+                .get("content-range")
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_owned);
+            check_range_response(status.as_u16(), content_range.as_deref(), &range)?;
+
             // Body download can also fail (connection reset, timeout).
             // Retry these as well.
             match response.bytes().await {
+                Ok(bytes) if bytes.len() as u64 > range.end - range.start => {
+                    return Err(IoError::RangeTooLong {
+                        requested: range.end - range.start,
+                        returned: bytes.len() as u64,
+                    });
+                }
                 Ok(bytes) => {
                     TOTAL_REQUESTS.fetch_add(1, Ordering::Relaxed);
                     TOTAL_BYTES.fetch_add(bytes.len() as u64, Ordering::Relaxed);
@@ -833,6 +903,39 @@ mod tests {
         tokio::task::yield_now().await;
         signal.signal();
         waiter.await.unwrap();
+    }
+
+    #[test]
+    fn token_goes_only_to_https_nasa_hosts() {
+        assert!(is_token_host("https://data.lpdaac.earthdatacloud.nasa.gov/x/y.h5"));
+        assert!(is_token_host("https://urs.earthdata.nasa.gov/oauth/authorize?a=b"));
+        assert!(is_token_host("https://NASA.gov/"));
+        // Plain http, even to NASA.
+        assert!(!is_token_host("http://data.ornldaac.earthdata.nasa.gov/x.h5"));
+        // nasa.gov as a label prefix, in the path, or in the query.
+        assert!(!is_token_host("https://nasa.gov.example.org/x.h5"));
+        assert!(!is_token_host("https://example.org/nasa.gov/x.h5"));
+        assert!(!is_token_host("https://example.org/x.h5?ref=nasa.gov"));
+        assert!(!is_token_host("https://notnasa.gov/x.h5"));
+        assert!(!is_token_host("https://user@example.org:443/x.h5#nasa.gov"));
+        assert!(!is_token_host("https://d1234.cloudfront.net/x.h5?Signature=abc"));
+        assert!(!is_token_host("not a url"));
+    }
+
+    #[test]
+    fn ranged_response_must_be_the_requested_range() {
+        let r = 3_000_000u64..3_000_016u64;
+        assert!(check_range_response(206, Some("bytes 3000000-3000015/9000000"), &r).is_ok());
+        assert!(check_range_response(206, None, &r).is_ok());
+        // Range ignored: whole file from offset 0.
+        assert!(matches!(
+            check_range_response(200, None, &r),
+            Err(IoError::RangeNotSupported)
+        ));
+        assert!(matches!(
+            check_range_response(206, Some("bytes 0-15/9000000"), &r),
+            Err(IoError::RangeMismatch { requested: 3_000_000, returned: 0 })
+        ));
     }
 
     /// A signal that has already been fired before the waiter arrives

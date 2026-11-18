@@ -32,7 +32,10 @@ test_that("GEDI L1B: live read end-to-end (auth + HTTPS + pool columns)", {
   if (nrow(granules) == 0L) {
     skip("No live L1B granules in test bbox/date range")
   }
-  granules <- granules[1L, ]  # one granule is enough for smoke
+  # A granule's CMR footprint can cross the bbox without any shot
+  # landing in it (the first version 3 granule here is one), so read a
+  # few rather than only the first.
+  granules <- granules[seq_len(min(nrow(granules), 3L)), ]
 
   data <- skip_if_nasa_down(sl_read(granules))
 

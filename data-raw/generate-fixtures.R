@@ -62,5 +62,10 @@ generate("ICESat-2 ATL13", make_icesat2_atl13, "icesat2-atl13.h5")
 generate("ICESat-2 ATL24", make_icesat2_atl24, "icesat2-atl24.h5")
 # last, so that adding it leaves the other fixtures byte-identical
 generate("GEDI L4A v3", function(p) make_gedi_l4a(p, registry = spacelaser:::.gedi_l4a_v3_columns), "gedi-l4a_V003.h5")
+# Version 3 of the other GEDI products. Fewer shots: the version 2
+# fixtures already cover the multi-chunk paths.
+generate("GEDI L2A v3", function(p) make_gedi_l2a(p, n_shots = 200L, registry = spacelaser:::.gedi_l2a_v3_columns), "gedi-l2a_V003.h5")
+generate("GEDI L2B v3", function(p) make_gedi_l2b_v3(p, n_shots = 120L), "gedi-l2b_V003.h5")
+generate("GEDI L4C v3", function(p) make_gedi_l4c(p, n_shots = 200L, registry = spacelaser:::.gedi_l4c_v3_columns), "gedi-l4c_V003.h5")
 
 message("Done.")

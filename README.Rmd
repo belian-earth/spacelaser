@@ -83,7 +83,7 @@ gedi2a <- sl_read(granules)
 
 gedi2a
 
-g <- gedi2a[gedi2a$quality_flag == 1, ]
+g <- gedi2a[gedi2a$l2a_quality_flag_rel3 == 1, ]
 
 plot(
   g$geometry,

@@ -9,12 +9,11 @@
 #   - no pool columns, no transposed columns
 
 make_gedi_l2a <- function(path, n_shots = N_SHOTS, n_rh_bins = 101L,
-                          beams = c("BEAM0000", "BEAM0101")) {
+                          beams = c("BEAM0000", "BEAM0101"),
+                          registry = spacelaser:::.gedi_l2a_columns) {
   if (file.exists(path)) file.remove(path)
   f <- hdf5r::H5File$new(path, mode = "w")
   on.exit(f$close_all(), add = TRUE)
-
-  registry <- spacelaser:::.gedi_l2a_columns
 
   for (beam_name in beams) {
     beam <- f$create_group(beam_name)

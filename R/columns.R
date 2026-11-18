@@ -438,6 +438,205 @@
   worldcover_class               = "land_cover_data/worldcover_class"
 )
 
+# ---------------------------------------------------------------------------
+# GEDI version 3 (2026) registries
+# ---------------------------------------------------------------------------
+# Version 3 shares its quality flags across the L2 and L4 footprint
+# products: `l2_algrunflag`, `l2a_quality_flag_rel3`, and one
+# `<product>_quality_flag_rel3` each. The `_rel2` flags keep the version 2
+# definitions. The leaf-on/off dates are gone; phenology and WorldCover
+# classes are new. Only setting groups a1, a2, a5 and a10 remain; their
+# per-algorithm datasets (`geolocation/rh_a1` and so on) are read by raw
+# path. L1B version 3 has the version 2 layout and needs no registry.
+
+# L2A: `quality_flag` is now `l2a_quality_flag_rel3`.
+# fmt: skip
+.gedi_l2a_v3_columns <- c(
+  lat_lowestmode                 = "lat_lowestmode",
+  lon_lowestmode                 = "lon_lowestmode",
+  beam                           = "beam",
+  shot_number                    = "shot_number",
+  channel                        = "channel",
+  delta_time                     = "delta_time",
+  master_frac                    = "master_frac",
+  master_int                     = "master_int",
+  degrade_flag                   = "degrade_flag",
+  degrade_include_flag           = "geolocation/degrade_include_flag",
+  l2_algrunflag                  = "l2_algrunflag",
+  l2a_quality_flag_rel3          = "l2a_quality_flag_rel3",
+  l2a_quality_flag_rel2          = "l2a_quality_flag_rel2",
+  sensitivity                    = "sensitivity",
+  solar_azimuth                  = "solar_azimuth",
+  solar_elevation                = "solar_elevation",
+  surface_flag                   = "surface_flag",
+  stale_return_flag              = "geolocation/stale_return_flag",
+  elevation_bias_flag            = "elevation_bias_flag",
+  elev_lowestmode                = "elev_lowestmode",
+  elev_highestreturn             = "elev_highestreturn",
+  energy_total                   = "energy_total",
+  num_detectedmodes              = "num_detectedmodes",
+  rh                             = "rh",
+  selected_algorithm             = "selected_algorithm",
+  selected_mode                  = "selected_mode",
+  selected_mode_flag             = "selected_mode_flag",
+  digital_elevation_model        = "digital_elevation_model",
+  digital_elevation_model_srtm   = "digital_elevation_model_srtm",
+  mean_sea_surface               = "mean_sea_surface",
+  elevation_bin0_error           = "elevation_bin0_error",
+  lat_highestreturn              = "lat_highestreturn",
+  latitude_bin0_error            = "latitude_bin0_error",
+  lon_highestreturn              = "lon_highestreturn",
+  longitude_bin0_error           = "longitude_bin0_error",
+  local_beam_azimuth             = "geolocation/local_beam_azimuth",
+  local_beam_elevation           = "geolocation/local_beam_elevation",
+  landsat_treecover              = "land_cover_data/landsat_treecover",
+  landsat_water_persistence      = "land_cover_data/landsat_water_persistence",
+  leaf_off_flag                  = "land_cover_data/leaf_off_flag",
+  modis_nonvegetated             = "land_cover_data/modis_nonvegetated",
+  modis_nonvegetated_sd          = "land_cover_data/modis_nonvegetated_sd",
+  modis_treecover                = "land_cover_data/modis_treecover",
+  modis_treecover_sd             = "land_cover_data/modis_treecover_sd",
+  pft_class                      = "land_cover_data/pft_class",
+  phenology_phase                = "land_cover_data/phenology_phase",
+  phenology_year                 = "land_cover_data/phenology_year",
+  region_class                   = "land_cover_data/region_class",
+  urban_focal_window_size        = "land_cover_data/urban_focal_window_size",
+  urban_proportion               = "land_cover_data/urban_proportion",
+  worldcover_class               = "land_cover_data/worldcover_class"
+)
+
+# L2B: coordinates, elevations and the DEM moved from `geolocation/` to
+# the beam root. `rh100` is replaced by `rch` (relative canopy height, 101
+# steps), `rhog` / `rhov` by their ratio `rhov_rhog`. `pgap_theta_z` is
+# stored once per setting group, each with its own index columns; the
+# group used for the root metrics is `selected_l2a_algorithm`.
+# fmt: skip
+.gedi_l2b_v3_columns <- c(
+  lat_lowestmode                 = "lat_lowestmode",
+  lon_lowestmode                 = "lon_lowestmode",
+  beam                           = "beam",
+  shot_number                    = "shot_number",
+  channel                        = "channel",
+  delta_time                     = "delta_time",
+  master_frac                    = "master_frac",
+  master_int                     = "master_int",
+  l2_algrunflag                  = "l2_algrunflag",
+  l2a_quality_flag_rel3          = "l2a_quality_flag_rel3",
+  l2a_quality_flag_rel2          = "l2a_quality_flag_rel2",
+  l2b_quality_flag_rel3          = "l2b_quality_flag_rel3",
+  l2b_quality_flag_rel2          = "l2b_quality_flag_rel2",
+  num_detectedmodes              = "num_detectedmodes",
+  sensitivity                    = "sensitivity",
+  stale_return_flag              = "stale_return_flag",
+  surface_flag                   = "surface_flag",
+  cover                          = "cover",
+  cover_z                        = "cover_z",
+  fhd_normal                     = "fhd_normal",
+  omega                          = "omega",
+  pai                            = "pai",
+  pai_z                          = "pai_z",
+  pavd_z                         = "pavd_z",
+  pgap_theta                     = "pgap_theta",
+  pgap_theta_error               = "pgap_theta_error",
+  rch                            = "rch",
+  rg                             = "rg",
+  rhov_rhog                      = "rhov_rhog",
+  rhov_rhog_se                   = "rhov_rhog_se",
+  rossg                          = "rossg",
+  rv                             = "rv",
+  rv_rg_r                        = "rv_rg_r",
+  rx_range_highestreturn         = "rx_range_highestreturn",
+  selected_l2a_algorithm         = "selected_l2a_algorithm",
+  selected_rg_algorithm          = "selected_rg_algorithm",
+  digital_elevation_model        = "digital_elevation_model",
+  elev_highestreturn             = "elev_highestreturn",
+  elev_lowestmode                = "elev_lowestmode",
+  lat_highestreturn              = "lat_highestreturn",
+  lon_highestreturn              = "lon_highestreturn",
+  degrade_flag                   = "geolocation/degrade_flag",
+  local_beam_azimuth             = "geolocation/local_beam_azimuth",
+  local_beam_elevation           = "geolocation/local_beam_elevation",
+  solar_azimuth                  = "geolocation/solar_azimuth",
+  solar_elevation                = "geolocation/solar_elevation",
+  pgap_theta_z_a1                = "rx_processing/pgap_theta_z_a1",
+  pgap_theta_z_a2                = "rx_processing/pgap_theta_z_a2",
+  pgap_theta_z_a5                = "rx_processing/pgap_theta_z_a5",
+  pgap_theta_z_a10               = "rx_processing/pgap_theta_z_a10",
+  rx_sample_count_a1             = "rx_processing/rx_sample_count_a1",
+  rx_sample_count_a2             = "rx_processing/rx_sample_count_a2",
+  rx_sample_count_a5             = "rx_processing/rx_sample_count_a5",
+  rx_sample_count_a10            = "rx_processing/rx_sample_count_a10",
+  rx_sample_start_index_a1       = "rx_processing/rx_sample_start_index_a1",
+  rx_sample_start_index_a2       = "rx_processing/rx_sample_start_index_a2",
+  rx_sample_start_index_a5       = "rx_processing/rx_sample_start_index_a5",
+  rx_sample_start_index_a10      = "rx_processing/rx_sample_start_index_a10",
+  landsat_treecover              = "land_cover_data/landsat_treecover",
+  landsat_water_persistence      = "land_cover_data/landsat_water_persistence",
+  leaf_off_flag                  = "land_cover_data/leaf_off_flag",
+  pft_class                      = "land_cover_data/pft_class",
+  phenology_phase                = "land_cover_data/phenology_phase",
+  phenology_year                 = "land_cover_data/phenology_year",
+  region_class                   = "land_cover_data/region_class",
+  urban_focal_window_size        = "land_cover_data/urban_focal_window_size",
+  urban_proportion               = "land_cover_data/urban_proportion",
+  worldcover_class               = "land_cover_data/worldcover_class"
+)
+
+#' @noRd
+.gedi_l2b_v3_pool_index_map <- lapply(
+  rlang::set_names(c("a1", "a2", "a5", "a10"), function(a) paste0("pgap_theta_z_", a)),
+  function(a) list(
+    start = paste0("rx_sample_start_index_", a),
+    count = paste0("rx_sample_count_", a)
+  )
+)
+
+# L4C: `degrade_flag` is replaced by `degrade_include_flag`.
+# fmt: skip
+.gedi_l4c_v3_columns <- c(
+  lat_lowestmode                  = "lat_lowestmode",
+  lon_lowestmode                  = "lon_lowestmode",
+  beam                            = "beam",
+  shot_number                     = "shot_number",
+  channel                         = "channel",
+  delta_time                      = "delta_time",
+  master_frac                     = "master_frac",
+  master_int                      = "master_int",
+  algorithm_run_flag              = "algorithm_run_flag",
+  l2_algrunflag                   = "l2_algrunflag",
+  degrade_include_flag            = "degrade_include_flag",
+  l2a_quality_flag_rel3           = "l2a_quality_flag_rel3",
+  l4c_quality_flag_rel3           = "l4c_quality_flag_rel3",
+  l4c_quality_flag_rel2           = "l4c_quality_flag_rel2",
+  sensitivity                     = "sensitivity",
+  solar_elevation                 = "solar_elevation",
+  surface_flag                    = "surface_flag",
+  elev_lowestmode                 = "elev_lowestmode",
+  elev_highestreturn_outlier_flag = "elev_highestreturn_outlier_flag",
+  fhd_normal                      = "fhd_normal",
+  selected_algorithm              = "selected_algorithm",
+  wsci                            = "wsci",
+  wsci_pi_lower                   = "wsci_pi_lower",
+  wsci_pi_upper                   = "wsci_pi_upper",
+  wsci_xy                         = "wsci_xy",
+  wsci_xy_pi_lower                = "wsci_xy_pi_lower",
+  wsci_xy_pi_upper                = "wsci_xy_pi_upper",
+  wsci_z                          = "wsci_z",
+  wsci_z_pi_lower                 = "wsci_z_pi_lower",
+  wsci_z_pi_upper                 = "wsci_z_pi_upper",
+  stale_return_flag               = "geolocation/stale_return_flag",
+  landsat_treecover               = "land_cover_data/landsat_treecover",
+  landsat_water_persistence       = "land_cover_data/landsat_water_persistence",
+  leaf_off_flag                   = "land_cover_data/leaf_off_flag",
+  pft_class                       = "land_cover_data/pft_class",
+  phenology_phase                 = "land_cover_data/phenology_phase",
+  phenology_year                  = "land_cover_data/phenology_year",
+  region_class                    = "land_cover_data/region_class",
+  urban_focal_window_size         = "land_cover_data/urban_focal_window_size",
+  urban_proportion                = "land_cover_data/urban_proportion",
+  worldcover_class                = "land_cover_data/worldcover_class"
+)
+
 # fmt: skip
 .icesat2_atl03_columns <- c(
   lat_ph             = "heights/lat_ph",
@@ -752,7 +951,10 @@
   L2B = .gedi_l2b_columns,
   L4A = .gedi_l4a_columns,
   L4A_V3 = .gedi_l4a_v3_columns,
-  L4C = .gedi_l4c_columns
+  L4C = .gedi_l4c_columns,
+  L2A_V3 = .gedi_l2a_v3_columns,
+  L2B_V3 = .gedi_l2b_v3_columns,
+  L4C_V3 = .gedi_l4c_v3_columns
 )
 
 .icesat2_column_registry <- list(
@@ -832,6 +1034,36 @@
   "landsat_treecover", "pft_class", "region_class"
 )
 # fmt: skip
+.gedi_l2a_v3_default <- c(
+  "shot_number", "beam", "delta_time",
+  "l2a_quality_flag_rel3", "l2a_quality_flag_rel2",
+  "degrade_flag", "sensitivity",
+  "elev_lowestmode", "elev_highestreturn", "energy_total",
+  "num_detectedmodes", "rh", "selected_algorithm",
+  "solar_elevation", "digital_elevation_model",
+  "landsat_treecover", "modis_treecover",
+  "pft_class", "region_class"
+)
+# fmt: skip
+.gedi_l2b_v3_default <- c(
+  "shot_number", "beam", "delta_time",
+  "l2b_quality_flag_rel3", "l2a_quality_flag_rel3", "sensitivity",
+  "cover", "fhd_normal", "pai", "rch",
+  "cover_z", "pai_z", "pavd_z",
+  "elev_lowestmode", "solar_elevation",
+  "digital_elevation_model",
+  "landsat_treecover"
+)
+# fmt: skip
+.gedi_l4c_v3_default <- c(
+  "shot_number", "beam", "delta_time",
+  "l4c_quality_flag_rel3", "degrade_include_flag", "sensitivity",
+  "wsci", "wsci_pi_lower", "wsci_pi_upper",
+  "wsci_xy", "wsci_z", "fhd_normal",
+  "elev_lowestmode", "solar_elevation",
+  "landsat_treecover", "pft_class", "region_class"
+)
+# fmt: skip
 .icesat2_atl03_default <- c(
   "h_ph", "delta_time",
   "signal_conf_ph", "quality_ph", "signal_class_ph"
@@ -902,6 +1134,9 @@
   L4A   = .gedi_l4a_default,
   L4A_V3 = .gedi_l4a_v3_default,
   L4C   = .gedi_l4c_default,
+  L2A_V3 = .gedi_l2a_v3_default,
+  L2B_V3 = .gedi_l2b_v3_default,
+  L4C_V3 = .gedi_l4c_v3_default,
   ATL03 = .icesat2_atl03_default,
   ATL06 = .icesat2_atl06_default,
   ATL08 = .icesat2_atl08_default,
@@ -937,9 +1172,11 @@ product_default_columns <- function(product) {
 #'   * `"default"`: a curated subset of commonly useful science
 #'     variables, quality flags, and context columns. This is what
 #'     [sl_read()] returns when `columns` is not specified.
-#' @param version Character or `NULL`. For L4A, `"3"` (the default) or
-#'   `"2.1"`, whose variables differ; see [sl_search()]. [sl_read()] picks
-#'   the version from the granule file names.
+#' @param version Character or `NULL`. Product version, for the products
+#'   published in more than one: `"3"` (the default) or `"2"` for GEDI
+#'   L1B, L2A, L2B and L4C, `"3"` or `"2.1"` for L4A. GEDI L2A, L2B, L4A
+#'   and L4C variables differ between versions; see [sl_search()].
+#'   [sl_read()] picks the version from the granule file names.
 #' @returns A named character vector.
 #'
 #' @examples
@@ -971,22 +1208,32 @@ sl_columns <- function(
 
 #' The column-registry key for a product and version.
 #'
-#' L4A versions 2.1 and 3 differ in their variables, so each has its own
-#' registry. The version is the one given, else read from the granule file
-#' names (`_V002` or `_V003`); granules of both versions cannot be read
-#' together.
+#' GEDI L2A, L2B, L4A and L4C differ in their variables between versions,
+#' so version 3 has its own registries, keyed `<product>_V3`. The version
+#' is the one given, else read from the granule file names (`_V003`);
+#' granules of both versions cannot be read together. Every other product
+#' has one registry.
 #' @noRd
 column_product <- function(product, urls = NULL, version = NULL) {
-  if (product != "L4A") return(product)
+  if (!product %in% .gedi_versioned_products) return(product)
   if (is.null(version) && length(urls)) {
     v3 <- grepl("_V003", basename(urls), fixed = TRUE)
     if (any(v3) && !all(v3)) {
-      cli::cli_abort("These granules mix GEDI L4A versions; read version 3 and version 2.1 granules separately.")
+      cli::cli_abort(c(
+        "These granules mix GEDI {product} versions.",
+        "i" = "Versions differ in their variables; read version 3 granules in their own {.fun sl_read} call."
+      ))
     }
-    version <- if (all(v3)) "3" else "2.1"
+    version <- if (all(v3)) "3" else "2"
   }
-  if (identical(version, "3")) "L4A_V3" else "L4A"
+  if (identical(version, "3")) paste0(product, "_V3") else product
 }
+
+.gedi_versioned_products <- c("L2A", "L2B", "L4A", "L4C")
+
+#' The product a registry key belongs to (`"L2B_V3"` -> `"L2B"`).
+#' @noRd
+base_product <- function(key) sub("_V3$", "", key)
 
 #' Validate and resolve column names to full HDF5 paths.
 #'
@@ -1082,6 +1329,7 @@ product_pool_columns <- function(product) {
     product,
     L1B = .gedi_l1b_pool_columns,
     L2B = .gedi_l2b_pool_columns,
+    L2B_V3 = names(.gedi_l2b_v3_pool_index_map),
     character(0)
   )
 }
@@ -1150,6 +1398,7 @@ product_pool_index_map <- function(product) {
     product,
     L1B = .gedi_l1b_pool_index_map,
     L2B = .gedi_l2b_pool_index_map,
+    L2B_V3 = .gedi_l2b_v3_pool_index_map,
     list()
   )
 }
@@ -1190,7 +1439,7 @@ ensure_pool_indices <- function(columns, pool_short, product) {
 
 #' Build colon-delimited pool specs for the Rust FFI.
 #'
-#' Each spec is `"hdf5_path:start_col:count_col"` so the Rust side can
+#' Each spec is `"hdf5_path:start_path:count_path"` so the Rust side can
 #' parse the start/count index columns it already has from the scalar
 #' read and compute targeted sample-level byte ranges into the pool
 #' dataset, instead of reading the entire (potentially 50+ MB) pool.
@@ -1205,10 +1454,14 @@ build_pool_specs <- function(pool_short, pool_paths, product) {
     return(character(0))
   }
   idx_map <- product_pool_index_map(product)
+  registry <- .gedi_column_registry[[product]] %||%
+    .icesat2_column_registry[[product]]
   vapply(seq_along(pool_short), function(i) {
     spec <- idx_map[[pool_short[[i]]]]
     if (is.null(spec)) return(NA_character_)
-    paste(pool_paths[[i]], spec$start, spec$count, sep = ":")
+    # Index columns by dataset path: the reader keys its results by path,
+    # and L2B version 3 keeps them in a subgroup.
+    paste(pool_paths[[i]], registry[[spec$start]], registry[[spec$count]], sep = ":")
   }, character(1))
 }
 
@@ -1226,7 +1479,7 @@ build_pool_specs <- function(pool_short, pool_paths, product) {
 #' ICESat-2 has no pool columns, so it has no entry.
 #' @noRd
 product_fill_values <- function(product) {
-  if (product %in% c("L1B", "L2A", "L2B", "L4A", "L4C")) {
+  if (base_product(product) %in% c("L1B", "L2A", "L2B", "L4A", "L4C")) {
     c(-9999.0, -999999.0)
   } else {
     numeric(0)
@@ -1235,9 +1488,9 @@ product_fill_values <- function(product) {
 
 #' Per-column scale factors that convert raw HDF5 values to physical units.
 #'
-#' Only L2B currently needs this:
-#'   - `pgap_theta_z`: stored as DN (digital number), true value = DN / 10000
-#'   - `rh100`: stored in centimetres, convert to metres
+#' Only L2B needs this:
+#'   - `rh100` (version 2) and `rch` (version 3): centimetres to metres
+#'   - `pgap_theta_z_a<n>` (version 3): DN / 10000
 #'
 #' Keys are short column names (after subgroup prefix stripping). For 2D
 #' columns that expand to `{name}0`, `{name}1`, ..., the factor is applied
@@ -1252,6 +1505,12 @@ product_scale_factors <- function(product) {
   switch(
     product,
     L2B = list(rh100 = 1 / 100),
+    # `rch` is in centimetres too. Version 3 does store `pgap_theta_z`
+    # as the dictionary describes: int16, gap probability x 10000.
+    L2B_V3 = c(
+      list(rch = 1 / 100),
+      lapply(.gedi_l2b_v3_pool_index_map, function(spec) 1 / 10000)
+    ),
     list()
   )
 }
